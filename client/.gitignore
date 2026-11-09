@@ -1,0 +1,4 @@
+# Gradle und Loom (Client-Mod): Bauausgaben, Cache, Spieltest-Welt
+.gradle/
+build/
+run/

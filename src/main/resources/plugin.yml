@@ -1,0 +1,151 @@
+name: Baumeister
+version: '${project.version}'
+main: com.blackn0va.baumeister.BaumeisterPlugin
+# Mannequin gibt es erst ab 1.21.9; älter lädt das Plugin nicht.
+api-version: '1.21'
+# WorldEdit nur für die Bauteil-Bibliothek; ohne WorldEdit läuft alles andere.
+# voicechat (Simple Voice Chat, 2026-11-04): Begleiter im Spiel hören und sprechen lassen; ohne läuft alles andere.
+# CoreProtect (2026-11-05): Vera repariert Explosionsschäden und sagt, wer an einer Kiste war; ohne läuft alles andere.
+softdepend: [WorldEdit, voicechat, CoreProtect]
+description: NPC, der per lokalem LLM Bauwerke Block für Block errichtet
+author: blackn0va
+commands:
+  baumeister:
+    description: Steuert den Baumeister-NPC
+    aliases: [bm]
+    usage: /<command> <bau|stop|rückgängig|status|vorschau|warteschlange|bauteile|schematics|katalog|bauteil|spawn|entfernen|bauenbei|maschine|befehlsblock|befehle|selbsttest|logik|logikbei|neuladen|leistung|sprache|stadt|pause|weiter|tempo|helfer|fortschritt|komm|stadtwelt|gelaende|erde|reise|wo|weltbau|orte|ort|karte|kartenbild|begleiter>
+    # Bukkit lässt durch, wer EINES der durch ; getrennten Rechte hat (Command.testPermissionSilent). Vorher stand
+    # hier nur baumeister.bauen – baumeister.reisen allein wirkte dann nie. Das Bauen-Recht prüft jetzt
+    # BaumeisterCommand.onCommand für alles außer orte/ort.
+    # baumeister.begleiter seit 2026-11-04: Den Begleiter darf jeder rufen. BaumeisterCommand.onCommand verlangt für alle
+    # anderen Unterbefehle weiter baumeister.bauen oder baumeister.reisen.
+    permission: baumeister.bauen;baumeister.reisen;baumeister.begleiter
+  rucksack:
+    description: Öffnet deinen Rucksack (/rucksack holen gibt dir die Kiste, falls sie fehlt)
+    aliases: [backpack, bp, rs]
+    usage: /<command> [holen]
+    permission: baumeister.rucksack
+  vera:
+    description: Sagt dem Begleiter etwas, wie „Vera, …“ im Chat (für Klicks im Hilfebuch)
+    usage: /<command> [satz]
+    permission: baumeister.begleiter
+  mods:
+    description: Welche Minecraft-Fassung und welche Mods du für diesen Server brauchst, und woher
+    aliases: [modpaket, modpack]
+    usage: /<command>
+  hilfe:
+    description: Hilfebuch – was du auf dem Server alles machen kannst (/hilfe holen gibt dir das Buch)
+    aliases: [anleitung, serverhilfe]
+    usage: /<command> [holen]
+  aufgaben:
+    description: Heutige Tagesaufgaben mit Stand; „rangliste“ zeigt die meisten Punkte
+    aliases: [tagesaufgaben, quests]
+    usage: /<command> [rangliste]
+    permission: baumeister.aufgaben
+  warp:
+    description: Springt zu einem Warp; ohne Namen die Liste
+    aliases: [gwarp]
+    usage: /<command> [name]
+    permission: baumeister.warp
+  warps:
+    description: Alle Warps, anklickbar
+    permission: baumeister.warp
+  setwarp:
+    description: Setzt (oder versetzt) deinen Warp hier
+    usage: /<command> <name>
+    permission: baumeister.warp.setzen
+  delwarp:
+    description: Löscht deinen Warp
+    aliases: [deletewarp]
+    usage: /<command> <name>
+    permission: baumeister.warp.setzen
+permissions:
+  baumeister.aufgaben:
+    description: Tagesaufgaben sehen und Punkte sammeln
+    default: true
+  baumeister.warp:
+    description: Darf zu Warps springen (/warp) – auch über Vera
+    default: true
+  baumeister.warp.setzen:
+    description: Darf eigene Warps setzen und löschen (Anzahl warp.anzahl-je-spieler)
+    default: true
+  baumeister.warp.unbegrenzt:
+    description: Beliebig viele eigene Warps
+    default: op
+  baumeister.warp.sofort:
+    description: Keine Abklingzeit zwischen zwei Warps
+    default: op
+  baumeister.rucksack:
+    description: Hat einen Rucksack (Kiste im Inventar mit vielen Seiten)
+    default: true
+  baumeister.bauen:
+    description: Darf dem Baumeister Bauaufträge geben, eigene Bauten stoppen und rückgängig machen
+    default: op
+  # Stufen beim Setzen (2026-11-08, BuildRights): geordnet – befehlsblock schließt die gefährlichen Blöcke und die
+  # Inhalte ein, gefährlich schließt Inhalte ein. Inhalte gehen auch im Kreativmodus (online, in der Welt des Baus).
+  # Die Admin-Stufen stehen unter baumeister.admin.* (Sicherheitsprüfung 2026-11-08): „baumeister.bauen.*“ in
+  # LuckPerms gibt so nie Befehlsblöcke frei. Namen ASCII (LuckPerms-Befehle). umlaut-ok
+  baumeister.bauen.inhalte:
+    description: Der Baumeister setzt Behälter mit Inhalt (Gegenstände, Bücher, Platten) auch außerhalb des Kreativmodus
+    default: op
+  baumeister.admin.gefaehrlich:  # umlaut-ok: Rechtename
+    description: Der Baumeister setzt und überschreibt Gefährliches (Lava, TNT, Feuer, Spawner, Grundgestein, Portale …)
+    default: op
+  baumeister.admin.befehlsblock:
+    description: Der Baumeister setzt Befehls-, Konstruktions- und Testblöcke samt Befehl, Klick-Texte und Entity-Daten; /bm befehlsblock
+    default: op
+  baumeister.reisen:
+    description: Darf die Reisepunkte sehen (/bm orte) und hinreisen (/bm ort <Name>) – auch ohne baumeister.bauen
+    default: op
+  baumeister.begleiter:
+    description: Darf den Begleiter rufen und mit ihm sprechen (/bm begleiter, „Hey Vera“)
+    default: true
+  baumeister.begleiter.geben:
+    description: Der Begleiter gibt auch im Überlebensmodus Gegenstände (sonst nur im Kreativmodus)
+    # Alle Vera-Rechte hier „default: false“ (ab 2026-11-07): Die Vorgabe steht als Stufe im Admin-Buch (VeraRights).
+    # Bukkit zählt Vorgaberechte als vergeben; mit „op“/„true“ hier wäre die Stufe „Aus“ wirkungslos.
+    default: false
+  baumeister.begleiter.suchen:
+    description: Der Begleiter sucht auch im Überlebensmodus Erze (Röntgenblick, sonst nur im Kreativmodus)
+    default: false
+  baumeister.begleiter.reisen:
+    description: Vera bringt dich zu gemerkten Orten, zum letzten Tod und zum Bett (Teleport) – ohne das Recht nennt sie den Weg
+    default: false
+  baumeister.begleiter.befehle:
+    description: Der Begleiter führt Befehle aus (als der Spieler, mit dessen Rechten; Folgenreiches und alles Gesprochene erst nach getipptem „ja“)
+    default: false
+  baumeister.begleiter.benutzen:
+    description: Vera benutzt auf Zuruf Türen, Tore, Falltüren, Hebel, Knöpfe, Glocken und Notenblöcke (Stufe im Admin-Buch, Vorgabe alle)
+    default: false
+  baumeister.begleiter.ausprobieren:
+    description: Vera probiert von selbst harmlose Dinge aus (Glocke, Notenblock, Tür) und redet dabei (Stufe im Admin-Buch, Vorgabe alle)
+    default: false
+  baumeister.begleiter.frech:
+    description: Vera darf frech sein (Charakter „frech“ und „anpassen“; Stufe im Admin-Buch, Vorgabe alle)
+    default: false
+  baumeister.reparieren:
+    description: Vera setzt Schäden durch Creeper, Feuer und Blitz zurück (CoreProtect); aufgehobene Trümmer gäbe es dann doppelt
+    default: false
+  baumeister.kisten:
+    description: Vera sagt auch bei fremden Kisten, wer daran war (sonst nur bei selbst gesetzten)
+    default: false
+  baumeister.admin:
+    description: NPC setzen/entfernen, fremde Bauten stoppen/rückgängig, Bauen an Koordinaten, Städte aus OpenStreetMap, Weltbau, Orte merken/löschen
+    default: op
+    children:
+      baumeister.bauen: true
+      baumeister.bauen.inhalte: true
+      baumeister.admin.gefaehrlich: true  # umlaut-ok: Rechtename
+      baumeister.admin.befehlsblock: true
+      baumeister.reisen: true
+      baumeister.begleiter.geben: true
+      baumeister.begleiter.suchen: true
+      baumeister.begleiter.befehle: true
+      baumeister.begleiter.reisen: true
+      baumeister.begleiter.benutzen: true
+      baumeister.begleiter.ausprobieren: true
+      baumeister.begleiter.frech: true
+      baumeister.reparieren: true
+      baumeister.kisten: true
+      baumeister.warp.unbegrenzt: true
+      baumeister.warp.sofort: true

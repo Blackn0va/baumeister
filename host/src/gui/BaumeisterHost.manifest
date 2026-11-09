@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Zusatz-Manifest von BaumeisterHost.exe (übernommen aus CaptionBridgeGui.manifest), vom Linker mit dem UAC-Teil
+  (asInvoker) zusammengeführt.
+
+  Per-Monitor-DPI v2 schon im Manifest statt erst durch Qt: Qt setzt die DPI-Bewusstheit
+  sonst zur Laufzeit beim Anlegen der QApplication. Alles davor – die Startfehler in
+  wWinMain (DLL-Suche, Plattform-Plugin, Erhöhung) und „Baumeister-Host läuft bereits“ –
+  lief als DPI-unbewusstes Programm, bei 150 % also hochgerechnet und unscharf. Gemessen an
+  der zweiten Instanz vor QApplication (GetDpiAwarenessContextForProcess bzw.
+  GetWindowDpiAwarenessContext der Meldungsbox): ohne Manifest Prozess und Box unbewusst
+  (0), mit Manifest Prozess Per-Monitor-v2 und die Box von MessageBoxW systembewusst (1) –
+  scharf auf dem Hauptbildschirm. Mit Qt bleibt es dabei (die echte GUI meldet Prozess und
+  Hauptfenster Per-Monitor-v2, CaptionBridge). Rückfall "true/pm"
+  für Windows vor 1607, das dpiAwareness nicht kennt; unterstützt wird ohnehin erst 1809.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

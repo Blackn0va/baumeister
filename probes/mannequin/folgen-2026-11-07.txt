@@ -1,0 +1,33 @@
+ende | blick_offen_jetzt    teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.98 abstand_mittel=3.7 abstand_max=4.3 abstand_ende=3.4 spieler_fertig=true modi={weg=23, ziel=75}
+ende | blick_offen_neu      teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.98 abstand_mittel=3.2 abstand_max=4.2 abstand_ende=2.7 spieler_fertig=true modi={ziel=123}
+ende | blick_offen_spieler  teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.97 abstand_mittel=3.1 abstand_max=4.2 abstand_ende=2.8 spieler_fertig=true modi={weg=48, ziel=43}
+ende | blick_abbiegen_jetzt teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.89 abstand_mittel=3.8 abstand_max=4.2 abstand_ende=3.6 spieler_fertig=true modi={weg=18, ziel=72}
+ende | blick_abbiegen_neu   teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.92 abstand_mittel=3.2 abstand_max=4.2 abstand_ende=2.6 spieler_fertig=true modi={ziel=114}
+ende | blick_abbiegen_spieler teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.92 abstand_mittel=3.0 abstand_max=4.2 abstand_ende=2.5 spieler_fertig=true modi={weg=45, ziel=41}
+ende | kehrt_offen_jetzt    teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.80 abstand_mittel=3.8 abstand_max=4.6 abstand_ende=3.7 spieler_fertig=true modi={weg=1, ziel=134}
+ende | kehrt_offen_neu      teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.80 abstand_mittel=3.4 abstand_max=4.2 abstand_ende=3.2 spieler_fertig=true modi={ziel=240}
+ende | kehrt_offen_spieler  teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.82 abstand_mittel=3.0 abstand_max=4.2 abstand_ende=2.6 spieler_fertig=true modi={weg=59, ziel=44}
+ende | abbiegen_offen_jetzt teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.83 abstand_mittel=3.8 abstand_max=4.3 abstand_ende=3.6 spieler_fertig=true modi={weg=2, ziel=82}
+ende | abbiegen_offen_neu   teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.90 abstand_mittel=3.1 abstand_max=4.2 abstand_ende=2.6 spieler_fertig=true modi={ziel=96}
+ende | abbiegen_offen_spieler teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.91 abstand_mittel=2.9 abstand_max=4.2 abstand_ende=2.5 spieler_fertig=true modi={weg=34, ziel=37}
+ende | kehrt_gang_jetzt     teleports=0 im_stein=0 schweben=0 weg_vom_spieler=2 umweg=0.72 abstand_mittel=3.9 abstand_max=7.0 abstand_ende=3.6 spieler_fertig=true modi={spur=15, weg=23, ziel=61}
+ende | kehrt_gang_neu       teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.76 abstand_mittel=3.3 abstand_max=6.6 abstand_ende=2.7 spieler_fertig=true modi={weg=13, ziel=87}
+ende | kehrt_gang_spieler   teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.76 abstand_mittel=2.9 abstand_max=5.1 abstand_ende=2.6 spieler_fertig=true modi={weg=49, ziel=25}
+ende | schleife_jetzt       teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.95 abstand_mittel=4.4 abstand_max=7.2 abstand_ende=3.6 spieler_fertig=true modi={spur=6, weg=51, ziel=141}
+ende | schleife_neu         teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.87 abstand_mittel=3.9 abstand_max=6.0 abstand_ende=2.7 spieler_fertig=true modi={weg=23, ziel=154}
+ende | schleife_spieler     teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.89 abstand_mittel=3.2 abstand_max=4.6 abstand_ende=2.5 spieler_fertig=true modi={weg=77, ziel=56}
+ende | gang_jetzt           teleports=0 im_stein=0 schweben=0 weg_vom_spieler=6 umweg=0.92 abstand_mittel=5.3 abstand_max=8.1 abstand_ende=3.6 spieler_fertig=true modi={weg=147, ziel=60}
+ende | gang_neu             teleports=0 im_stein=0 schweben=0 weg_vom_spieler=4 umweg=0.96 abstand_mittel=4.2 abstand_max=7.5 abstand_ende=2.6 spieler_fertig=true modi={weg=101, ziel=83}
+ende | gang_spieler         teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.96 abstand_mittel=3.3 abstand_max=4.9 abstand_ende=2.4 spieler_fertig=true modi={weg=131, ziel=25}
+ende | parallel_jetzt       teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.94 abstand_mittel=4.3 abstand_max=6.8 abstand_ende=3.6 spieler_fertig=true modi={spur=28, weg=24, ziel=126}
+ende | parallel_neu         teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.97 abstand_mittel=3.5 abstand_max=5.9 abstand_ende=2.6 spieler_fertig=true modi={weg=10, ziel=146}
+ende | parallel_spieler     teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.97 abstand_mittel=3.2 abstand_max=5.1 abstand_ende=2.7 spieler_fertig=true modi={weg=74, ziel=38}
+ende | wendel_jetzt         teleports=0 im_stein=0 schweben=0 weg_vom_spieler=12 umweg=0.90 abstand_mittel=4.7 abstand_max=8.9 abstand_ende=3.6 spieler_fertig=true modi={spur=2, weg=75, ziel=40}
+ende | wendel_neu           teleports=0 im_stein=0 schweben=0 weg_vom_spieler=9 umweg=0.94 abstand_mittel=4.2 abstand_max=9.2 abstand_ende=2.7 spieler_fertig=true modi={weg=85, ziel=35}
+ende | wendel_spieler       teleports=0 im_stein=0 schweben=0 weg_vom_spieler=6 umweg=0.95 abstand_mittel=4.0 abstand_max=9.0 abstand_ende=2.6 spieler_fertig=true modi={weg=106, ziel=8}
+ende | schlucht_jetzt       teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.94 abstand_mittel=3.9 abstand_max=4.2 abstand_ende=3.7 spieler_fertig=true modi={spur=38, ziel=78}
+ende | schlucht_neu         teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.98 abstand_mittel=3.2 abstand_max=4.2 abstand_ende=2.7 spieler_fertig=true modi={ziel=123}
+ende | schlucht_spieler     teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.97 abstand_mittel=3.1 abstand_max=4.2 abstand_ende=2.8 spieler_fertig=true modi={weg=48, ziel=43}
+ende | offen_jetzt          teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=1.01 abstand_mittel=4.3 abstand_max=5.5 abstand_ende=3.8 spieler_fertig=true modi={weg=46, ziel=90}
+ende | offen_neu            teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.81 abstand_mittel=3.2 abstand_max=4.2 abstand_ende=2.8 spieler_fertig=true modi={ziel=107}
+ende | offen_spieler        teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.83 abstand_mittel=3.0 abstand_max=4.3 abstand_ende=2.6 spieler_fertig=true modi={weg=40, ziel=41}

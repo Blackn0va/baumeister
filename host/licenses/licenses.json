@@ -1,0 +1,94 @@
+{
+  "format": 1,
+  "about": "Lizenzbeilage des Baumeister-Host, übernommen aus kraken/licenses (gleiche Fassungen von llama.cpp, Qt, nlohmann, Vulkan-SDK und Inno Setup). build.ps1 -Stage stage prüft jeden SHA-256 und kopiert die Dateien nach {app}\\licenses.",
+  "files": [
+    {
+      "path": "llama.cpp-ggml/LICENSE.txt",
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+      "component": "llama.cpp b10900 mit ggml (statisch in BaumeisterHost.exe)",
+      "license": "MIT",
+      "source": "llama.cpp@50182a53/LICENSE",
+      "kind": "copy"
+    },
+    {
+      "path": "llama.cpp-ggml/llamafile-sgemm.NOTICE.txt",
+      "sha256": "ec7909ef02975fda55296f5f78c34dbfb9c11fec8dafb704269f4fff8fb92d58",
+      "component": "llamafile tinyBLAS (in BaumeisterHost.exe)",
+      "license": "MIT",
+      "source": "llama.cpp@50182a53/ggml/src/ggml-cpu/llamafile/sgemm.cpp",
+      "kind": "header"
+    },
+    {
+      "path": "llama.cpp-ggml/YaRN.NOTICE.txt",
+      "sha256": "d258773a945994de5e11017afad66263f37c8c5443aab59c5f375179e1031c29",
+      "component": "YaRN (RoPE-Skalierung, in BaumeisterHost.exe)",
+      "license": "MIT",
+      "source": "ggml/src/ggml-cpu/ops.cpp (Text wie CaptionBridgeCPP)",
+      "kind": "mitexcerpt"
+    },
+    {
+      "path": "Qt/LGPL-3.0.txt",
+      "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768",
+      "component": "Qt 6.11.1 (Qt6Core/Gui/Widgets.dll, platforms/qwindows.dll)",
+      "license": "LGPL-3.0-only",
+      "source": "CaptionBridgeCPP/licenses/Qt/LGPL-3.0.txt",
+      "kind": "copy"
+    },
+    {
+      "path": "Qt/GPL-3.0.txt",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "component": "Qt 6.11.1 (Qt6Core/Gui/Widgets.dll, platforms/qwindows.dll)",
+      "license": "LGPL-3.0-only",
+      "source": "CaptionBridgeCPP/licenses/Qt/GPL-3.0.txt",
+      "kind": "copy"
+    },
+    {
+      "path": "Qt/Drittkomponenten.md",
+      "sha256": "47fe0908aa692828f2b0c46412e3b2bb3e02224b283692983e33866448bafef1",
+      "component": "Qt 6.11.1 (Qt6Core/Gui/Widgets.dll, platforms/qwindows.dll)",
+      "license": "LGPL-3.0-only",
+      "source": "CaptionBridgeCPP/licenses/Qt/Drittkomponenten.md",
+      "kind": "copy"
+    },
+    {
+      "path": "Qt/qtbase-6.11.1.spdx",
+      "sha256": "eca2b40a8bb1a622312493df6a6ee3aaf5787f8392bc2acd6441b85b30762b86",
+      "component": "Qt 6.11.1 (Qt6Core/Gui/Widgets.dll, platforms/qwindows.dll)",
+      "license": "LGPL-3.0-only",
+      "source": "CaptionBridgeCPP/licenses/Qt/qtbase-6.11.1.spdx",
+      "kind": "copy"
+    },
+    {
+      "path": "nlohmann-json/LICENSE.MIT",
+      "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14",
+      "component": "nlohmann/json 3.11.3 (in BaumeisterHost.exe)",
+      "license": "MIT",
+      "source": "third_party/nlohmann/LICENSE.MIT",
+      "kind": "copy"
+    },
+    {
+      "path": "Vulkan-Headers/NOTICE.txt",
+      "sha256": "953c1972bcf2cdcf754db0c98fd8900efb46ccce55542810fbe4722b088fd75b",
+      "component": "Vulkan-SDK 1.4.357 (Header und SPIR-V-Shader in ggml-vulkan)",
+      "license": "Apache-2.0 / MIT",
+      "source": "CaptionBridgeCPP/licenses/Vulkan-Headers/NOTICE.txt",
+      "kind": "copy"
+    },
+    {
+      "path": "Vulkan-Headers/SPIRV-Headers.NOTICE.txt",
+      "sha256": "ac87fe9cfe66d673b851bba8f58e36d09276afcb4705c3ed8fab6743bc43177f",
+      "component": "Vulkan-SDK 1.4.357 (Header und SPIR-V-Shader in ggml-vulkan)",
+      "license": "Apache-2.0 / MIT",
+      "source": "CaptionBridgeCPP/licenses/Vulkan-Headers/SPIRV-Headers.NOTICE.txt",
+      "kind": "copy"
+    },
+    {
+      "path": "Inno-Setup/license.txt",
+      "sha256": "3df23505b7ec00dc007a1e1e9ba32ee3895e7ce90043bcd1ac1b9b47155921a7",
+      "component": "Inno Setup 6.7.3 (Setup und Deinstallation)",
+      "license": "Inno Setup License",
+      "source": "CaptionBridgeCPP/licenses/Inno-Setup/license.txt",
+      "kind": "copy"
+    }
+  ]
+}

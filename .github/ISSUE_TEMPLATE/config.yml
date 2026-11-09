@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/Blackn0va/baumeister/security/advisories/new
+    about: Privat melden, nicht als öffentliches Issue.

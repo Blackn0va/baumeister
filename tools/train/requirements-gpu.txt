@@ -1,0 +1,15 @@
+# GPU-PC (NVIDIA). torch und transformers wie convert_hf_to_gguf.py aus llama.cpp b10900
+# (requirements-convert_hf_to_gguf.txt dort: torch 2.11.0, transformers 4.57.6) – sonst passt der GGUF-Export nicht
+# zum Training. peft/accelerate/gguf: dieselben Fassungen, mit denen die CPU-Probe 2026-10-31 lief
+# (requirements-cpu-probe.txt). bitsandbytes (4-bit für QLoRA) gibt es nur mit CUDA – auf keinem Rechner hier
+# geprüft; die erste Zeile der Trainingsausgabe („trainable params …“) zeigt, ob es geladen hat.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+transformers==4.57.6
+peft==0.21.2
+accelerate==1.15.0
+bitsandbytes>=0.45.0
+safetensors==0.8.0
+sentencepiece==0.2.2
+protobuf==4.25.9
+gguf==0.19.0

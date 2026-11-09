@@ -1,0 +1,25 @@
+# Konfiguration des Baumeister-Relays – gehört nach /etc/baumeister-relay/relay.properties (root:root, 0644).
+# Format: eine Zeile „schlüssel=wert“, UTF-8, „#“ für Kommentare. Unbekannte oder doppelte Schlüssel sind ein Fehler –
+# das Relay startet dann nicht (Exitcode 78) und nennt die Zeile. Prüfen als root:
+#   env CREDENTIALS_DIRECTORY=/etc/baumeister-relay /opt/temurin-25-jre/bin/java -jar /opt/baumeister-relay/baumeister-relay.jar --prüfen
+# erlaubt.* gilt ohne Neustart (spätestens nach 2 s), alles andere erst nach „systemctl restart baumeister-relay“.
+
+# Plugin-Seite (llm.url im Plugin zeigt hierher). Nur Loopback – 127.0.0.1 oder ::1, anderes lehnt das Relay ab.
+lokal.adresse=127.0.0.1
+lokal.port=18080
+
+# App-Seite (TLS, Kanal v1). Die Portfreigabe im Router leitet TCP 25580 hierher. Wer den Port ändert, ändert SocketBindAllow in
+# baumeister-relay.service mit.
+öffentlich.adresse=0.0.0.0
+öffentlich.port=25580
+
+# Schlüssel und Passwort aus dem Credential-Ordner des Dienstes (LoadCredential= in der Unit, Quelle /etc/baumeister-relay).
+schlüssel.datei=credential:relay.p12
+schlüssel.passwort=credential:relay.pass
+
+# Für ein Login-Banner oder eine Überwachung: app=- bzw. app=<name> seit=<Zeit>.
+status.datei=/run/baumeister-relay/status
+
+# Erlaubte Apps: Name ([a-z0-9-], 1–32 Zeichen) = Pin der App (in der Host-App unter „Eigener Fingerabdruck“). Der
+# Name steht in X-Baumeister-App jeder Antwort. Ohne Eintrag hält das Relay 18080 trotzdem belegt und weist jede App ab.
+#erlaubt.gpu-pc=sha256:0000000000000000000000000000000000000000000000000000000000000000

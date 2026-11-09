@@ -1,0 +1,7 @@
+# Bauausgaben (build.ps1)
+/out/
+/out-build.log
+# Geheimnisse nie einchecken
+*.pfx
+*.key
+*private*.pem

@@ -1,0 +1,10 @@
+// Erzeugt von CMake (swbh_add_app_icon) aus app/app_icon.rc.in.
+//
+// Programm-Icon der EXE (Explorer, Startmenü, Taskleiste beim Anheften, Konsolenfenster
+// der CLI, Uninstall-Eintrag über UninstallDisplayIcon). Der Name IDI_ICON1 ist Absicht:
+// Qt sucht eine Icon-Ressource dieses Namens als Klassen-Icon seiner Fenster (der Name
+// steht als UTF-16-Text in platforms\qwindows.dll, geprüft), so trägt auch ein Fenster
+// ohne eigenes setWindowIcon das Programm-Icon. Die EXE hat nur diese eine Icon-Gruppe;
+// der Explorer zeigt sie als Programmsymbol. Quelle: resources/branding/BaumeisterHost.ico
+// (make_branding.py).
+IDI_ICON1 ICON "@SWBH_APP_ICON_FILE@"

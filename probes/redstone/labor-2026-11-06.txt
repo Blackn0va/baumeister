@@ -1,0 +1,8 @@
+nicht_ohne | schritte=3 ms=1508 | immer aus
+durch_block_ohne | schritte=3 ms=1509 | immer aus
+durch_block_angestupst | schritte=3 ms=1511 | A
+nicht_angestupst | schritte=3 ms=1604 | nicht A
+und_ohne | schritte=5 ms=2507 | immer aus
+oder_ohne | schritte=5 ms=2505 | A oder B
+oder_angestupst | schritte=5 ms=2504 | A oder B
+und_angestupst | schritte=5 ms=2705 | A und B

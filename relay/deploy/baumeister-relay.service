@@ -1,0 +1,102 @@
+# systemd-Unit des Baumeister-Relays – gehört nach /etc/systemd/system/baumeister-relay.service, danach
+# systemctl daemon-reload && systemctl enable --now baumeister-relay. Einrichtung, Pins und Rückweg: README.md hier
+# daneben. Protokoll: docs/kanal-v1.md.
+#
+# Vorher: Die Host-App auf dem GPU-PC hielt per SSH-Rückwärtstunnel 127.0.0.1:18080 auf dem Server offen, angemeldet
+# per Passwort – und wer den Port belegte, sprach für die App (über „gehört“ kommen Sätze, die Vera als Worte eines
+# Spielers behandelt). Jetzt hält das Relay 18080 dauerhaft, auch ohne App, und nimmt die App nur über TLS mit
+# gepinntem Client-Zertifikat an (Port 25580, Portfreigabe im Router). Wer die Unit stoppt, gibt 18080 frei.
+# /opt/temurin-25-jre ist die Vorgabe; relay/einrichten.sh trägt beim Einrichten das Java des Servers ein.
+[Unit]
+Description=Baumeister-Relay (Host-App per TLS, Plugin auf 127.0.0.1:18080)
+Wants=network-online.target
+After=network-online.target
+# 18080 soll belegt sein, bevor der Minecraft-Server (samt Plugins) startet.
+Before=minecraft.service
+
+[Service]
+Type=simple
+User=baumeister-relay
+Group=baumeister-relay
+# JVM, jede Option mit Grund (ServerFilesTest prüft die Liste und führt sie mit einem echten JDK aus):
+# - /opt/temurin-25-jre/bin/java: dasselbe aktuelle JDK wie der Minecraft-Server (Temurin 25.0.5, 2026-10-20, siehe
+#   start.sh). Vorher /usr/bin/java = Oracle 21.0.9 vom Oktober 2025 – dessen TLS-Schicht (JSSE) wäre das Einzige,
+#   was aus dem Internet erreichbar ist, und ihr fehlten vier Quartals-Updates (zweite Sicherheitsprüfung 2026-11-08,
+#   M4). Das Relay ist für Java 21 gebaut (release 21) und läuft auf 25 unverändert. Absoluter Pfad: Kein PATH
+#   entscheidet, welches java läuft. Wer das JDK tauscht, zieht diesen Pfad und ServerFilesTest mit.
+# - -Xms16m -Xmx32m: Heap klein und fest begrenzt. Das Byte-Budget des Relays folgt daraus (40 % von -Xmx, höchstens
+#   48 MiB, siehe Limits.java) – wer -Xmx hebt, hebt auch das Budget.
+# - -Xss256k: Ein Thread je Verbindung; 256 KiB Stapel reichen (der JSON-Leser ist auf Tiefe 8 begrenzt; gemessen
+#   2026-11-08: 100 Anmeldungen und volle Last mit genau diesen Optionen ohne StackOverflowError, RelayMeasurementTest).
+# - -XX:+UseSerialGC: ein GC-Thread statt G1 mit eigenen Strukturen – bei 32 MiB Heap kürzer und sparsamer.
+# - -XX:TieredStopAtLevel=1: nur C1 – weniger Code-Cache und Compiler-Speicher, das Relay rechnet kaum.
+# - -XX:-UsePerfData: keine Datei in /tmp (PrivateTmp) und kein mmap dafür.
+# - -XX:+ExitOnOutOfMemoryError: Ein OOM endet mit Neustart statt mit einem halb toten Prozess, der 18080 hält.
+# - -XX:MaxMetaspaceSize=32m, -XX:ReservedCodeCacheSize=16m: gedeckelt, Messwerte in README.md.
+# - -XX:MaxDirectMemorySize=16m: Puffer der Socket-Schreiber; Vorgabe wäre so groß wie -Xmx.
+ExecStart=/opt/temurin-25-jre/bin/java -Xms16m -Xmx32m -Xss256k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:-UsePerfData \
+    -XX:+ExitOnOutOfMemoryError -XX:MaxMetaspaceSize=32m -XX:ReservedCodeCacheSize=16m \
+    -XX:MaxDirectMemorySize=16m \
+    -jar /opt/baumeister-relay/baumeister-relay.jar --konfig /etc/baumeister-relay/relay.properties
+# glibc legt sonst bis zu 8 × Kerne Speicher-Arenen an; zwei reichen für ein paar Threads und sparen RSS.
+Environment=MALLOC_ARENA_MAX=2
+# Schlüssel und Passwort bleiben 0600 root in /etc/baumeister-relay. systemd legt eine Kopie in den Credential-Ordner
+# des Dienstes ($CREDENTIALS_DIRECTORY), lesbar nur für ihn; die Konfiguration verweist mit credential:<name> darauf.
+LoadCredential=relay.p12:/etc/baumeister-relay/relay.p12
+LoadCredential=relay.pass:/etc/baumeister-relay/relay.pass
+# /run/baumeister-relay/status für ein Login-Banner oder Überwachung; systemd legt den Ordner an und räumt ihn weg.
+RuntimeDirectory=baumeister-relay
+RuntimeDirectoryMode=0755
+UMask=0022
+Restart=on-failure
+RestartSec=5
+# 78 = Konfiguration oder Schlüssel unbrauchbar (Main.EXIT_CONFIG): Neustarts machen eine kaputte Datei nicht besser.
+RestartPreventExitStatus=78
+# Java endet auf SIGTERM mit 143 (128 + 15) – das ist ein sauberer Stopp, kein Fehler (wie bei minecraft.service).
+SuccessExitStatus=143
+TimeoutStopSec=15
+
+# ---------------------------------------------------------------- Härtung
+# Kein Weg zu mehr Rechten (setuid, Capabilities), kein Schreiben ins System, kein Blick in /home und /root.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Fremde Prozesse in /proc unsichtbar (systemd ≥ 247). NICHT ProcSubset=pid: Das versteckte auch /proc/meminfo,
+# /proc/cpuinfo und /proc/sys, die die JVM beim Start liest (Speicher- und Prozessorerkennung) – laut Plan bewusst
+# weggelassen; nicht gemessen.
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+# Nur die eigenen Ports binden (systemd ≥ 249; ältere Fassungen melden „Unknown key“ und übergehen die Zeilen).
+# Wer lokal.port oder öffentlich.port in relay.properties ändert, ändert sie hier mit – sonst scheitert der Start.
+SocketBindAllow=tcp:18080
+SocketBindAllow=tcp:25580
+SocketBindDeny=any
+# NICHT MemoryDenyWriteExecute=yes: Der JIT-Compiler der JVM schreibt Maschinencode in Speicher und führt ihn aus –
+# mit der Option bricht die JVM beim Start ab. Wer sie setzt, bekommt ein Relay, das nie startet (und 18080 frei).
+#
+# Obergrenzen: Die JVM bleibt mit den Optionen oben weit darunter (Messwerte in README.md); MemoryMax ist der harte
+# Deckel, falls doch etwas wächst – der Kernel beendet dann nur das Relay, nicht Minecraft.
+MemoryMax=160M
+# Threads: ≈ 15 der JVM + 1 je Plugin-Anfrage (≤ 128) + 1 je Anmeldung (≤ 32) + 2 je App + Takt und Annahme.
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

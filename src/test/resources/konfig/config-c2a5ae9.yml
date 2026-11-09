@@ -1,0 +1,78 @@
+# Baumeister – Konfiguration
+# Änderungen wirken nach /bm neuladen oder einem Server-Neustart.
+
+npc:
+  # Anzeigename. Chatnachrichten, die mit "<name>," / "<name>:" / "@<name>" beginnen,
+  # gehen als Bauauftrag an den NPC.
+  name: Baumeister
+  # Wird von /bm spawn gesetzt – nicht von Hand ändern.
+  uuid: ''
+
+llm:
+  # OpenAI-kompatibler Endpunkt von llama-server. 127.0.0.1:18080 ist das Server-Ende
+  # des SSH-Rückwärtstunnels aus llm-host/start-llm.ps1 – das LLM selbst läuft auf dem PC.
+  url: http://127.0.0.1:18080/v1/chat/completions
+  # Gemessen 2026-10-28: Qwen2.5-VL-7B Q4_K_M auf Core Ultra 7 155U (CPU) 4,6–8 Token/s; ein Plan
+  # mit Lageplan (Anbau) überschritt 360 s. 900 s reichen auf der CPU; auf einer GPU ist das Polster.
+  timeout-sekunden: 900
+  max-tokens: 3000
+  temperatur: 0.4
+  # Ein zweiter Versuch mit der Fehlermeldung, falls der Plan nicht passt.
+  reparatur-versuche: 1
+
+bau:
+  # 20 Ticks = 1 Sekunde. 3 → knapp 7 Blöcke pro Sekunde.
+  ticks-pro-block: 3
+  # Obergrenzen gegen Unsinn (ein 40-stöckiges Hochhaus hat ~17 000 Blöcke und 120+ Blöcke Höhe).
+  max-blöcke: 150000
+  max-ausdehnung: 192
+  # Bauten, die Block für Block länger bräuchten, setzt der Baumeister im Schnellgang
+  # (mehrere Blöcke je Tick), damit sie in etwa dieser Zeit stehen.
+  zieldauer-sekunden: 120
+  # Abstand zwischen Spieler und Vorderkante des Bauwerks.
+  abstand-vor-spieler: 3
+  # Unbekannte Blocknamen des LLM werden hierdurch ersetzt (statt Lücken im Bauwerk).
+  ersatzblock: stone
+  # Vor dem Bau wird für jeden Block ein BlockPlaceEvent/BlockBreakEvent im Namen des
+  # Spielers ausgelöst. So greifen WorldGuard und PlotSquared, als würde er selbst bauen.
+  # Ein einziges Nein bricht den Bau ab, bevor ein Block gesetzt ist.
+  rechte-prüfen: true
+  # Wie viele Bauten /bm rückgängig zurückdrehen kann (nur bis zum nächsten Neustart).
+  undo-tiefe: 5
+  # Steht am Bauplatz schon ein Bauwerk, darf ein Plan höchstens so viele seiner Blöcke verändern
+  # (Durchgang = 2, Fenster = 1). Mehr geht zur Nachbesserung zurück ans LLM. Sagt der Spieler
+  # "umbauen", "abreißen" oder "ersetzen", gilt die Grenze nicht.
+  max-überbauen: 12
+
+# Bei großen Bauten holt sich der Baumeister Helfer (eigene NPCs, verschwinden nach dem Bau).
+helfer:
+  zweiter-ab-blöcken: 300
+  dritter-ab-blöcken: 700
+
+# Rohantwort des LLM pro Auftrag unter plugins/Baumeister/pläne/ ablegen (die letzten 50).
+pläne-speichern: true
+
+# Echte Orte 1:1 aus OpenStreetMap (/bm stadt <Ort> [radius], dann /bm stadt los).
+# Kartendaten © OpenStreetMap-Mitwirkende, Lizenz ODbL – bei Veröffentlichung von Bildern nennen.
+# Die öffentlichen Dienste haben Nutzungsregeln (keine Dauerabfragen); für viele Orte eigenen Overpass betreiben.
+stadt:
+  overpass-url: https://overpass-api.de/api/interpreter
+  nominatim-url: https://nominatim.openstreetmap.org/search
+  radius-standard: 150
+  # Große Orte baut der Baumeister in Etappen (256 × 256 m), die Karte kommt in Kacheln (1 km²) –
+  # der Speicher hält nur zwei davon. 5000 m = eine Großstadt wie München (dauert Stunden).
+  radius-max: 5000
+  # Blöcke je Tick für alle Bots zusammen (20 Ticks = 1 s). Im Lauf: /bm tempo <n>, Chat "schneller".
+  blöcke-pro-tick: 2000
+  # Helfer-NPCs zusätzlich zum Baumeister. Im Lauf: /bm helfer <n>, Chat "mehr helfer".
+  helfer: 4
+  # Tick-Bremse: Neue Chunks zu erzeugen ist das Teure (dev01: bis zu 21 s Stillstand beim ersten Bau eines Dorfs).
+  # Je Tick höchstens so viele noch nicht geladene Chunks anfassen und höchstens so viele Millisekunden bauen;
+  # ein neuer Chunk kommt nur dran, solange die Millisekunden noch reichen.
+  neue-chunks-pro-tick: 8
+  ms-pro-tick: 25
+  # Obergrenze je Etappe – nur gegen kaputte Kartendaten.
+  max-blöcke-je-etappe: 12000000
+  # Rückgängig für Städte liegt unter plugins/Baumeister/rückgängig/ (gzip, ~3 Byte je Block) und wird beim
+  # Zurücksetzen, beim Herausfallen aus dem Stapel und beim Neustart gelöscht.
+  rückgängig: true

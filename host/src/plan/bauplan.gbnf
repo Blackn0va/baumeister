@@ -1,0 +1,81 @@
+# Bauplan-Grammatik (GBNF) – feste Übersetzung von src/main/resources/plan-schema.json des Plugins.
+#
+# WOZU: llama-server baute aus response_format.json_schema selbst eine Grammatik; der Baumeister-Host hat keinen
+# Schema→GBNF-Wandler (kraken auch nicht). Die Grammatik verhindert ungültiges JSON, unbekannte op und Felder – jede
+# verworfene Antwort kostet eine bis drei Minuten Rechenzeit.
+# Reihenfolge der Felder wie im Schema (so ordnet auch llama-server die optionalen Felder; die Beispiele in
+# system-prompt.txt folgen ihr): design, reply, mode, steps; im Schritt op zuerst, dann block, name, expr, from, to, pos, radius,
+# height, hollow, floors, window_block, roof_block, dome, shape, overhang, gable_block, facing, width, style.
+# FALLE: Ändert das Plugin plan-schema.json, muss diese Datei mit. tests/plan/test_plan.cpp vergleicht Feldnamen,
+# Aufzählungen und Grenzen mit dem Schema und wird rot, wenn sie auseinanderlaufen. Weil das Plugin das Schema in
+# einer anderen Sitzung ändert (skyscraper fehlte hier bis 2026-10-28, die Grammatik verbot die op also), prüft
+# GrammarDriftTest im Plugin dasselbe schon bei mvn test – samt Zahlengrenzen und Feldreihenfolge der Prompt-Beispiele.
+
+root ::= "{" ws "\"design\"" ws ":" ws design ws "," ws "\"reply\"" ws ":" ws reply ws "," ws "\"mode\"" ws ":" ws mode ws "," ws "\"steps\"" ws ":" ws steps ws "}"
+
+# mode: "update" ersetzt den letzten Bau des Spielers (Folgeauftrag wie „mach das Dach rot“), "new" baut neu.
+mode ::= "\"new\"" | "\"update\""
+
+design ::= "\"" char{0,700} "\""
+reply ::= "\"" char{0,200} "\""
+
+steps ::= "[" ws step ( ws "," ws step ){0,59} ws "]"
+
+# Äußere Klammer: Der GBNF-Leser von llama.cpp erlaubt Zeilenumbrüche nur innerhalb von Klammern
+# (parse_space mit newline_ok = is_nested).
+step ::= ( "{" ws "\"op\"" ws ":" ws op
+  ( ws "," ws "\"block\"" ws ":" ws str1000 )?
+  ( ws "," ws "\"name\"" ws ":" ws str32 )?
+  ( ws "," ws "\"expr\"" ws ":" ws str480 )?
+  ( ws "," ws "\"from\"" ws ":" ws vec )?
+  ( ws "," ws "\"to\"" ws ":" ws vec )?
+  ( ws "," ws "\"pos\"" ws ":" ws vec )?
+  ( ws "," ws "\"radius\"" ws ":" ws radius )?
+  ( ws "," ws "\"height\"" ws ":" ws height )?
+  ( ws "," ws "\"hollow\"" ws ":" ws bool )?
+  ( ws "," ws "\"floors\"" ws ":" ws floors )?
+  ( ws "," ws "\"window_block\"" ws ":" ws str80 )?
+  ( ws "," ws "\"roof_block\"" ws ":" ws str80 )?
+  ( ws "," ws "\"dome\"" ws ":" ws bool )?
+  ( ws "," ws "\"shape\"" ws ":" ws shape )?
+  ( ws "," ws "\"overhang\"" ws ":" ws overhang )?
+  ( ws "," ws "\"gable_block\"" ws ":" ws str80 )?
+  ( ws "," ws "\"facing\"" ws ":" ws facing )?
+  ( ws "," ws "\"width\"" ws ":" ws width )?
+  ( ws "," ws "\"style\"" ws ":" ws style )?
+  ws "}" )
+
+op ::= "\"fill\"" | "\"walls\"" | "\"hollow\"" | "\"line\"" | "\"set\"" | "\"cylinder\"" | "\"sphere\"" | "\"roof\"" | "\"door\"" | "\"module\"" | "\"skyscraper\"" | "\"house\"" | "\"logic\"" | "\"castle\"" | "\"wall\"" | "\"bridge\"" | "\"garden\"" | "\"tree\""
+shape ::= "\"gable\"" | "\"hip\"" | "\"flat\""
+facing ::= "\"front\"" | "\"back\"" | "\"left\"" | "\"right\"" | "\"up\"" | "\"down\""
+# style: Spielart der Bauformen (bridge arch|beam, tree round|cone, castle round|square); das Plugin prüft je op.
+style ::= "\"arch\"" | "\"beam\"" | "\"round\"" | "\"cone\"" | "\"square\""
+bool ::= "true" | "false"
+
+str80 ::= "\"" char{0,80} "\""
+# block: Block wie bei /setblock, id[zustände]{daten} – Daten für Schilder, Behälter und Befehlsblöcke (Plan B5,
+# 2026-11-08). Vorher str80: Ein Befehlsblock mit Befehl passt nicht in 80 Zeichen. Anführungszeichen im SNBT kommen
+# als \" (Regel char). window_block, roof_block und gable_block bleiben str80 – dort gibt es keine Daten.
+# FALLE: Über 2000 macht llama.cpp aus {0,n} stillschweigend ein unbegrenztes * (MAX_REPETITION_THRESHOLD in
+# src/llama-grammar.cpp, b10900, nachgelesen 2026-11-08) – die Längengrenze wäre dann weg.
+str1000 ::= "\"" char{0,1000} "\""
+str32 ::= "\"" char{0,32} "\""
+# expr: Formel für den Logik-Compiler (op logic), höchstens 480 Zeichen wie LogicExpr.MAX_LENGTH. Vorher 160 – seit
+# 2026-11-07 stapelt der Logik-Compiler bis 16 Ausgänge in Stockwerken, ein 4-zu-16-Dekoder braucht allein ~350 Zeichen.
+str480 ::= "\"" char{0,480} "\""
+
+# Koordinate: Ganzzahl -64 … 200, genau drei je Vektor (Hochhaus: 45 Geschosse × 4 + Dach und Antenne).
+vec ::= "[" ws coord ws "," ws coord ws "," ws coord ws "]"
+coord ::= "-" ( [1-9] | [1-5] [0-9] | "6" [0-4] ) | "0" | [1-9] | [1-9] [0-9] | "1" [0-9] [0-9] | "200"
+# radius 1 … 24, height 1 … 48, floors 1 … 45, overhang 0 … 2, width 1 … 9 (Mauerdicke, Brückenbreite)
+radius ::= [1-9] | "1" [0-9] | "2" [0-4]
+height ::= [1-9] | [1-3] [0-9] | "4" [0-8]
+floors ::= [1-9] | [1-3] [0-9] | "4" [0-5]
+overhang ::= [0-2]
+width ::= [1-9]
+
+# JSON-Zeichen ohne Steuerzeichen; Escapes wie in JSON.
+char ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} )
+
+# Leerraum begrenzt: Ein unbegrenztes [ \t\n]* ließe das Modell endlos Leerzeilen schreiben, bis max_tokens greift.
+ws ::= | " " | "\n" [ \t]{0,8}

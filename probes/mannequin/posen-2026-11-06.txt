@@ -1,0 +1,10 @@
+gesetzt | STANDING | weg=paper_fest | sofort=STANDING
+gesetzt | SNEAKING | weg=paper_fest | sofort=SNEAKING
+gesetzt | SWIMMING | weg=paper_fest | sofort=SWIMMING
+gesetzt | FALL_FLYING | weg=paper_fest | sofort=FALL_FLYING
+gesetzt | SLEEPING | weg=paper_fest | sofort=SLEEPING
+nach_40_ticks | STANDING | ist=STANDING
+nach_40_ticks | SNEAKING | ist=SNEAKING
+nach_40_ticks | SWIMMING | ist=SWIMMING
+nach_40_ticks | FALL_FLYING | ist=FALL_FLYING
+nach_40_ticks | SLEEPING | ist=SLEEPING

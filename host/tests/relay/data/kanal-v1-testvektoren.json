@@ -1,0 +1,394 @@
+{
+  "version": 1,
+  "erzeugt": "2026-11-08",
+  "websocket": {
+    "key": "dGhlIHNhbXBsZSBub25jZQ==",
+    "accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+    "protokoll": "baumeister-kanal.v1",
+    "quelle": "RFC 6455 Abschnitt 1.3"
+  },
+  "pin": {
+    "pem": "-----BEGIN CERTIFICATE-----\nMIIBVDCB/KADAgECAgkA5+FKe9/CzhMwCgYIKoZIzj0EAwIwHjEcMBoGA1UEAxMT\nS2FuYWwtdjEgVGVzdHZla3RvcjAgFw0yNjExMDgwOTU2NDJaGA8yMTI2MTAxNTA5\nNTY0MlowHjEcMBoGA1UEAxMTS2FuYWwtdjEgVGVzdHZla3RvcjBZMBMGByqGSM49\nAgEGCCqGSM49AwEHA0IABClHPxEJ7HVjupcgT1YcUvT3wKwK6eS+AVxyfIKapjCy\n+FiZQNMmKovFaZIeIfmhF7xw/eREEYfc9RFlo6kBmtKjITAfMB0GA1UdDgQWBBQm\nvZmDHXsXjpAFBk7uMGCDZV8P+zAKBggqhkjOPQQDAgNHADBEAiAe+hqzpcQfw2bt\nJ4nl1Hr5ReQMZOBMi+mGTwxBWPQx/QIgG1EvEDfk2sE7b/gEBMm9UO4FnuVE4wTI\nxZOPFa/23nA=\n-----END CERTIFICATE-----",
+    "pin": "sha256:1ae3a080286421de813d1e1cd065356bfcd0089b72df463762e4ff5f32186da3",
+    "regel": "SHA-256 über die DER-Bytes des Blattzertifikats, klein geschrieben, Präfix sha256:"
+  },
+  "gueltig": [
+    {
+      "name": "hallo der App",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "hallo",
+        "v": 1,
+        "app": "BaumeisterHost/test",
+        "max": 6
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "82b937fa213d37cd5a1f43d81b1f5f9b4d5158d80d1f41d81b0c1bd8404d47d81b1f759b54505293524952886952448e0e495289551f1bd84c5c4fd81b0b4a"
+    },
+    {
+      "name": "hallo des Relays",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "hallo",
+        "v": 1,
+        "relay": "baumeister-relay/test"
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "823500337b2274223a2268616c6c6f222c2276223a312c2272656c6179223a226261756d6569737465722d72656c61792f74657374227d"
+    },
+    {
+      "name": "anfrage komplett in einem Rahmen",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "anfrage",
+        "id": 1,
+        "m": "POST",
+        "p": "/v1/chat/completions",
+        "ct": "application/json",
+        "len": 7
+      },
+      "daten_laenge": 7,
+      "daten_sha256": "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+      "daten_hex": "7b2261223a317d",
+      "rahmen_hex": "8265005c7b2274223a22616e6672616765222c226964223a312c226d223a22504f5354222c2270223a222f76312f636861742f636f6d706c6574696f6e73222c226374223a226170706c69636174696f6e2f6a736f6e222c226c656e223a377d7b2261223a317d"
+    },
+    {
+      "name": "anfrage GET ohne Body mit Abfrage",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "anfrage",
+        "id": 2,
+        "m": "GET",
+        "p": "/baumeister/v1/begleiter/gehoert?imspiel=Alex",
+        "len": 0
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "825e005c7b2274223a22616e6672616765222c226964223a322c226d223a22474554222c2270223a222f6261756d6569737465722f76312f6265676c65697465722f6765686f6572743f696d737069656c3d416c6578222c226c656e223a307d"
+    },
+    {
+      "name": "anfrage in Stücken, erstes Stück 4 von 10",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "anfrage",
+        "id": 3,
+        "m": "POST",
+        "p": "/baumeister/v1/stadt",
+        "ct": "application/json",
+        "len": 10
+      },
+      "daten_laenge": 4,
+      "daten_sha256": "d4f1e04ab87996445bdbc6fe3e7c15194f1c1d15221648263e12f569324381b7",
+      "daten_hex": "7b227822",
+      "rahmen_hex": "8263005d7b2274223a22616e6672616765222c226964223a332c226d223a22504f5354222c2270223a222f6261756d6569737465722f76312f7374616474222c226374223a226170706c69636174696f6e2f6a736f6e222c226c656e223a31307d7b227822"
+    },
+    {
+      "name": "daten, zweites Stück 6 von 10",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "daten",
+        "id": 3
+      },
+      "daten_laenge": 6,
+      "daten_sha256": "00ea97642592fe8624961483fde3f223029eaea4e7c8db5322c6ce8ff2016366",
+      "daten_hex": "3a3132337d0a",
+      "rahmen_hex": "821c00147b2274223a22646174656e222c226964223a337d3a3132337d0a"
+    },
+    {
+      "name": "antwort klein",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "antwort",
+        "id": 1,
+        "s": 200,
+        "ct": "application/json",
+        "len": 2
+      },
+      "daten_laenge": 2,
+      "daten_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "daten_hex": "7b7d",
+      "rahmen_hex": "82c237fa213d37c45a1f43d81b1f5694554a5888551f1bd8485915c010111589030705ca11111599551f0dd8404d4796485e568e485259d54b4e589403111596445315c013404c87"
+    },
+    {
+      "name": "antwort 503 des Hosts unverändert",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "antwort",
+        "id": 2,
+        "s": 503,
+        "ct": "application/json",
+        "len": 24
+      },
+      "daten_laenge": 24,
+      "daten_sha256": "cf58cc5d64489a52f7e8c07da4b92966fbc07c44461aa09ea7ed6613439be24b",
+      "daten_hex": "7b226572726f72223a22626573636861656674696774227d",
+      "rahmen_hex": "82d937fa213d37c55a1f43d81b1f5694554a5888551f1bd8485915c013111589030702ca12111599551f0dd8404d4796485e568e485259d54b4e589403111596445315c013094a81035845884e4f15c0035f52894255569f47495e9d551f4a"
+    },
+    {
+      "name": "antwort mit 16-Bit-Länge (126)",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "antwort",
+        "id": 4,
+        "s": 200,
+        "ct": "application/octet-stream",
+        "len": 190
+      },
+      "daten_laenge": 190,
+      "daten_sha256": "b454dbe07fb100ea743cd193ea1953a9e6d62a07fde0f3325c362e4f3d7b694f",
+      "daten_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbd",
+      "rahmen_hex": "82fe010837fa213d37b25a1f43d81b1f5694554a5888551f1bd8485915c015111589030705ca11111599551f0dd8404d4796485e568e485259d54e5e439f5510448e5358569703111596445315c010040787213c35f9253831fd29343df12d3039f5312c25e9352821ed39242de13d2029e5011c15d9051811dd09141dd10d1019d5110c05c9150801cd19040dc11d0009c5617c75b9657871bd69747db16d7079b5716c65a9756861ad79646da17d6069a5415c55994558519d49545d914d505995514c45895548418d59444d815d404985a1bcb579a5b8b17da9b4bd71adb0b975b1aca569b5a8a16db9a4ad61bda0a965819c95598598915d89949d518d909955918c85499588814d99848d419d80"
+    },
+    {
+      "name": "daten mit 64-Bit-Länge (127), volles Stück 65536",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "daten",
+        "id": 4
+      },
+      "daten_laenge": 65536,
+      "daten_sha256": "4b640d85ab3ba30fd02c9fc9db4a8928f416322ad27022ea58a65aaee68a4df2",
+      "rahmen_sha256": "17e95659218b854a60354b39ce51ce0da410084c66a4c7564afc1e322cc534a0",
+      "rahmen_laenge": 65572,
+      "daten_regel": "bytes(i % 251 for i in range(daten_laenge))"
+    },
+    {
+      "name": "abbruch vom Relay (Plugin hat aufgelegt)",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "t": "abbruch",
+        "id": 1
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "821800167b2274223a2261626272756368222c226964223a317d"
+    },
+    {
+      "name": "abbruch von der App (eigener Server nicht erreichbar)",
+      "richtung": "app->relay",
+      "maske": "37fa213d",
+      "kopf": {
+        "t": "abbruch",
+        "id": 3
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "829837fa213d37ec5a1f43d81b1f5698434f4299491f1bd8485915c01240"
+    },
+    {
+      "name": "Kopf mit Umlaut und anderer Schlüsselreihenfolge",
+      "richtung": "relay->app",
+      "maske": null,
+      "kopf": {
+        "len": 0,
+        "p": "/baumeister/v1/begleiter/gehoert?imspiel=J%C3%BCrgen",
+        "m": "GET",
+        "id": 5,
+        "t": "anfrage"
+      },
+      "daten_laenge": 0,
+      "daten_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "daten_hex": "",
+      "rahmen_hex": "826500637b226c656e223a302c2270223a222f6261756d6569737465722f76312f6265676c65697465722f6765686f6572743f696d737069656c3d4a2543332542437267656e222c226d223a22474554222c226964223a352c2274223a22616e6672616765227d"
+    }
+  ],
+  "ungueltig": [
+    {
+      "name": "Textrahmen statt Binär",
+      "richtung": "app->relay",
+      "rahmen_hex": "819537fa213d37e95a1f43d81b1f5f9b4d5158d80d1f41d81b0c4a",
+      "grund": "textrahmen"
+    },
+    {
+      "name": "RSV-Bit gesetzt (keine Erweiterungen)",
+      "richtung": "app->relay",
+      "rahmen_hex": "c29537fa213d37e95a1f43d81b1f5f9b4d5158d80d1f41d81b0c4a",
+      "grund": "rsv"
+    },
+    {
+      "name": "Client-Rahmen ohne Maske",
+      "richtung": "app->relay",
+      "rahmen_hex": "821500137b2274223a2268616c6c6f222c2276223a317d",
+      "grund": "maske_fehlt"
+    },
+    {
+      "name": "Server-Rahmen mit Maske",
+      "richtung": "relay->app",
+      "rahmen_hex": "829537fa213d37e95a1f43d81b1f5f9b4d5158d80d1f41d81b0c4a",
+      "grund": "maske_vom_server"
+    },
+    {
+      "name": "Fragmentiert (FIN=0)",
+      "richtung": "app->relay",
+      "rahmen_hex": "029537fa213d37e95a1f43d81b1f5f9b4d5158d80d1f41d81b0c4a",
+      "grund": "fragment"
+    },
+    {
+      "name": "Ping mit Nutzlast > 125",
+      "richtung": "app->relay",
+      "rahmen_hex": "89fe007e37fa213d4f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f8259454f82",
+      "grund": "steuerrahmen_zu_lang"
+    },
+    {
+      "name": "Kopflänge 0",
+      "richtung": "app->relay",
+      "rahmen_hex": "828237fa213d37fa",
+      "grund": "kopf_leer"
+    },
+    {
+      "name": "Kopflänge 4097",
+      "richtung": "app->relay",
+      "rahmen_hex": "82fe100337fa213d27fb5a1d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da011d17da5c",
+      "grund": "kopf_zu_lang"
+    },
+    {
+      "name": "Kopflänge größer als Nutzlast",
+      "richtung": "app->relay",
+      "rahmen_hex": "828437fa213d37c85a40",
+      "grund": "kopf_abgeschnitten"
+    },
+    {
+      "name": "Kopf kein UTF-8",
+      "richtung": "app->relay",
+      "rahmen_hex": "828537fa213d37f9dec3ca",
+      "grund": "kopf_kein_utf8"
+    },
+    {
+      "name": "Kopf ist JSON-Feld statt Objekt",
+      "richtung": "app->relay",
+      "rahmen_hex": "828737fa213d37ff7a0c1bc87c",
+      "grund": "kopf_kein_objekt"
+    },
+    {
+      "name": "Unbekannter Typ",
+      "richtung": "app->relay",
+      "rahmen_hex": "829537fa213d37e95a1f43d81b1f459f455815d6035453d81b0c4a",
+      "grund": "typ_unbekannt"
+    },
+    {
+      "name": "antwort ohne id",
+      "richtung": "app->relay",
+      "rahmen_hex": "82a137fa213d37e55a1f43d81b1f5694554a5888551f1bd8521f0dc8110d1bd84d5859d81b0d4a",
+      "grund": "id_fehlt"
+    },
+    {
+      "name": "id negativ",
+      "richtung": "app->relay",
+      "rahmen_hex": "82a937fa213d37dd5a1f43d81b1f5694554a5888551f1bd8485915c00c0c1bd8521f0dc8110d1bd84d5859d81b0d4a",
+      "grund": "id_ungueltig"
+    },
+    {
+      "name": "id über u32",
+      "richtung": "app->relay",
+      "rahmen_hex": "82b137fa213d37d55a1f43d81b1f5694554a5888551f1bd8485915c0150f0ece180b00c8180b1bd8521f0dc8110d1bd84d5859d81b0d4a",
+      "grund": "id_ungueltig"
+    },
+    {
+      "name": "Status außerhalb 200..599",
+      "richtung": "app->relay",
+      "rahmen_hex": "82a837fa213d37dc5a1f43d81b1f5694554a5888551f1bd8485915c010111589030700ca11111596445315c01140",
+      "grund": "status_ungueltig"
+    },
+    {
+      "name": "Status 1xx (Zwischenantwort)",
+      "richtung": "app->relay",
+      "rahmen_hex": "82a837fa213d37dc5a1f43d81b1f5694554a5888551f1bd8485915c010111589030706ca13111596445315c01140",
+      "grund": "status_ungueltig"
+    },
+    {
+      "name": "Datenstück über 65536",
+      "richtung": "app->relay",
+      "grund": "stueck_zu_gross",
+      "regel": "Kopf {\"t\":\"daten\",\"id\":1} kompakt + 65537 Nullbytes, Binärrahmen FIN, maskiert mit 37fa213d",
+      "rahmen_laenge": 65573,
+      "rahmen_sha256": "7c3e4f457d5399b8ab0bcfb6eb3deccc491a9645ba9aabf64c20c4270d5b63a4"
+    },
+    {
+      "name": "len negativ",
+      "richtung": "app->relay",
+      "rahmen_hex": "82a937fa213d37dd5a1f43d81b1f5694554a5888551f1bd8485915c010111589030705ca11111596445315c00c084a",
+      "grund": "laenge_ungueltig"
+    },
+    {
+      "name": "Pfad mit Leerzeichen",
+      "richtung": "relay->app",
+      "rahmen_hex": "823800367b2274223a22616e6672616765222c226964223a312c226d223a22474554222c2270223a222f76312f612062222c226c656e223a307d",
+      "grund": "pfad_ungueltig"
+    },
+    {
+      "name": "Pfad mit CRLF",
+      "richtung": "relay->app",
+      "rahmen_hex": "823e003c7b2274223a22616e6672616765222c226964223a312c226d223a22474554222c2270223a222f76312f615c725c6e583a2079222c226c656e223a307d",
+      "grund": "pfad_ungueltig"
+    },
+    {
+      "name": "Methode außerhalb GET/POST",
+      "richtung": "relay->app",
+      "rahmen_hex": "823b00397b2274223a22616e6672616765222c226964223a312c226d223a2244454c455445222c2270223a222f6865616c7468222c226c656e223a307d",
+      "grund": "methode_ungueltig"
+    },
+    {
+      "name": "Content-Type mit CRLF",
+      "richtung": "app->relay",
+      "rahmen_hex": "82c237fa213d37ba5a1f43d81b1f5694554a5888551f1bd8485915c010111589030705ca11111599551f0dd855584f8e0e4d5b9b48536b887d536fc0014415d60351529403070787",
+      "grund": "typ_ungueltig"
+    }
+  ],
+  "pfade": {
+    "erlaubt": [
+      "/v1/chat/completions",
+      "/health",
+      "/baumeister/v1/stadt",
+      "/baumeister/v1/ergebnis",
+      "/baumeister/v1/recherche",
+      "/baumeister/v1/begleiter/sagen",
+      "/baumeister/v1/begleiter/gehoert?imspiel=Alex",
+      "/baumeister/v1/begleiter/hoeren?spieler=Alex",
+      "/baumeister/v1/begleiter/gehoert?imspiel=J%C3%BCrgen",
+      "/baumeister/v1/begleiter/gehoert?imspiel=Alex,Steve"
+    ],
+    "verboten": [
+      "/",
+      "/v1",
+      "/healthz",
+      "/health/",
+      "/baumeister/v2/stadt",
+      "/baumeister/v1",
+      "/../etc/passwd",
+      "/baumeister/v1/../../x",
+      "/v1/%2e%2e/x",
+      "/v1/%2E%2E/x",
+      "//v1/chat",
+      "/v1/chat\\..\\x",
+      "http://evil/v1/chat",
+      "/v1/chat completions",
+      "/baumeister/v1/stadt#x",
+      "/baumeister/v1/begleiter/gehoert?imspiel=%2e",
+      "/baumeister/v1/begleiter/gehoert?imspiel=%2E%2E",
+      "/baumeister/v1/stadt?x=%zz",
+      "/baumeister/v1/stadt?x=%4",
+      "/baumeister/v1/stadt?x=%",
+      "/baumeister/v1/stadt?x=%00",
+      "/baumeister/v1/stadt?x=%1F",
+      "/baumeister/v1/stadt?x=%7f"
+    ]
+  }
+}

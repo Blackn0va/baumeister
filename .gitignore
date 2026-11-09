@@ -1,0 +1,18 @@
+# Maven
+target/
+# Protokolle des Notwegs llm-host/start-llm.ps1
+llm-host/*.log
+# Übertragungs-Archive (z. B. host.zip für den GPU-PC) – Bauausgaben gehören nicht ins Repo
+*.zip
+# Modelle nie einchecken (mehrere GB)
+*.gguf
+# Geheimnisse nie einchecken
+*.pfx
+*.key
+*private*.pem
+# Ausgabe von tools/paket/Paket-Erstellen.ps1 (Weitergabe-Paket, nie einchecken)
+out/
+# Server-APIs zum Kompilieren: fremde Binärdateien, nicht im Repo (Herkunft und Hashes in lib/README.md)
+lib/*.jar
+# Privater Betriebsordner (eigenes Git-Repo, nie im öffentlichen Repo)
+/betrieb/

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    Eigenständiges Projekt, KEIN Modul des Plugin-POMs (../pom.xml): Das Relay läuft auf dev01 als eigener Dienst unter
+    eigenem Benutzer (relay/deploy/), nicht im Minecraft-Prozess. Bauen: mvn -o -q -f relay/pom.xml package.
+    Laufzeit nur das JDK (java.base, java.logging) – jede Bibliothek wäre Angriffsfläche auf dem offenen Port 25580.
+  -->
+  <groupId>com.blackn0va</groupId>
+  <artifactId>baumeister-relay</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>Baumeister-Relay</name>
+  <description>Relay zwischen Minecraft-Plugin (127.0.0.1:18080) und Host-App (wss, beidseitig gepinnt), Kanal v1</description>
+  <licenses>
+    <license>
+      <name>GPL-3.0-or-later</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
+    </license>
+  </licenses>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.jupiter.version>6.1.0-M1</junit.jupiter.version>
+    <!-- Gleicher Zeitstempel in jedem Bau: Dasselbe Commit ergibt byte-gleiche JARs, der SHA-256 auf dev01 ist prüfbar. -->
+    <project.build.outputTimestamp>2026-11-08T00:00:00Z</project.build.outputTimestamp>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${junit.jupiter.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <version>${junit.jupiter.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>baumeister-relay</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.2.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <!-- Wie im Plugin-POM, dazu -Werror: Im Relay ist jede Warnung ein Grund zum Nachsehen. -->
+          <compilerArgs>
+            <arg>-Xlint:all,-processing,-serial</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>com.blackn0va.baumeister.relay.Main</mainClass>
+              <!-- Implementation-Version: Das Relay nennt seine Fassung im hallo und im Log. -->
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,170 @@
+package com.blackn0va.baumeister.plan;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Verzeichnis der Bauwerk-Dateien aus plugins/Baumeister/schematics/ (Wunsch 2026-11-08) – Namen, Anzeigenamen,
+ * Herkunft und die Erkennung im
+ * Chat-Auftrag. Ohne Bukkit und ohne Dateien, damit es testbar ist; das Lesen macht FileSchematics.
+ *
+ * Erkannt wird eng wie bei QuickOrders: Der Auftrag besteht nur aus Füllwörtern, dem Namen einer Familie
+ * („Taktgeber“, „Tür- und Toranlage“) und höchstens einer Nummer („Variante 3“, „Nr. 3“, „3“). Ohne Nummer gilt
+ * Variante 1, und die Antwort sagt, wie viele es gibt. Alles andere („ein Haus mit Taktgeber im Keller“) bleibt beim
+ * LLM, das dann die passenden Namen als Hinweis bekommt (hint).
+ *
+ * Warum nicht alle Namen in den LLM-Prompt: 800 Einträge kosteten jeden Auftrag Tausende Token – derselbe Grund, aus
+ * dem VanillaTemplates.all() leer ist.
+ *
+ * Threads: unveränderlich nach dem Bau. Fehler: keine – unbekannte Wörter heißen „kein Treffer“.
+ */
+public final class SchematicCatalog {
+
+    /** Ein Eintrag: name = Bauteil-Name ([a-z0-9_]), display = „Taktgeber, Variante 3“, family = „Taktgeber“. */
+    public record Entry(String name, String display, String family, int variant, String description, String source) {
+    }
+
+    /** Treffer: welches Bauteil, wie viele Varianten die Familie hat. */
+    public record Match(Entry entry, int variants) {
+    }
+
+    public static final Pattern NAME = Pattern.compile("[a-z0-9_]{2,32}");
+    private static final Pattern VARIANT = Pattern.compile("(.*?),?\\s*Variante\\s+(\\d+)\\s*$");
+    private static final Set<String> FILLER = Set.of("bau", "baue", "bitte", "mir", "uns", "mal", "ein", "eine",
+            "einen", "das", "die", "der", "den", "hier", "hin", "variante", "nr", "nummer", "schematic", "baumeister");
+
+    private final Map<String, Entry> byName;
+    /** Familie (normalisiert) → Einträge nach Variante. */
+    private final Map<String, List<Entry>> families = new LinkedHashMap<>();
+
+    public SchematicCatalog(List<Entry> entries) {
+        Map<String, Entry> m = new LinkedHashMap<>();
+        for (Entry e : entries) {
+            m.putIfAbsent(e.name(), e);
+        }
+        byName = Map.copyOf(m);
+        for (Entry e : m.values()) {
+            families.computeIfAbsent(RequestHints.normalize(e.family()), k -> new ArrayList<>()).add(e);
+        }
+        families.values().forEach(l -> l.sort(Comparator.comparingInt(Entry::variant)));
+    }
+
+    /** Eintrag aus einer index.tsv-Zeile bzw. einem Dateinamen; display „X, Variante 3“ → family X, variant 3. */
+    public static Entry entry(String name, String display, String description, String source) {
+        String d = display == null || display.isBlank() ? name.replace('_', ' ') : display.strip();
+        Matcher m = VARIANT.matcher(d);
+        String family = m.matches() ? m.group(1).strip() : d;
+        int variant = m.matches() ? Integer.parseInt(m.group(2)) : 1;
+        return new Entry(name, d, family, variant, description == null ? "" : description.strip(),
+                source == null ? "" : source.strip());
+    }
+
+    public Optional<Entry> find(String name) {
+        return Optional.ofNullable(byName.get(name.toLowerCase(Locale.ROOT)));
+    }
+
+    public int size() {
+        return byName.size();
+    }
+
+    /** Familien mit Anzahl, gefiltert nach einem Suchwort (normalisiert, Teilwort), alphabetisch. */
+    public List<Map.Entry<String, Integer>> families(String filter) {
+        String f = RequestHints.normalize(filter == null ? "" : filter);
+        List<Map.Entry<String, Integer>> out = new ArrayList<>();
+        for (List<Entry> l : families.values()) {
+            String fam = l.getFirst().family();
+            if (f.isEmpty() || RequestHints.normalize(fam).contains(f)) {
+                out.add(Map.entry(fam, l.size()));
+            }
+        }
+        out.sort(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    /** Alle Varianten einer Familie (Name wie in families), nach Nummer; leer bei unbekannter Familie. */
+    public List<Entry> variants(String family) {
+        List<Entry> l = families.get(RequestHints.normalize(family == null ? "" : family));
+        return l == null ? List.of() : List.copyOf(l);
+    }
+
+    /** Chat-Auftrag nur aus Füllwörtern, einem Familiennamen und höchstens einer Nummer → dieses Bauteil. */
+    public Optional<Match> match(String prompt) {
+        List<String> tokens = new ArrayList<>(RequestHints.tokens(RequestHints.normalize(prompt)));
+        if (tokens.isEmpty()) {
+            return Optional.empty();
+        }
+        String bestKey = null;
+        int bestStart = -1;
+        int bestLen = 0;
+        for (String key : families.keySet()) {
+            String[] parts = key.split(" ");
+            for (int i = 0; i + parts.length <= tokens.size(); i++) {
+                if (parts.length > bestLen && List.of(parts).equals(tokens.subList(i, i + parts.length))) {
+                    bestKey = key;
+                    bestStart = i;
+                    bestLen = parts.length;
+                }
+            }
+            // „Dropaufzug“ für „Drop-Aufzug“: zusammengeschrieben zählt als ein Wort.
+            String joined = key.replace(" ", "");
+            for (int i = 0; parts.length > 1 && i < tokens.size(); i++) {
+                if (bestLen < 1 && tokens.get(i).equals(joined)) {
+                    bestKey = key;
+                    bestStart = i;
+                    bestLen = 1;
+                }
+            }
+        }
+        if (bestKey == null) {
+            return Optional.empty();
+        }
+        Integer number = null;
+        for (int i = 0; i < tokens.size(); i++) {
+            if (i >= bestStart && i < bestStart + bestLen) {
+                continue;
+            }
+            String t = tokens.get(i);
+            if (t.matches("\\d{1,3}")) {
+                if (number != null) {
+                    return Optional.empty();
+                }
+                number = Integer.parseInt(t);
+            } else if (!FILLER.contains(t)) {
+                return Optional.empty();
+            }
+        }
+        List<Entry> family = families.get(bestKey);
+        int want = number == null ? 1 : number;
+        return family.stream().filter(e -> e.variant() == want).findFirst()
+                .map(e -> new Match(e, family.size()));
+    }
+
+    /**
+     * Hinweis für das LLM bei freien Aufträgen: Bauteile der Familien, deren Name im Auftrag vorkommt (höchstens
+     * max Zeilen, je Familie die ersten drei Varianten). Leer, wenn keine Familie vorkommt.
+     */
+    public String hint(String prompt, int max) {
+        String text = " " + RequestHints.normalize(prompt) + " ";
+        List<String> lines = new ArrayList<>();
+        for (Map.Entry<String, List<Entry>> f : families.entrySet()) {
+            if (!text.contains(" " + f.getKey() + " ")) {
+                continue;
+            }
+            for (Entry e : f.getValue().subList(0, Math.min(3, f.getValue().size()))) {
+                if (lines.size() < max) {
+                    lines.add("- " + e.name() + ": " + e.display());
+                }
+            }
+        }
+        return lines.isEmpty() ? "" : "\nBauteile aus der Sammlung (op module, name wie hier; ungeprüft, aus Bauwerk-"
+                + "Dateien):\n" + String.join("\n", lines) + "\n";
+    }
+}

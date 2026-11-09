@@ -1,0 +1,229 @@
+# Erzeugt von SpracheVorrat (src/test) – nicht von Hand ändern. V = Vera, B = Baumeister.
+B	Bis bald!
+B	Bis bald! Unser Abenteuer wartet – ruf mich, dann geht es weiter.
+B	Dann los!
+B	Hmm, ich schaue mir an, was hier schon steht, und überlege …
+B	Hmm, lass mich überlegen …
+B	Ich fange an!
+B	Mein Plan ist fertig – ich baue ihn, sobald der Stadt- bzw. Weltbau fertig ist („stopp“ verwirft ihn).
+V	Abenteuermodus – ich bleibe an deiner Seite.
+V	Ach, du schon wieder.
+V	Achtung, Hardcore im Team: Stirbt einer, ist das Abenteuer für alle vorbei.
+V	Achtung, es wird stürmisch!
+V	Alles klar!
+V	Alles klar, ab jetzt bin ich ganz lieb.
+V	An dieser Kiste war laut Protokoll niemand.
+V	Auf geht's! Ich bin an deiner Seite und kämpfe mit.
+V	Autsch. Ich merk mir, wo das war – sag „wo bin ich gestorben“.
+V	Bau Eisenerz ab und schmelz es im Ofen zu Barren.
+V	Bau Stein ab und mach dir Steinwerkzeug.
+V	Bau ein Netherportal und geh hindurch.
+V	Bau eine Werkbank und eine Holzspitzhacke.
+V	Bauen darf hier nur, wer baumeister.bauen hat.
+V	Bauen lassen darfst du leider nicht.
+V	Bauwerke merken darf hier nur, wer bauen darf (baumeister.bauen).
+V	Befehle bestätigst du bitte getippt – schreib „ja“ in den Chat.
+V	Befehle darf ich für dich leider nicht ausführen.
+V	Beide Ecken müssen in derselben Welt liegen.
+V	Besiege den Enderdrachen.
+V	Besser als dein Gesang.
+V	Besser als dir, so wie du gerade aussiehst.
+V	Bis bald!
+V	Bis bald! Unser Abenteuer wartet – ruf mich, dann geht es weiter.
+V	Bis später – ruf mich einfach, wenn du mich brauchst.
+V	Bitte schön!
+V	Bitte, der Herr.
+V	Da bin ich wieder!
+V	Da bin ich wieder! Weiter geht's mit unserem Abenteuer.
+V	Da gibt es nichts, was ich rückgängig machen könnte.
+V	Da ist gerade keine Einladung offen.
+V	Da ist nichts. Brille vergessen?
+V	Da komm ich nicht hin. Ich bin doch keine Fledermaus.
+V	Da komme ich nicht hin.
+V	Da sehe ich nichts in der Nähe – nur Luft.
+V	Da sind wir!
+V	Da steht keine Rechnung.
+V	Da war nichts mehr zu tun.
+V	Dann eben nicht. Pff.
+V	Darauf antworte ich nicht. Frag mich lieber etwas zum Spiel.
+V	Darf ich nicht. Ich will ja nicht im Knast landen.
+V	Das Ergebnis ist zu groß.
+V	Das Protokoll antwortet gerade nicht. Versuch es gleich noch mal.
+V	Das Wetter ist klar.
+V	Das darf ich hier nicht – das gehört jemand anderem.
+V	Das hat nicht geklappt – das Protokoll hat abgelehnt.
+V	Das ist nicht deine Kiste – da schaue ich nicht nach.
+V	Das machst du im Abenteuer selbst – ich helfe dir mit Tipps. Frag mich „was jetzt?“.
+V	Das verstehe ich nicht als Rechnung.
+V	Dein Begleiter ist gerade nicht da.
+V	Dein Magen knurrt – iss lieber was.
+V	Den Drachen gibt es nur im End.
+V	Der Begleiter ist auf diesem Server abgeschaltet (begleiter.an).
+V	Der Exponent ist mir zu groß.
+V	Diamanten! Die Hälfte gehört mir, ich hab sie zuerst gesehen.
+V	Diamanten! Juhu!
+V	Die Baumeister-App ist gerade beschäftigt. Frag mich gleich noch einmal.
+V	Die Festung liegt in der Oberwelt. Geh zurück und wirf dort ein Enderauge.
+V	Die Rechnung ist mir zu lang.
+V	Die Sonne geht unter – Zeit fürs Bett, sonst kommen die Monster.
+V	Die Sonne geht unter, gleich kommen Monster! Grab dich ein oder bau schnell eine kleine Hütte.
+V	Die Sonne kommt raus!
+V	Die geht nur mit Redstone auf – Knopf oder Hebel daneben?
+V	Ding dong!
+V	Ding dong! Klingelstreich!
+V	Dinge benutzen darf ich hier nicht – das hat der Admin abgestellt.
+V	Drei Eisenbarren und zwei Stöcke. Erst mit Eisen kannst du Diamanten abbauen.
+V	Du hast Hunger – iss bald etwas, sonst heilst du nicht mehr.
+V	Du wolltest erinnert werden.
+V	Dunkel. Du hast doch Fackeln, oder? …Oder?
+V	Durch null kann man nicht teilen.
+V	Ein Level. Soll ich jetzt klatschen?
+V	Ein Ruinenportal finde ich nicht. Lava liegt in tiefen Höhlen und an Lavaseen.
+V	Ein vergebenes Bukkit-Recht (LuckPerms, baumeister.admin) erlaubt zusätzlich.
+V	Elegant wie ein Sack Kartoffeln.
+V	Enderdrache besiegt!
+V	Endermen kommen nachts überall, in der Wüste sieht man sie gut. Oder tausch mit einem Bauern.
+V	Endlich Feierabend!
+V	Entschuldige, da ist bei mir etwas durcheinandergeraten. Sag es bitte noch einmal.
+V	Erledigt, alles ist wieder wie vorher.
+V	Erledigt. Wie immer.
+V	Erze verrate ich im Überlebensmodus nicht – das wäre geschummelt.
+V	Es fängt gleich an zu regnen.
+V	Es gewittert.
+V	Es läuft gerade kein Abenteuer.
+V	Es regnet (oder schneit).
+V	Es wird dunkel – Fackeln raus!
+V	Finde Diamanten.
+V	Folge den Enderaugen zur Festung und spring ins End.
+V	Frech sein darf ich hier nicht – das hat der Admin abgestellt.
+V	Geh nur. Ich räum hier dann wieder auf.
+V	Gern geschehen!
+V	Gut, dann bleibt es, wie es ist.
+V	Gut, dann lasse ich das.
+V	Guten Morgen – ich mache es hell!
+V	Hallo! Schön, dass du da bist.
+V	Halt die linke Maustaste auf einem Baumstamm gedrückt. Aus einem Stamm werden vier Bretter.
+V	Hardcore! Du hast nur ein Leben, und ich gebe dir nur Rat – pass gut auf dich auf.
+V	Hier darfst du nicht bauen – deshalb baue ich nichts um.
+V	Hier ist das Hilfebuch – klick dich einfach durch!
+V	Hier sehe ich keine Schäden durch Creeper, Feuer oder Blitz aus den letzten drei Tagen.
+V	Hihi, und jetzt weglaufen!
+V	Hol dir Lohenruten aus einer Netherfestung.
+V	Hoppla! Alles noch dran?
+V	Hunger? Brot hilft!
+V	Hörst du? Musik!
+V	Ich bin ein Star!
+V	Ich folge dir.
+V	Ich hör deinen Magen bis hier.
+V	Ich kann das Protokoll gerade nicht lesen – dafür braucht der Server CoreProtect.
+V	Ich kann gerade nicht nachdenken – läuft die Baumeister-App?
+V	Ich lasse es schneien – Schnee fällt überall, wo es kalt genug ist, sonst regnet es.
+V	Ich probiere die Schaltung aus – ich lege die Hebel einmal durch und stelle sie danach zurück.
+V	Ich probiere die Schaltung gerade noch aus – einen Moment.
+V	Ich prüfe gerade schon einen Bereich für dich – einen Moment.
+V	Ich sag dem Baumeister Bescheid!
+V	Ich sag's ja ungern, aber du stirbst gleich.
+V	Ich sehe hier keine Redstone-Schaltung. Stell dich näher dran oder schau sie an.
+V	Ich sehe hier nichts davon.
+V	Ich warte hier.
+V	Ich weiß nicht, wem diese Kiste gehört, deshalb schaue ich nicht nach.
+V	Ich zähl schon die Grashalme.
+V	Im Abenteuer baust du selbst – der Baumeister macht so lange Pause.
+V	Im Abenteuer gibt es keine Befehle von mir – wir spielen fair.
+V	Im Abenteuer reparierst du selbst – ich zeige dir gern, was fehlt.
+V	Im Kreativmodus brauchst du keine Zutaten – hier!
+V	Im Kreativmodus ist das kein Abenteuer. Schalt auf Überleben, dann geht es los.
+V	Im blauen Wirrwald wimmelt es von Endermen. Schau dich nach blauem Boden um.
+V	Im Überlebensmodus darf ich dir nichts einfach so geben – das musst du dir selbst holen.
+V	In wie vielen Minuten soll ich dich erinnern?
+V	Iss was, bevor du mich anknabberst.
+V	Iss was, du bist fast hinüber!
+V	Ja doch, ich bin nicht taub!
+V	Ja, ich höre dich!
+V	Ja, ich spiele mit!
+V	Ja, ja. Schreib's in mein Zeugnis.
+V	Ja? Was kann ich für dich tun?
+V	Jetzt wird es Nacht – pass auf Monster auf.
+V	Kein Dorf in der Nähe. Schafe für Wolle und Tiere fürs Essen findest du auf Wiesen.
+V	Komm näher, dann mach ich sie dir auf.
+V	Kreativmodus! Jetzt darf ich dir alles geben, was du brauchst.
+V	Langweilig. Mach was!
+V	Laut und deutlich. Leider.
+V	Level hoch – stark!
+V	Lohen gibt es nur im Nether. Geh durch dein Portal, dann zeige ich dir die Festung.
+V	Mach dir ein Bett, bevor die Nacht kommt.
+V	Mach dir eine Eisenspitzhacke.
+V	Mach erst Enderaugen: Lohenstaub und Enderperle. Ein geworfenes Auge zeigt die Festung.
+V	Mir geht's prima, danke! Was machen wir als Nächstes?
+V	Mit dir selbst spielst du schon!
+V	Moment, ich schaue nach Schäden …
+V	Moment, ich überlege noch.
+V	Na also!
+V	Na also, geht doch.
+V	Na endlich, ich dachte schon, du hast mich vergessen.
+V	Na endlich. Ich dachte schon, du gräbst nur Erde.
+V	Na, na. Ich bin hier die Freche, nicht du.
+V	Nacht. Bleib lieber in der Nähe vom Bett.
+V	Nacht. Zeit für Zombies. Viel Glück.
+V	Noch ein Herz. Mutig oder lebensmüde?
+V	Noch hat niemand ein Abenteuer angefangen. Sag „lass uns Minecraft spielen“ – du wärst sofort vorne!
+V	Oh nein! Komm, wir holen deine Sachen zurück.
+V	Oh, endlich darf ich ehrlich sein. Das wird ein Spaß.
+V	Okay – wie du mir, so ich dir.
+V	Okay, dann nicht.
+V	Pass auf, du hast kaum noch Herzen!
+V	Prima – ich bin ja auch nicht diejenige, die gleich in Lava fällt.
+V	Reparieren darf ich hier nur für Spieler mit dem Recht baumeister.reparieren.
+V	Reparieren lassen darfst du leider nicht.
+V	Sammel Vorrat: mindestens sechs Stück Essen.
+V	Sammel zwölf Enderperlen.
+V	Schade, war eine super Idee von mir.
+V	Schau auf die Kiste, die ich prüfen soll, und frag mich dann noch mal.
+V	Schlag Holz von einem Baum, mindestens fünf Stämme.
+V	Schon passiert. Ohne mich wärst du verloren.
+V	Schwerkraft: 1, du: 0.
+V	Selber! So, und jetzt was Vernünftiges.
+V	Smaragde gibt es nur in Bergen, hoch oben im Stein. Erze zeige ich dir nicht – such selbst!
+V	Soll ich dir was bauen lassen?
+V	Soll ich ein Schild aufstellen? „Hier starb ein Profi.“
+V	Starte erst ein Abenteuer („lass uns Minecraft spielen“), dann lade ich jemanden dazu ein.
+V	Stehen wir jetzt hier nur rum?
+V	Super gemacht!
+V	Türsteherin bin ich jetzt auch noch.
+V	Uiuiui, da hat aber jemand schlechte Laune. Willst du einen Keks?
+V	Und wieder tot. Rekordverdächtig.
+V	Warp o. Limit
+V	Warum baut der Baumeister nie mit Sand? Weil ihm sonst alles zusammenrieselt.
+V	Warum hat der Creeper keine Freunde? Weil er bei jeder Umarmung explodiert.
+V	Warum hat der Dorfbewohner eine große Nase? Damit er gute Angebote schon von Weitem riecht. Hmm!
+V	Warum ist Steve so gut in Mathe? Er rechnet alles in Blöcken.
+V	Warum ist der Enderdrache so schlecht gelaunt? Er hat Kristall-Kopfschmerzen.
+V	Warum nimmt der Spieler eine Leiter mit zur Schule? Weil er aufsteigen will – in die nächste Etappe!
+V	Warum spielt der Ghast keine Karten? Weil er bei jedem Verlust losheult.
+V	Was genau soll ich benutzen – Tür, Hebel, Knopf oder Glocke?
+V	Was ist das Lieblingsessen eines Creepers? Ssssssalat.
+V	Was machen wir als Nächstes?
+V	Was macht ein Huhn im Nether? Es wird ein Brathähnchen.
+V	Was macht ein Skelett im Winter? Es zittert sich durch – mit nichts am Leib außer Knochen.
+V	Was sagt die Werkbank zur Truhe? Du bist echt voll von dir.
+V	Was soll der Baumeister denn bauen?
+V	Weiß ich doch, dass ich toll bin.
+V	Welchen Befehl soll ich ausführen?
+V	Wer wohnt hier?
+V	Wie nennt man einen Schaf-Rapper? Mäh-C Hammer!
+V	Wie soll der Ort heißen?
+V	Wie verabschiedet sich ein Slime? Wir bleiben in Kontakt – ganz klebrig!
+V	Wir haben alles geschafft! Wenn du magst, fangen wir ein neues Abenteuer an.
+V	Wird ja langsam.
+V	Wirf ein Enderauge und lauf ihm nach.
+V	Wo denn? Ich seh nix.
+V	Wow, Diamanten – super gemacht!
+V	Wow. Das war… beeindruckend schlecht.
+V	Wusste ich's doch.
+V	Zieh dir Eisenrüstung an.
+V	Zu viele Klammern.
+V	Zum Merken braucht der Server WorldEdit – das läuft hier nicht.
+V	Zum Reparieren brauche ich das Protokoll von CoreProtect – das läuft hier nicht.
+V	Zuschauermodus – ich warte hier, bis du zurück bist.
+V	Überlebensmodus – ab jetzt sammelst du selbst, ich helfe dir mit Tipps.
+V	Überlebensmodus. Geben darf ich dir trotzdem – du hast das Recht dazu.

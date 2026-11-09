@@ -1,0 +1,4 @@
+name: RedstoneProbe
+version: 1
+main: RedstoneProbe
+api-version: "1.21"

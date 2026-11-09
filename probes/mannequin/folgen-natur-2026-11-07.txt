@@ -1,0 +1,24 @@
+wild | abschnitt_ohne_weg | von=Node[x=17, y=65, z=0] nach=Node[x=18, y=75, z=-14]
+wild0 | strecke punkte=18
+wild | abschnitt_ohne_weg | von=Node[x=162, y=63, z=3] nach=Node[x=176, y=64, z=4]
+wild1 | strecke punkte=74
+wild2 | strecke punkte=76
+wild3 | strecke punkte=76
+wild4 | strecke punkte=77
+wild | abschnitt_ohne_weg | von=Node[x=320, y=64, z=160] nach=Node[x=338, y=67, z=160]
+wild5 | strecke punkte=0
+ende | wild0_jetzt          teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.92 abstand_mittel=4.2 abstand_max=5.7 abstand_ende=4.0 spieler_fertig=true modi={spur=30, weg=24, ziel=49}
+ende | wild0_neu            teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.97 abstand_mittel=2.8 abstand_max=5.2 abstand_ende=2.2 spieler_fertig=true modi={weg=5, ziel=68}
+ende | wild0_spieler        teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=1.03 abstand_mittel=2.4 abstand_max=4.3 abstand_ende=1.9 spieler_fertig=true modi={weg=38, ziel=23}
+ende | wild1_jetzt          teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.89 abstand_mittel=6.5 abstand_max=8.6 abstand_ende=5.4 spieler_fertig=false modi={weg=193, ziel=79}
+ende | wild1_neu            teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.90 abstand_mittel=4.8 abstand_max=6.3 abstand_ende=3.4 spieler_fertig=false modi={weg=44, ziel=228}
+ende | wild1_spieler        teleports=0 im_stein=0 schweben=0 weg_vom_spieler=3 umweg=0.96 abstand_mittel=3.8 abstand_max=5.3 abstand_ende=2.9 spieler_fertig=false modi={weg=160, ziel=73}
+ende | wild2_jetzt          teleports=0 im_stein=0 schweben=0 weg_vom_spieler=6 umweg=0.89 abstand_mittel=4.9 abstand_max=8.3 abstand_ende=4.9 spieler_fertig=false modi={spur=7, weg=85, ziel=175}
+ende | wild2_neu            teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.82 abstand_mittel=3.9 abstand_max=5.7 abstand_ende=3.5 spieler_fertig=false modi={weg=10, ziel=230}
+ende | wild2_spieler        teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.89 abstand_mittel=3.5 abstand_max=5.0 abstand_ende=2.6 spieler_fertig=false modi={weg=111, ziel=85}
+ende | blick_wild3_jetzt    teleports=0 im_stein=0 schweben=0 weg_vom_spieler=5 umweg=0.88 abstand_mittel=5.9 abstand_max=9.9 abstand_ende=6.0 spieler_fertig=false modi={spur=5, weg=162, ziel=67}
+ende | blick_wild3_neu      teleports=0 im_stein=0 schweben=0 weg_vom_spieler=1 umweg=0.85 abstand_mittel=4.6 abstand_max=7.9 abstand_ende=4.9 spieler_fertig=false modi={weg=39, ziel=213}
+ende | blick_wild3_spieler  teleports=0 im_stein=0 schweben=0 weg_vom_spieler=2 umweg=0.88 abstand_mittel=3.8 abstand_max=7.0 abstand_ende=3.6 spieler_fertig=false modi={weg=147, ziel=64}
+ende | blick_wild4_jetzt    teleports=0 im_stein=0 schweben=0 weg_vom_spieler=7 umweg=0.94 abstand_mittel=5.9 abstand_max=9.0 abstand_ende=6.4 spieler_fertig=false modi={spur=15, weg=159, ziel=91}
+ende | blick_wild4_neu      teleports=0 im_stein=0 schweben=0 weg_vom_spieler=6 umweg=0.92 abstand_mittel=5.4 abstand_max=7.8 abstand_ende=6.2 spieler_fertig=false modi={weg=95, ziel=166}
+ende | blick_wild4_spieler  teleports=0 im_stein=0 schweben=0 weg_vom_spieler=0 umweg=0.95 abstand_mittel=3.7 abstand_max=5.4 abstand_ende=2.9 spieler_fertig=false modi={weg=141, ziel=74}

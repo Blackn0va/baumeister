@@ -1,0 +1,226 @@
+package com.blackn0va.baumeister;
+
+import com.blackn0va.baumeister.plan.BlockSpec;
+import com.blackn0va.baumeister.plan.ModuleLibrary;
+import com.blackn0va.baumeister.plan.Pos;
+import com.blackn0va.baumeister.plan.SchematicCatalog;
+import com.blackn0va.baumeister.plan.TemplateModules;
+import com.blackn0va.baumeister.structure.StructureFile;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.LongSupplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
+
+/**
+ * Bauwerk-Dateien als Bauteile – ohne WorldEdit (Wunsch 2026-11-08). Jede .schem (v1–v3), .schematic (MCEdit, vor
+ * 1.13), .litematic und .nbt unter plugins/Baumeister/schematics/ (auch in Unterordnern)
+ * wird ein Bauteil: /bm maschine &lt;name&gt;, „bau mir einen Taktgeber“ im Chat (SchematicCatalog.match) und als Hinweis
+ * im LLM-Auftrag, wenn der Name darin vorkommt.
+ *
+ * Namen: Liegt im Ordner eine index.tsv (datei, name, anzeige, beschreibung, quelle – so schreibt sie der Import der
+ * Technik-Wiki-Welten), gelten deren Angaben. Sonst heißt das Bauteil wie die Datei, klein und mit _ statt
+ * Sonderzeichen. Namen außerhalb [a-z0-9_]{2,32} und doppelte Namen fallen weg (Warnung im Log).
+ *
+ * Gelesen wird erst beim ersten Bau eines Bauteils (StructureFile, Grenzen gegen kaputte Dateien dort), danach aus
+ * einem kleinen Speicher. Blockdaten (Truhen, Schilder, Befehle) liest StructureFile nicht – Bauten aus fremden Dateien
+ * bringen also nie Inhalte oder Befehle mit; jeder Block geht beim Setzen durch die Stufen (PlacementGate) wie bei
+ * jedem anderen Bau.
+ *
+ * Ordner neu lesen: höchstens alle 30 s, wenn sich Anzahl oder jüngste Änderungszeit der Dateien geändert hat – neue
+ * Dateien gelten ohne Neustart.
+ *
+ * Threads: Hauptthread (Befehle, Planen). Fehler: unlesbare Datei → Bauteil fehlt, einmal im Log; nie eine Ausnahme
+ * nach außen (fail-open: dann baut eben das LLM).
+ */
+final class FileSchematics implements ModuleLibrary {
+
+    private static final Logger LOG = Logger.getLogger("Baumeister");
+    private static final long RESCAN_MILLIS = 30_000;
+    private static final int CACHE = 48;
+    private static final int MAX_DEPTH = 4;
+
+    /** Eintrag samt Datei. */
+    record Item(SchematicCatalog.Entry entry, Path file) {
+    }
+
+    private final Path folder;
+    private final LongSupplier clock;
+    private Map<String, Item> items = Map.of();
+    private SchematicCatalog catalog = new SchematicCatalog(List.of());
+    private String signature = "";
+    private long lastScan = Long.MIN_VALUE / 2;
+    private final Map<String, Module> cache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Module> eldest) {
+            return size() > CACHE;
+        }
+    };
+    private final java.util.Set<String> reported = new java.util.HashSet<>();
+
+    FileSchematics(Path folder) {
+        this(folder, System::currentTimeMillis);
+    }
+
+    FileSchematics(Path folder, LongSupplier clock) {
+        this.folder = folder.toAbsolutePath().normalize();
+        this.clock = clock;
+    }
+
+    /** Verzeichnis (nach einem Blick in den Ordner, höchstens alle 30 s). */
+    synchronized SchematicCatalog catalog() {
+        refresh();
+        return catalog;
+    }
+
+    @Override
+    public synchronized Optional<Module> find(String name) {
+        refresh();
+        String n = name.toLowerCase(Locale.ROOT);
+        Item item = items.get(n);
+        if (item == null) {
+            return Optional.empty();
+        }
+        Module cached = cache.get(n);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+        try {
+            StructureFile.Structure s = StructureFile.read(item.file());
+            List<TemplateModules.RawCell> raw = new ArrayList<>(s.cells().size());
+            for (Map.Entry<Pos, BlockSpec> e : s.cells().entrySet()) {
+                raw.add(new TemplateModules.RawCell(e.getKey().x(), e.getKey().y(), e.getKey().z(),
+                        e.getValue().asString()));
+            }
+            String desc = item.entry().description().isEmpty() ? item.entry().display()
+                    : item.entry().description();
+            Module m = TemplateModules.build(n, desc, raw).module();
+            cache.put(n, m);
+            if (!s.unreadable().isEmpty()) {
+                LOG.warning(() -> "schematics | bloecke_unbekannt | name=" + n + " " + s.unreadable());
+            }
+            return Optional.of(m);
+        } catch (IOException | RuntimeException e) {
+            if (reported.add(n)) {
+                LOG.log(Level.WARNING, "schematics | unlesbar | name=" + n + " datei=" + folder.relativize(item.file())
+                        + " grund=" + e.getMessage());
+            }
+            return Optional.empty();
+        }
+    }
+
+    /** Leer: Hunderte Namen gehören nicht in jeden LLM-Prompt (SchematicCatalog.hint statt dessen). */
+    @Override
+    public List<Module> all() {
+        return List.of();
+    }
+
+    private void refresh() {
+        long now = clock.getAsLong();
+        if (now - lastScan < RESCAN_MILLIS) {
+            return;
+        }
+        lastScan = now;
+        List<Path> files = files();
+        long newest = 0;
+        for (Path f : files) {
+            try {
+                newest = Math.max(newest, Files.getLastModifiedTime(f).toMillis());
+            } catch (IOException e) {
+                LOG.log(Level.FINE, "schematics | zeit", e);
+            }
+        }
+        String sig = files.size() + ":" + newest;
+        if (sig.equals(signature)) {
+            return;
+        }
+        signature = sig;
+        Map<String, Item> next = new LinkedHashMap<>();
+        Map<Path, Map<String, String[]>> indexes = new HashMap<>();
+        int bad = 0;
+        for (Path f : files) {
+            String fileName = f.getFileName().toString();
+            if (fileName.equals("index.tsv")) {
+                continue;
+            }
+            String[] row = indexes.computeIfAbsent(f.getParent(), FileSchematics::readIndex).get(fileName);
+            String name = row != null && row.length > 1 ? row[1].strip() : slug(stem(fileName));
+            if (!SchematicCatalog.NAME.matcher(name).matches() || next.containsKey(name)) {
+                bad++;
+                continue;
+            }
+            SchematicCatalog.Entry e = SchematicCatalog.entry(name, row != null && row.length > 2 ? row[2] : null,
+                    row != null && row.length > 3 ? row[3] : null, row != null && row.length > 4 ? row[4] : null);
+            next.put(name, new Item(e, f));
+        }
+        items = Map.copyOf(next);
+        catalog = new SchematicCatalog(next.values().stream().map(Item::entry).toList());
+        cache.clear();
+        int skipped = bad;
+        LOG.info(() -> "schematics | bereit | ordner=" + folder.getFileName() + " bauteile=" + next.size()
+                + " familien=" + catalog.families("").size() + " verworfen=" + skipped);
+    }
+
+    /** Bauwerk-Dateien und index.tsv unter dem Ordner, nur echte Dateien darin (keine Links nach draußen). */
+    private List<Path> files() {
+        if (!Files.isDirectory(folder)) {
+            return List.of();
+        }
+        try (Stream<Path> s = Files.walk(folder, MAX_DEPTH)) {
+            return s.filter(Files::isRegularFile).filter(p -> p.toAbsolutePath().normalize().startsWith(folder))
+                    .filter(p -> {
+                        String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return n.endsWith(".nbt") || n.endsWith(".schem") || n.endsWith(".schematic") || n.endsWith(".litematic")
+                                || n.equals("index.tsv");
+                    }).sorted().toList();
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "schematics | ordner_unlesbar | ordner=" + folder, e);
+            return List.of();
+        }
+    }
+
+    /** index.tsv: datei → Spalten (datei, name, anzeige, beschreibung, quelle); Zeilen mit # sind Kommentar. */
+    static Map<String, String[]> readIndex(Path dir) {
+        Path idx = dir.resolve("index.tsv");
+        Map<String, String[]> out = new HashMap<>();
+        if (!Files.isRegularFile(idx)) {
+            return out;
+        }
+        try {
+            for (String line : Files.readAllLines(idx, StandardCharsets.UTF_8)) {
+                if (line.isBlank() || line.startsWith("#")) {
+                    continue;
+                }
+                String[] cols = line.split("\t", -1);
+                if (cols.length >= 2) {
+                    out.put(cols[0].strip(), cols);
+                }
+            }
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "schematics | index_unlesbar | datei=" + idx, e);
+        }
+        return out;
+    }
+
+    static String stem(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        return dot > 0 ? fileName.substring(0, dot) : fileName;
+    }
+
+    /** Dateiname → Bauteil-Name: klein, Umlaute ausgeschrieben, sonst nur a–z 0–9 _, höchstens 32 Zeichen. */
+    static String slug(String stem) {
+        String s = com.blackn0va.baumeister.plan.RequestHints.normalize(stem).replace(' ', '_');
+        return s.length() > 32 ? s.substring(0, 32).replaceAll("_+$", "") : s;
+    }
+}

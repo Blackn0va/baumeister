@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "baumeister-client-test",
+  "version": "0.1.0",
+  "name": "Baumeister-Client Spieltest",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["com.blackn0va.baumeister.client.test.BaumeisterClientGameTest"]
+  },
+  "depends": {
+    "baumeister-client": "*"
+  }
+}

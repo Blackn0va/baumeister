@@ -1,0 +1,343 @@
+{
+  "format": 1,
+  "about": "Versionsfeste Abhängigkeiten von StreamWizard Baumeister-Host. Übernommen aus kraken/deps.lock.json (dort geprüft); CMake prüft vendorte Dateien und Qt-DLLs gegen die SHA-256-Werte hier; llama.cpp wird über den Commit (nicht den Tag) geholt.",
+  "vendored": {
+    "doctest": {
+      "version": "2.4.11",
+      "tag": "v2.4.11",
+      "commit": "ae7a13539fb71f270b87eb2e874fbac80bc8dda2",
+      "license": "MIT",
+      "sources": {
+        "third_party/doctest/doctest.h": "https://raw.githubusercontent.com/doctest/doctest/v2.4.11/doctest/doctest.h",
+        "third_party/doctest/LICENSE.txt": "https://raw.githubusercontent.com/doctest/doctest/v2.4.11/LICENSE.txt"
+      },
+      "sha256": {
+        "third_party/doctest/doctest.h": "44faa038e9c3f9728efbda143748d01124ea0a27f4bf78f35a15d8fab2e039fb",
+        "third_party/doctest/LICENSE.txt": "0fe0b331fa1513dcce8604ff1fa925f32d1cea17d8aeb1c2471fad40d291adc5"
+      }
+    },
+    "nlohmann_json": {
+      "version": "3.11.3",
+      "tag": "v3.11.3",
+      "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "license": "MIT",
+      "sources": {
+        "third_party/nlohmann/json.hpp": "https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp",
+        "third_party/nlohmann/LICENSE.MIT": "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/LICENSE.MIT"
+      },
+      "sha256": {
+        "third_party/nlohmann/json.hpp": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
+        "third_party/nlohmann/LICENSE.MIT": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
+      }
+    }
+  },
+  "fetchcontent": {
+    "llama.cpp": {
+      "repository": "https://github.com/ggml-org/llama.cpp.git",
+      "tag": "b10900",
+      "commit": "50182a53fa2c26bd2a7fc31d855231effdc2f4ad",
+      "license": "MIT",
+      "declared_in": "cmake/SwbhLlama.cmake",
+      "note": "Gleicher Stand wie kraken und localAI, dort gebaut und gelaufen. Im Setup nur CPU und Vulkan; CUDA als Komponente nach Zustimmung (components)."
+    },
+    "whisper.cpp": {
+      "repository": "https://github.com/ggml-org/whisper.cpp.git",
+      "tag": "v1.9.4",
+      "commit": "927cfce34f31707e17f2bff35c349632fb9e2c3a",
+      "license": "MIT",
+      "declared_in": "cmake/SwbhWhisper.cmake",
+      "note": "Spracherkennung des Begleiters (2026-11-04). Derselbe Stand wie in kraken (dort gebaut und gelaufen): v1.9.4 enthält ggml 0.23.0 wie llama.cpp b10900. Nur src/whisper.cpp wird gebaut, gegen DAS ggml von llama.cpp – zwei ggml.dll in einem Prozess teilten sich keine Geräteliste. SwbhWhisper.cmake prüft den Gleichstand."
+    }
+  },
+  "whisper_model": {
+    "about": "Erkennungsmodell für das Sprechen mit dem Begleiter (2026-11-04). Lädt die App erst, wenn „Mit dem Begleiter sprechen“ eingeschaltet wird (nie im Setup). Werte aus kraken/deps.lock.json (dort aus der Hub-API, lfs.oid, und gegen die geladene Datei geprüft); hier am 2026-11-04 noch einmal gegen C:/swb/voice-probe gemessen. voice::whisper_model_spec() muss dazu passen (tests/voice/test_voice.cpp).",
+    "repo": "ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "file": "ggml-large-v3-turbo-q5_0.bin",
+    "size": 574041195,
+    "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+    "license": "MIT"
+  },
+  "piper": {
+    "about": "Natürliche Stimme des Begleiters (2026-11-04). Werte aus kraken/deps.lock.json „voice“ (dort gegen die geladenen Dateien geprüft). Lädt die App erst, wenn eine Piper-Stimme gewählt und Vorlesen an ist. Piper läuft als eigener Prozess (espeak-ng GPL-3.0). voice::piper_spec()/piper_voices() müssen dazu passen (tests/voice/test_voice_out.cpp).",
+    "url": "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip",
+    "size": 22477236,
+    "sha256": "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea",
+    "license": "MIT (Piper), GPL-3.0-or-later (espeak-ng, mitgeliefert), MIT (ONNX Runtime)",
+    "voices_repo": "rhasspy/piper-voices",
+    "voices_revision": "c10ece1aade47bb51c153c893d14e5bf8e5b7117",
+    "voices": {
+      "thorsten-medium": {"file": "de_DE-thorsten-medium.onnx", "size": 63201294, "sha256": "7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819", "json_sha256": "974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85"},
+      "thorsten-high": {"file": "de_DE-thorsten-high.onnx", "size": 113895201, "sha256": "9df1c43c61149ef9b39e618e2b861fbe41e1fcea9390b2dac62e8761573ea4f1", "json_sha256": "6de734444e4c3f9e33b7ebe2746dbc19b71e85f613e79c65acf623200b99a76a"},
+      "kerstin-low": {"file": "de_DE-kerstin-low.onnx", "size": 63104526, "sha256": "d352a7641892cebf2903859af94e9ba81a141110215fe3943bcda7f7da401b7a", "json_sha256": "56e708556b7b9b7a53c4f8957e021421e69f11a600962bba554cffbe72cf2d47"},
+      "ramona-low": {"file": "de_DE-ramona-low.onnx", "size": 63104526, "sha256": "a1068592532aad8c49bf3d1a01b8749c11d7dba726689ee28ad64e7b627ae4c5", "json_sha256": "64906ab7a050ac685fa3dcea044baa798f67ed77be164f9c668a69298c6487d2"},
+      "eva-xlow": {"file": "de_DE-eva_k-x_low.onnx", "size": 20628813, "sha256": "e88cf290fbfb768bf111330d2e8a46e376b0d85e3423a28bfebbc863a260dad8", "json_sha256": "ef14b3dcb279ab4b18422a7a132877bee7a148821bd91152fb7ae9c4b3d79625"}
+    }
+  },
+  "qt": {
+    "dir": "C:/swb/deps/qt6",
+    "version": "6.11.1",
+    "obs_deps_commit": "f80e1d30",
+    "archive": "https://github.com/obsproject/obs-deps/releases/download/2026-08-26/windows-deps-qt6-2026-08-26-x64.zip",
+    "archive_sha256": "7dd60d2883207ecccceb2270538140fccd1b5022e06beedfbc3ba46c7d2e76ae",
+    "sha256": {
+      "bin/Qt6Core.dll": "f87d6f137f0c18ee2885825dc01cbc275a1879a334476fbbffda877993d5065d",
+      "bin/Qt6Gui.dll": "1bd238b64d89ccb8f329f693d3e331ca66d141a9c2b96b848bf549777f429356",
+      "bin/Qt6Widgets.dll": "b6cc5a6653ba010db25248fe072d5f7d0036d8ee7784eb809654d8acadc36f50",
+      "plugins/platforms/qwindows.dll": "9046aa37dd0e066cc183b99f700a7c1a7f7a191c319ed05ddd6303a72c2f9282",
+      "plugins/platforms/qminimal.dll": "728f82e3e7646eb8e7ac02c3f8da2c94b3f4925e8273a993cdbbb2a813371417"
+    },
+    "note": "Zwei obs-deps-Kopien mit byte-verschiedener Qt6Core.dll existieren; maßgeblich ist nur dieser Satz (aus kraken)."
+  },
+  "toolchain": {
+    "msvc": "14.44",
+    "vs_instance": "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools",
+    "cmake": "4.4.3",
+    "generator": "Ninja",
+    "vulkan_sdk": "1.4.357.0",
+    "innosetup": "6.7.3",
+    "iscc": "%LOCALAPPDATA%/Programs/Inno Setup 6/ISCC.exe",
+    "vc_redist": "14.44.35112",
+    "ninja": "Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe",
+    "generator_note": "Ninja statt Visual-Studio-Generator: llama.cpp mit Vulkan-Shadern baut unter MSBuild in localAI 52 min, mit Ninja 2 min 56 s (gemessen dort)."
+  },
+  "models": {
+    "about": "Seit 2026-11-04 nachmittags wieder alle Modelle wählbar – Vorgabe bleibt das 14B Q3_K_M; das frühere 14B Q4_K_M steht als qwen25-14b-q4 daneben. Seit 2026-11-04 (Nutzerwahl) Q3_K_M statt Q4_K_M desselben 14B, Repo-Commit unverändert, Größe und SHA-256 = lfs.oid der Hub-API vom selben Tag: Q4_K_M (9,0 GB) passte neben Minecraft nicht ganz auf die 12-GB-Karte – 7 von 48 Schichten auf der CPU kosteten gemessen 61–106 ms je Token, mehr Threads nur 8 %. Q3_K_M (7,3 GB) passt samt 1,5 GiB Puffer ganz. Seit 2026-11-04 EIN Modell für alles: Qwen2.5 14B für Baupläne und Begleiter, dazu nur das nicht auswählbare Entwurfsmodell. Entfernt: 7B, Mistral Nemo 12B, Llama 3.1 8B, Qwen3.8 9B, 3B, Coder 14B/7B/3B/1.5B, Phi-3.5 mini, Llama 3.2 3B – Gründe: 7B plant Anbauten räumlich schlecht (gemessen), 1.5B/3B verwechselten im Spiel Geben und Suchen (Log 2026-11-04); die übrigen waren für Baupläne nie gemessen. Ein selbst trainiertes Modell (tools/train) lädt die App als „Eigene Datei“. Frühere Geschichte: Die App lädt das gewählte Modell auf Knopfdruck (nie im Setup). Einträge aus kraken/deps.lock.json übernommen (14B, 7B; seit 2026-10-28 auch Mistral Nemo 12B, Llama 3.1 8B, Qwen3.8 9B und Qwen2.5 3B – alle, die mit Kontext 8192 in 12 GB passen; Qwen3.8 27B nicht, 15,3 GB) (URL über den Repo-Commit festgenagelt, Größe und SHA-256 = lfs.oid der Hub-API, dort am 2026-10-03 abgefragt). n_ctx ist die OBERGRENZE je Modell (32768 = Trainingskontext von Qwen2.5); den tatsächlichen Kontext wählt die App beim Laden nach freiem Grafikspeicher (llm::auto_n_ctx, mindestens 8192). Vorher fest 8192: Mit Bauplatz-Scan (Prompt ~5500 Token) und einer Reparaturrunde, die die ganze vorige Antwort mitschickt, blieben auf dem GPU-PC des Nutzers 2026-10-29 nur noch 376 Token für die Antwort, danach „Prompt zu lang (8246 Token)“. Entwurfsmodell qwen25-05b-entwurf (Größe/SHA-256 = lfs der Hub-API, abgefragt 2026-10-28) rät für die Qwen2.5-Modelle Token voraus (spekulatives Dekodieren); es ist nicht selbst auswählbar. Seit 2026-10-31 (Nutzer: Code-Modelle für JSON/Java, „auch kleine modelle … mehr auswahl“): Qwen2.5 Coder 14B/7B/3B/1.5B, Phi-3.5 mini, Llama 3.2 3B – Größe, SHA-256 und Lizenz aus der Hub-API (lfs.oid, cardData) vom selben Tag, kv_kib_per_token aus den Modellkonfigurationen (2 × Schichten × KV-Köpfe × Kopfbreite × 2 B). Die Syntax erzwingt ohnehin die Grammatik; ob Code-Modelle inhaltlich besser planen, ist ungemessen.",
+    "default": "qwen25-14b",
+    "qwen25-14b": {
+      "title": "Qwen2.5 14B Instruct (Q3_K_M, passt neben Minecraft)",
+      "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+      "revision": "05244aa5d871c661c80082a15d3bce44714d068d",
+      "file": "Qwen2.5-14B-Instruct-Q3_K_M.gguf",
+      "size": 7339204736,
+      "sha256": "2f68ac3ba018f7de7641229f19adafde5e59d02bbf5651fdbcc510bb9f3facca",
+      "license": "Apache-2.0",
+      "min_vram_mb": 9216,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 192,
+      "kv_q8": true
+    },
+    "qwen25-14b-q4": {
+      "title": "Qwen2.5 14B Instruct (Q4_K_M, beste Qualität – ohne Spiel daneben)",
+      "repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+      "revision": "05244aa5d871c661c80082a15d3bce44714d068d",
+      "file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "size": 8988110976,
+      "sha256": "e47ad95dad6ff848b431053b375adb5d39321290ea2c638682577dafca87c008",
+      "license": "Apache-2.0",
+      "min_vram_mb": 11264,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 192,
+      "kv_q8": true
+    },
+    "qwen25-7b": {
+      "title": "Qwen2.5 7B Instruct (kleiner, schneller)",
+      "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "revision": "8911e8a47f92bac19d6f5c64a2e2095bd2f7d031",
+      "file": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "size": 4683074240,
+      "sha256": "65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423",
+      "license": "Apache-2.0",
+      "min_vram_mb": 6144,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 56,
+      "kv_q8": false
+    },
+    "mistral-nemo-12b": {
+      "title": "Mistral Nemo 12B Instruct (groß, ungemessen)",
+      "repo": "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+      "revision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
+      "file": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "size": 7477208192,
+      "sha256": "7c1a10d202d8788dbe5628dc962254d10654c853cae6aaeca0618f05490d4a46",
+      "license": "Apache-2.0",
+      "min_vram_mb": 10240,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 160,
+      "kv_q8": false
+    },
+    "llama31-8b": {
+      "title": "Llama 3.1 8B Instruct (ungemessen)",
+      "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+      "revision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
+      "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "size": 4920739232,
+      "sha256": "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c",
+      "license": "Llama 3.1 Community License",
+      "min_vram_mb": 7168,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 128,
+      "kv_q8": false
+    },
+    "qwen38-9b-heretic": {
+      "title": "Qwen3.8 9B (neuere Architektur, unzensiert – Antworttext prüfen)",
+      "repo": "mradermacher/Qwen3.8-9B-Distill-uncensored-heretic-i1-GGUF",
+      "revision": "7da9529391a7ebfd147639e5037d55acc911caf5",
+      "file": "Qwen3.8-9B-Distill-uncensored-heretic.i1-Q4_K_M.gguf",
+      "size": 5780091520,
+      "sha256": "3a63c5b5c7c6af57d92437ed2610d524ea96a7ecf873ae7f8e470a024c047fa6",
+      "license": "Apache-2.0",
+      "min_vram_mb": 7168,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 32,
+      "kv_q8": false,
+      "state_mib": 600,
+      "note": "Kette (Hub, 2026-10-14): Qwen/Qwen3.5-9B (Apache-2.0) → empero-ai-Destillat aus Qwen3.8 → nurdich/Qwen3.8-9B-Distill-uncensored-heretic (Apache-2.0, „abliterated“) → mradermacher i1-GGUF. Kein offizielles Qwen3.8-9B. Hybrid: 8 von 32 Schichten mit KV (4 × 256), 24 DeltaNet-Schichten mit festem Zustand je Sequenz."
+    },
+    "qwen25-3b": {
+      "title": "Qwen2.5 3B Instruct (klein, nur private Nutzung)",
+      "repo": "bartowski/Qwen2.5-3B-Instruct-GGUF",
+      "revision": "f302c64a2269a69fb27b2f9473b362f5bb8e78d8",
+      "file": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "size": 1929903264,
+      "sha256": "9c9f56a391a3abbd5b89d0245bf6106081bcc3173119d4229235dd9d23253f94",
+      "license": "Qwen-Research (nicht kommerziell)",
+      "min_vram_mb": 3072,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 36,
+      "kv_q8": false
+    },
+    "qwen25-coder-14b": {
+      "title": "Qwen2.5 Coder 14B Instruct (Code-Modell, 12 GB, ungemessen)",
+      "repo": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+      "revision": "5b379ec4bf71bafecb5f9081ad28b19939128988",
+      "file": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+      "size": 8988111072,
+      "sha256": "2946d28c9e1bb2bcae6d42e8678863a31775df6f740315c7d7e6d6b6411f5937",
+      "license": "Apache-2.0",
+      "min_vram_mb": 11264,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 192,
+      "kv_q8": true
+    },
+    "qwen25-coder-7b": {
+      "title": "Qwen2.5 Coder 7B Instruct (Code-Modell, ungemessen)",
+      "repo": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "revision": "1f629da0c8bed16b9e50cee91c70693650e66c35",
+      "file": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+      "size": 4683074336,
+      "sha256": "1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6",
+      "license": "Apache-2.0",
+      "min_vram_mb": 6144,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 56,
+      "kv_q8": false
+    },
+    "phi35-mini": {
+      "title": "Phi-3.5 mini 3,8B Instruct (klein, ungemessen)",
+      "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+      "revision": "6d70da17e749a471ccb62ade694486011a75cda3",
+      "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "size": 2393232672,
+      "sha256": "e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5",
+      "license": "MIT",
+      "min_vram_mb": 6144,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 384,
+      "kv_q8": false
+    },
+    "llama32-3b": {
+      "title": "Llama 3.2 3B Instruct (klein, ungemessen)",
+      "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
+      "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "size": 2019377696,
+      "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+      "license": "Llama 3.2 Community License",
+      "min_vram_mb": 4096,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 112,
+      "kv_q8": false
+    },
+    "qwen25-coder-3b": {
+      "title": "Qwen2.5 Coder 3B Instruct (Code-Modell, klein, nur private Nutzung)",
+      "repo": "bartowski/Qwen2.5-Coder-3B-Instruct-GGUF",
+      "revision": "7c137640ef0332dfedb229f2504c58d83ed4307a",
+      "file": "Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+      "size": 1929903360,
+      "sha256": "3da3afe6cf5c674ac195803ea0dd6fee7e1c228c2105c1ce8c66890d1d4ab460",
+      "license": "Qwen-Research (nicht kommerziell)",
+      "min_vram_mb": 3072,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 36,
+      "kv_q8": false
+    },
+    "qwen25-coder-1.5b": {
+      "title": "Qwen2.5 Coder 1.5B Instruct (Code-Modell, sehr klein)",
+      "repo": "bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+      "revision": "1af47f78b1f9b0c242fabe43f7a365d5a67f3207",
+      "file": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+      "size": 986048800,
+      "sha256": "f530705d447660a4336c329981af164b471b60b974b1d808d57e8ec9fe23b239",
+      "license": "Apache-2.0",
+      "min_vram_mb": 2048,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 28,
+      "kv_q8": false
+    },
+    "qwen25-05b-entwurf": {
+      "title": "Qwen2.5 0.5B Instruct (Entwurfsmodell für spekulatives Dekodieren)",
+      "repo": "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
+      "revision": "41ba88dbac95fed2528c92514c131d73eb5a174b",
+      "file": "Qwen2.5-0.5B-Instruct-Q8_0.gguf",
+      "size": 531068480,
+      "sha256": "25130a98aa782284a7dabea0c23245b2fd371ed47244e79d78b8ec23245fdf96",
+      "license": "Apache-2.0",
+      "min_vram_mb": 1024,
+      "n_ctx": 32768,
+      "kv_kib_per_token": 12,
+      "kv_q8": false,
+      "draft": true
+    }
+  },
+  "components": {
+    "about": "Rechenkern CUDA zum Nachladen aus der App (src/components, src/accel), übernommen aus kraken/deps.lock.json samt Größen und SHA-256 (dort am 2026-10-14 gemessen). Dieselbe llama.cpp-Fassung wie die App; CMake prüft, dass tag und fetchcontent zusammenpassen. Geladen wird nur nach Zustimmung zur NVIDIA-EULA im Dialog; vor jedem Laden prüft die App jede Datei gegen diese Werte und hält sie gegen Schreiben gesperrt.",
+    "release": "https://github.com/ggml-org/llama.cpp/releases/download/b10900/",
+    "tag": "b10900",
+    "items": {
+      "cuda": {
+        "title": "NVIDIA CUDA 13.3",
+        "backend": "CUDA",
+        "dll": "ggml-cuda.dll",
+        "vendor": "nvidia",
+        "version": "b10900 · CUDA 13.3",
+        "license": "MIT (llama.cpp/ggml); cuBLAS und CUDA-Laufzeit: NVIDIA CUDA EULA",
+        "terms": "nvidia-cuda",
+        "terms_url": "https://docs.nvidia.com/cuda/eula/index.html",
+        "note": "Für NVIDIA-Karten ab Turing (RTX 20xx, GTX 16xx) mit Treiber ab 580. Gemessen auf einer RTX 4070 Ti (Qwen2.5 7B): Erzeugung 82–90 statt 79 Token/s, Einlesen gleich schnell; dafür 627 MB und die NVIDIA-Lizenz. Vulkan bleibt als Rückfall.",
+        "archives": [
+          {
+            "file": "llama-b10900-bin-win-cuda-13.3-x64.zip",
+            "size": 149706788,
+            "sha256": "cfe8907824377743c46e63de0d1ec07660dec9be69b5824af7bf1101fc536e5a",
+            "extract": {
+              "ggml-cuda.dll": {
+                "size": 144907776,
+                "sha256": "1567cd74dcc4d0ec0ecab0ceaba4b57f6e4a4e4fc59d77b3a4902e406225d5a2"
+              }
+            }
+          },
+          {
+            "file": "cudart-llama-bin-win-cuda-13.3-x64.zip",
+            "size": 390970417,
+            "sha256": "1462a050eb4c684921ba51dcc4cc488a036674c3e73e9945ee705b854808d03e",
+            "extract": {
+              "cudart64_13.dll": {
+                "size": 551024,
+                "sha256": "b00ca6f53699120da815bf3e06e2e4285fae2f201235b883dcbb50eec51e2a2a"
+              },
+              "cublas64_13.dll": {
+                "size": 51870320,
+                "sha256": "f1d500d0cd892f5b8c6b6cdbffd82d0c55d5f5427215668e7ceb55aeeccc1b63"
+              },
+              "cublasLt64_13.dll": {
+                "size": 460301424,
+                "sha256": "b592cd016d7673e9cb97716a22b27c4010ee635377a3ba28f37070a9bdb76a68"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

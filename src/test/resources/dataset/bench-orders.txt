@@ -1,0 +1,31 @@
+# Feste Testaufträge für das Messgerät (PlanBench). Eine Zeile = ein Auftrag, wie ein Spieler ihn tippt.
+# Alle gehen im Plugin ans LLM (kein Schnellauftrag, BenchOrdersTest prüft das) und stehen NIE im Lehrset
+# (DatasetGenerator schließt sie aus) – sonst misst die Annahmequote Auswendiglernen statt Planen.
+# Gemischt: Arten, die das Lehrset abdeckt (Haus, Turm, Dorf, Hochhaus mit Zubehör, Logik, Maschinen), und Arten
+# ohne eigene op (Kirche, Brunnen, Windmühle …), damit eine bessere Quote nicht nur auf Bekanntem beruht.
+# Nicht umsortieren oder ändern, ohne die Messergebnisse neu zu erheben – sonst sind alte und
+# neue Zahlen nicht vergleichbar.
+bau mir ein gemütliches Haus aus Fichtenholz mit Garten
+ein zweistöckiges Haus aus Ziegeln
+Bau mir einen Wachturm aus Holz
+bau einen runden Turm aus Sandstein mit Zinnen
+ein Haus aus Quarz mit 3 Etagen und einem Kiesweg
+kannst du mir ein kleines Dorf mit drei Häusern bauen
+ein Hochhaus mit 15 Stockwerken und einer Antenne
+eine Burg mit Bäumen davor
+bau mir eine Schaltung: die Lampe geht an, wenn A oder B an ist, aber nicht beide
+eine Zuckerrohrfarm und eine Schmelzanlage nebeneinander
+ein Holzhaus mit Zaun und zwei Laternen
+einen Turm aus Steinziegeln mit Fenstern
+eine kleine Kirche aus Stein
+einen Brunnen
+bau mir eine Schmiede
+einen Leuchtturm
+ein Haus mit Pool
+einen Pferdestall aus Holz
+einen Marktstand
+einen Bauernhof mit Feld
+eine Windmühle
+einen Pavillon im Garten
+bau mir einen Bahnhof
+ein Gewächshaus aus Glas

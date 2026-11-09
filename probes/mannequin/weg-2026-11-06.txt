@@ -1,0 +1,40 @@
+mauer_mit_weg | plan tick=0 punkte=16 us=15219
+treppe_mit_weg | plan tick=0 punkte=10 us=639
+falle_mit_weg | plan tick=0 punkte=17 us=1169
+hoehle_mit_weg | plan tick=0 punkte=19 us=206
+bergauf_mit_weg | plan tick=0 punkte=9 us=707
+steg_mit_weg | plan tick=0 punkte=13 us=865
+leiter_mit_weg | plan tick=0 punkte=0 us=13821
+steg_geradeaus | abgestürzt tick=26
+steg_geradeaus | gefallen tick=30 von=-60.5 auf=-62.7
+steg_geradeaus | gefallen tick=35 von=-62.7 auf=-66.6
+steg_geradeaus | gefallen tick=40 von=-66.6 auf=-72.0
+mauer_mit_weg | plan tick=41 punkte=9 us=599
+treppe_mit_weg | plan tick=41 punkte=2 us=30
+falle_mit_weg | plan tick=41 punkte=9 us=85
+hoehle_mit_weg | plan tick=41 punkte=10 us=63
+bergauf_mit_weg | plan tick=41 punkte=4 us=122
+steg_mit_weg | plan tick=41 punkte=5 us=95
+leiter_mit_weg | plan tick=41 punkte=1 us=6
+steg_geradeaus | gefallen tick=45 von=-72.0 auf=-78.8
+steg_geradeaus | teleport tick=46
+falle_geradeaus | teleport tick=50
+hoehle_geradeaus | teleport tick=55
+mauer_geradeaus | teleport tick=59
+mauer_mit_weg | plan tick=82 punkte=1 us=135
+falle_mit_weg | plan tick=82 punkte=1 us=9
+hoehle_mit_weg | plan tick=82 punkte=2 us=108
+ende | mauer_geradeaus    angekommen_tick=60 teleports=1 stürze=0 rest=0.00
+ende | mauer_mit_weg      angekommen_tick=83 teleports=0 stürze=0 rest=0.02
+ende | treppe_geradeaus   angekommen_tick=52 teleports=0 stürze=0 rest=0.17
+ende | treppe_mit_weg     angekommen_tick=47 teleports=0 stürze=0 rest=0.17
+ende | falle_geradeaus    angekommen_tick=51 teleports=1 stürze=0 rest=0.00
+ende | falle_mit_weg      angekommen_tick=87 teleports=0 stürze=0 rest=0.10
+ende | hoehle_geradeaus   angekommen_tick=56 teleports=1 stürze=0 rest=0.00
+ende | hoehle_mit_weg     angekommen_tick=92 teleports=0 stürze=0 rest=0.01
+ende | bergauf_geradeaus  angekommen_tick=65 teleports=0 stürze=0 rest=0.38
+ende | bergauf_mit_weg    angekommen_tick=62 teleports=0 stürze=0 rest=0.38
+ende | steg_geradeaus     angekommen_tick=47 teleports=1 stürze=5 rest=0.00
+ende | steg_mit_weg       angekommen_tick=63 teleports=0 stürze=0 rest=0.08
+ende | leiter_geradeaus   angekommen_tick=44 teleports=0 stürze=0 rest=0.40
+ende | leiter_mit_weg     angekommen_tick=44 teleports=0 stürze=0 rest=0.40

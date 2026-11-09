@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "about": "Positivliste der System-DLLs, die Windows 10 1809 (Build 17763, MinVersion des Setups) x64 in JEDER Edition mitbringt – auch N/KN (ohne Media Feature Pack) und LTSC. build.ps1 (installer/package-dependencies.ps1) prüft jeden Import und jeden verzögerten Import jeder ausgelieferten PE-Datei: Was nicht im Paket liegt, muss hier stehen, sonst bricht die Bereitstellung ab. API-Sets (api-ms-win-*, ext-ms-win-*) werden über das ApiSetSchema des Bau-Rechners auf ihre Wirts-DLL aufgelöst; die Wirts-DLL muss hier stehen. Neue Einträge nur mit Grund und Windows-Fassung, seit der die DLL in allen Editionen liegt. Die Liste ist nach Microsoft-Dokumentation zusammengestellt, NICHT an einem 1809-Abbild gemessen (kein solches Abbild vorhanden); sie prüft DLL-Namen, keine einzelnen Funktionen.",
+  "target": "Windows 10 1809 (10.0.17763) x64",
+  "dlls": {
+    "advapi32.dll": "Kern-DLL (Registry, Token, Sicherheit), seit Windows NT",
+    "authz.dll": "Authz-API (Qt6Core), seit Windows XP",
+    "avrt.dll": "MMCSS AvSetMmThreadCharacteristics (WASAPI-Aufnahme), seit Windows Vista, auch in N-Editionen (kein Teil des Media Feature Pack)",
+    "bcrypt.dll": "CNG (SHA-256, ECDSA), seit Windows Vista",
+    "combase.dll": "Wirt der API-Sets api-ms-win-core-winrt-*, seit Windows 8",
+    "comdlg32.dll": "Standarddialoge (qwindows), seit Windows 95/NT",
+    "crypt32.dll": "Zertifikate/DER (Update-Prüfung), seit Windows 2000",
+    "d3d11.dll": "Direct3D 11 (Qt6Gui RHI), seit Windows 7",
+    "d3d12.dll": "Direct3D 12 (Qt6Gui RHI, statisch importiert), seit Windows 10 1507 in allen Editionen",
+    "d3d9.dll": "Direct3D 9 (qwindows), seit Windows Vista",
+    "dbghelp.dll": "Stapelauflösung (CTranslate2), System32-Fassung seit Windows XP",
+    "dwmapi.dll": "Desktop Window Manager (Qt6Widgets, qwindows), seit Windows Vista",
+    "dwrite.dll": "DirectWrite (Qt6Gui-Schriften), seit Windows 7",
+    "dxgi.dll": "DXGI (Qt6Gui), seit Windows Vista",
+    "gdi32.dll": "Kern-DLL (GDI), seit Windows NT",
+    "icuuc.dll": "Windows-ICU (Qt6Core, statisch importiert), seit Windows 10 1703 – Grund für MinVersion 10.0.17763 statt 10.0",
+    "imm32.dll": "Eingabemethoden (qwindows), seit Windows 95/NT",
+    "kernel32.dll": "Kern-DLL, seit Windows NT",
+    "kernelbase.dll": "Wirt der API-Sets api-ms-win-core-*, seit Windows 7",
+    "mpr.dll": "Netzlaufwerke (Qt6Core), seit Windows 95/NT",
+    "ncrypt.dll": "CNG-Schlüsselspeicher (eigener Client-Schlüssel der Fernverbindung im TPM bzw. Software-KSP, win/client_cert), seit Windows Vista",
+    "netapi32.dll": "NetAPI (Qt6Core), seit Windows NT",
+    "ntdll.dll": "Kern-DLL, seit Windows NT",
+    "ole32.dll": "COM (WASAPI, Shell, Qt), seit Windows NT",
+    "oleaut32.dll": "OLE Automation (VARIANT, BSTR), seit Windows NT",
+    "setupapi.dll": "Geräteinstallations-API (qwindows), seit Windows 2000",
+    "shcore.dll": "Wirt von api-ms-win-shcore-scaling-* (DPI, qwindows), seit Windows 8.1",
+    "shell32.dll": "Shell (Ordner, ShellExecute, Explorer-Start), seit Windows 95/NT",
+    "shlwapi.dll": "Shell-Hilfen (qwindows), seit Windows 98/2000",
+    "ucrtbase.dll": "Universal C Runtime, Wirt der API-Sets api-ms-win-crt-*, fester Teil von Windows 10 seit 1507",
+    "uiautomationcore.dll": "UI Automation (Qt-Barrierefreiheit), seit Windows Vista",
+    "user32.dll": "Kern-DLL (Fenster, Nachrichten), seit Windows NT",
+    "userenv.dll": "Benutzerprofile (Qt6Core), seit Windows 2000",
+    "uxtheme.dll": "Visual Styles (Qt6Gui, Qt6Widgets), seit Windows XP",
+    "version.dll": "Versionsressourcen (Qt6Core), seit Windows 95/NT",
+    "winhttp.dll": "WinHTTP (alle Anfragen der App), seit Windows 2000 SP3",
+    "winmm.dll": "Multimedia-Timer (Qt6Core, qwindows), seit Windows 95/NT, auch in N-Editionen",
+    "ws2_32.dll": "Winsock (Overlay-Server 127.0.0.1), seit Windows NT",
+    "wtsapi32.dll": "Terminaldienste/Sitzungen (qwindows), seit Windows 2000",
+    "mfplat.dll": "Media Foundation (Windows 10 seit 1507). Fehlt nur auf N-Ausgaben ohne Media Feature Pack: StreamWizard Agent lädt sie verzögert und prüft vorher (voice/media), crispasr.exe startet dort nicht – die App meldet das.",
+    "mfreadwrite.dll": "Media Foundation Source Reader – wie mfplat.dll."
+  },
+  "driver_dlls": {
+    "vulkan-1.dll": {
+      "importers": [
+        "ggml-vulkan.dll",
+        "crispasr.exe"
+      ],
+      "delay_load_only": true,
+      "reason": "Vulkan-Loader des Grafiktreibers, nicht Teil von Windows. Seit 2026-10-14 importiert ihn nur der ladbare Rechenkern ggml-vulkan.dll (statisch): accel::Runtime lädt diesen Kern ausdrücklich per absolutem Pfad – fehlt der Vulkan-Treiber, scheitert nur dieser Kern, StreamWizardAgent.exe startet und meldet „Vulkan-Kern nicht ladbar“ (vorher war ggml statisch in der EXE, die vulkan-1.dll deshalb nur verzögert binden durfte). crispasr.exe (Klonstimme) ist ein eigener Prozess und darf statisch importieren: Ohne Vulkan-Treiber startet nur er nicht, StreamWizard Agent meldet „Klonstimme startet nicht“ und spricht mit Piper weiter.",
+      "static_importers": [
+        "ggml-vulkan.dll",
+        "crispasr.exe"
+      ]
+    },
+    "nvcuda.dll": {
+      "dir": "cuda",
+      "reason": "CUDA-Treiber-API. StreamWizard Agent liefert keinen cuda-Ordner (Setup bricht sonst ab); der Eintrag bleibt, damit kein Programmteil nvcuda.dll außerhalb davon importiert."
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["say", "actions"],
+  "properties": {
+    "say": {"type": "string", "minLength": 1, "maxLength": 300},
+    "actions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op"],
+        "properties": {
+          "op": {"enum": ["give", "find", "calc", "follow", "stay", "come", "build", "song", "time", "weather", "command", "recipe", "repair", "mark", "goto", "where", "remind", "look", "use", "character"]},
+          "item": {"type": "string", "maxLength": 48},
+          "count": {"type": "integer", "minimum": 1, "maximum": 64},
+          "block": {"type": "string", "maxLength": 48},
+          "radius": {"type": "integer", "minimum": 1, "maximum": 64},
+          "expr": {"type": "string", "maxLength": 80},
+          "text": {"type": "string", "maxLength": 200},
+          "name": {"type": "string", "maxLength": 32}
+        }
+      }
+    }
+  }
+}

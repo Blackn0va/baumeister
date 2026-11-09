@@ -1,0 +1,11 @@
+server 26.2-135-e4d6dfd (MC: 26.2)
+stick           rezepte=2 herstellungen=1 je=4 verbrauch={oak_planks=1, spruce_planks=1} felder=2 erstes_feld=12 Möglichkeiten
+torch           rezepte=1 herstellungen=2 je=4 verbrauch={coal=2, stick=2} felder=2 erstes_feld=[charcoal, coal]
+crafting_table  rezepte=1 herstellungen=1 je=1 verbrauch={birch_planks=4} felder=4 erstes_feld=12 Möglichkeiten
+iron_pickaxe    rezepte=1 herstellungen=1 je=1 verbrauch={iron_ingot=3, stick=2} felder=5 erstes_feld=[iron_ingot]
+bread           rezepte=1 herstellungen=2 je=1 verbrauch={wheat=6} felder=3 erstes_feld=[wheat]
+chest           rezepte=1 herstellungen=1 je=1 verbrauch={oak_planks=8} felder=8 erstes_feld=12 Möglichkeiten
+ladder          rezepte=1 herstellungen=1 je=3 verbrauch={stick=7} felder=7 erstes_feld=[stick]
+bucket          rezepte=1 herstellungen=1 je=1 verbrauch={iron_ingot=3} felder=3 erstes_feld=[iron_ingot]
+cake            rezepte=1 herstellungen=1 je=1 verbrauch={egg=1, milk_bucket=3, wheat=3, sugar=2} felder=9 erstes_feld=[milk_bucket]
+oak_boat        rezepte=1 herstellungen=1 je=1 verbrauch={oak_planks=5} felder=5 erstes_feld=[oak_planks]

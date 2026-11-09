@@ -1,0 +1,513 @@
+package com.blackn0va.baumeister.plan;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.blackn0va.baumeister.plan.CompiledBuild.Action;
+import com.blackn0va.baumeister.plan.CompiledBuild.Change;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.junit.jupiter.api.Test;
+
+/**
+ * Aufbau-Regeln der eingebauten Maschinen ohne Server. Ob sie wirklich schalten, prüft MachineProbe auf dem
+ * Testserver; hier nur, was sich ohne Welt sagen lässt.
+ */
+class MachinesTest {
+
+    private static final Machines LIB = new Machines();
+    private static final Set<String> NEEDS_FLOOR = Set.of("redstone_wire", "repeater", "comparator", "redstone_torch",
+            "lever");
+
+    private static Map<Pos, BlockSpec> cells(ModuleLibrary.Module m) {
+        Map<Pos, BlockSpec> out = new HashMap<>();
+        for (Change c : m.cells()) {
+            out.put(c.pos(), c.block());
+        }
+        return out;
+    }
+
+    @Test
+    void everyMachineHasAUniqueValidNameAndFitsTheModuleLimits() {
+        Set<String> names = new HashSet<>();
+        for (Machines.Machine m : LIB.machines()) {
+            String n = m.module().name();
+            assertTrue(n.matches("[a-z0-9_]{2,32}"), n);
+            assertTrue(names.add(n), "doppelt: " + n);
+            Pos s = m.module().size();
+            // Breite/Tiefe bis zum Raster des Logik-Compilers (16 Terme → 57 breit, 5 Eingänge → 43 tief; LogicCircuit):
+            // Vorher fest 32 – die ALU-Scheibe (5 Eingänge, 2026-10-31) ist 43 tief und passt trotzdem in jeden Bauplatz.
+            // Ausnahme addierer_4bit/akkumulator_4bit: vier Volladdierer nebeneinander (4 × 28), kein einzelnes Raster;
+            // der Akkumulator hat davor die Rückführung und dahinter Speicher und Taktleitung (45 tief).
+            boolean chain = n.equals("addierer_4bit") || n.equals("akkumulator_4bit");
+            // Ausnahme anzeige: 7 Ausgänge nebeneinander plus Leitungen und Ziffer dahinter (SevenSegment), passt in
+            // jeden Bauplatz (bau.max-ausdehnung 192).
+            boolean display = n.equals("anzeige");
+            int maxX = display ? 128 : chain ? 4 * Machines.ADDER_STRIDE : 57;
+            int maxZ = display ? 80 : chain ? 48 : 44;
+            assertTrue(s.x() <= maxX && s.y() <= 32 && s.z() <= maxZ, n + " " + s);
+            assertFalse(m.module().description().isBlank(), n);
+        }
+        assertTrue(names.containsAll(Set.of("nicht_gatter", "oder_gatter", "und_gatter", "xor_gatter", "takt",
+                "kolbentuer", "halbaddierer", "rs_speicher", "automatiktuer", "wasserfahrstuhl", "nand_gatter",
+                "nor_gatter", "xnor_gatter", "lampenreihe", "klingel", "glocke", "abwaerts_fahrstuhl", "nachtlicht",
+                "t_flipflop", "sammelstelle", "kombischloss", "pfeilfalle", "zaehler", "zuckerrohrfarm",
+                "volladdierer", "impulsverlaengerer", "schmelzanlage", "item_sortierer")));
+    }
+
+    /**
+     * Volladdierer kommt aus dem Logik-Compiler: Die Tabellen der Probe müssen die echten Summen sein (S = Parität,
+     * CO = mindestens zwei Einsen) – nicht nur das, was der Compiler aus der Formel abschreibt.
+     */
+    @Test
+    void fullAdderTablesAreBinaryAddition() {
+        Machines.Machine m = LIB.machine("volladdierer").orElseThrow();
+        assertEquals(java.util.List.of("A", "B", "CI"), m.inputs().stream().map(Machines.Pin::name).toList());
+        assertEquals(java.util.List.of("S", "CO"), m.outputs().stream().map(Machines.Pin::name).toList());
+        for (int bits = 0; bits < 8; bits++) {
+            String key = "A=" + (bits & 1) + ",B=" + (bits >> 1 & 1) + ",CI=" + (bits >> 2 & 1);
+            int sum = Integer.bitCount(bits);
+            assertEquals(sum % 2 == 1, m.expect().get("S").get(key), key);
+            assertEquals(sum >= 2, m.expect().get("CO").get(key), key);
+        }
+    }
+
+    /**
+     * 4-Bit-Addierer: Die Stichproben der Probe sind echte Summen (0..31), jede Stufe setzt ihren Übertrag über
+     * Verstärker in die nächste, und nur Bit 0 hat einen CI-Hebel – die anderen bekommen ihn von der Stufe davor.
+     */
+    @Test
+    void fourBitAdderChainsTheCarryThroughAllStages() {
+        Machines.Machine m = LIB.machine("addierer_4bit").orElseThrow();
+        assertEquals(java.util.List.of("A0", "B0", "CI", "A1", "B1", "A2", "B2", "A3", "B3"),
+                m.inputs().stream().map(Machines.Pin::name).toList());
+        assertEquals(java.util.List.of("S0", "S1", "S2", "S3", "C4"),
+                m.outputs().stream().map(Machines.Pin::name).toList());
+        for (Machines.Step st : m.sequence()) {
+            int a = 0;
+            int b = 0;
+            int sum = 0;
+            for (int i = 0; i < 4; i++) {
+                a |= st.inputs().get("A" + i) ? 1 << i : 0;
+                b |= st.inputs().get("B" + i) ? 1 << i : 0;
+                sum |= st.expect().get("S" + i) ? 1 << i : 0;
+            }
+            sum |= st.expect().get("C4") ? 16 : 0;
+            assertEquals(a + b + (st.inputs().get("CI") ? 1 : 0), sum, st.toString());
+        }
+        // Mindestens einmal läuft der Übertrag durch alle vier Stufen (15 + 1).
+        assertTrue(m.sequence().stream().anyMatch(st -> st.expect().get("C4") && !st.expect().get("S0")
+                && !st.expect().get("S3") && !st.inputs().get("CI")));
+        Map<Pos, BlockSpec> c = cells(m.module());
+        long levers = c.values().stream().filter(b -> b.id().equals("lever")).count();
+        assertEquals(9, levers, "8 Datenhebel + CI");
+        for (int bit = 0; bit < 3; bit++) {
+            int dx = bit * Machines.ADDER_STRIDE;
+            assertEquals("repeater", c.get(new Pos(dx + 25, 3, 27)).id(), "Übertrag raus, Stufe " + bit);
+            assertEquals("repeater", c.get(new Pos(dx + 27, 1, 16)).id(), "Übertrag rein, Stufe " + (bit + 1));
+            assertEquals("redstone_wire", c.get(new Pos(dx + Machines.ADDER_STRIDE, 1, 16)).id());
+            for (int z = 16; z <= 27; z++) {
+                int dz = z;
+                assertTrue(c.entrySet().stream().anyMatch(e -> e.getKey().x() == dx + 26 && e.getKey().z() == dz
+                        && e.getValue().id().equals("redstone_wire")), "Übertragsleitung fehlt bei z " + z);
+            }
+        }
+        assertEquals("redstone_lamp", c.get(new Pos(3 * Machines.ADDER_STRIDE + 25, 3, 27)).id(), "C4");
+    }
+
+    /**
+     * Akkumulator: Der Ablauf addiert B nur bei steigendem Takt (Master-Slave), jede Q-Lampe sitzt unter einem Draht
+     * der Rückführung (unter einem Verstärker bliebe sie dunkel), und die A-Eingänge sind keine Hebel mehr.
+     */
+    @Test
+    void accumulatorAddsBOnEveryRisingClock() {
+        Machines.Machine m = LIB.machine("akkumulator_4bit").orElseThrow();
+        assertEquals(java.util.List.of("B0", "B1", "B2", "B3", "CI", "T"),
+                m.inputs().stream().map(Machines.Pin::name).toList());
+        int acc = 0;
+        boolean clock = false;
+        boolean wrapped = false;
+        for (Machines.Step st : m.sequence()) {
+            int b = 0;
+            int q = 0;
+            for (int i = 0; i < 4; i++) {
+                b |= st.inputs().get("B" + i) ? 1 << i : 0;
+                q |= st.expect().get("Q" + i) ? 1 << i : 0;
+            }
+            boolean t = st.inputs().get("T");
+            if (t && !clock) {
+                wrapped |= acc + b > 15;
+                acc = (acc + b) & 15;
+            }
+            clock = t;
+            assertEquals(acc, q, st.toString());
+        }
+        assertTrue(wrapped, "Überlauf mindestens einmal");
+        Map<Pos, BlockSpec> c = cells(m.module());
+        assertEquals(6, c.values().stream().filter(b -> b.id().equals("lever")).count(), "B0..B3, CI, T");
+        Machines.Pin clockPin = m.inputs().getLast();
+        assertEquals("lever", c.get(clockPin.at()).id(), "Takt");
+        for (Machines.Pin q : m.outputs()) {
+            assertEquals("redstone_lamp", c.get(q.at()).id(), q.name());
+            assertEquals("redstone_wire", c.get(q.at().add(0, 1, 0)).id(), q.name() + " braucht Draht darüber");
+        }
+        // Master-Riegel mit Verzögerung 3: kürzer öffnet der Master, bevor der Slave zu ist (siehe accumulator4).
+        assertTrue(c.values().stream().filter(b -> b.asString().contains("delay=3")).count() >= 4);
+    }
+
+    /**
+     * Item-Sortierer: Die Schwelle hängt an genau zwei Drähten zwischen Komparator und Block B (22 Stück → 1 → 0,
+     * 23 → 2 → 1). Ein dritter Draht oder einer weniger, und die Sorte läuft durch bzw. F läuft leer – das sähe man
+     * erst auf dem Server.
+     */
+    @Test
+    void itemSorterHasExactlyTwoWiresBetweenComparatorAndTorchBlock() {
+        Map<Pos, BlockSpec> c = cells(LIB.machine("item_sortierer").orElseThrow().module());
+        assertEquals("comparator", c.get(new Pos(1, 2, 1)).id());
+        assertEquals("redstone_wire", c.get(new Pos(2, 2, 1)).id());
+        assertEquals("redstone_wire", c.get(new Pos(3, 2, 1)).id());
+        assertEquals(null, c.get(new Pos(4, 2, 1)));
+        assertEquals("stone", c.get(new Pos(3, 1, 1)).id());
+        assertEquals("redstone_wall_torch", c.get(new Pos(3, 1, 2)).id());
+        // F zeigt in den Komparator (kein Behälter), H unter F gibt in die Truhe davor.
+        assertEquals("right", c.get(new Pos(0, 2, 1)).props().get("facing"));
+        assertEquals("front", c.get(new Pos(0, 1, 1)).props().get("facing"));
+    }
+
+    /**
+     * Schmelzanlage: Der Ofen braucht 10 s, die Trichter ~0,8 s dazu; jeder Schritt mit Befehl wartet in MachineProbe
+     * 3 s. Vorher kam „Barren da“ nach 12 s – 1,2 s Puffer, unter 20 TPS (Lastregelung, paralleler Bau) scheiterte die
+     * Probe ohne Maschinenfehler. Jetzt: „noch keiner“ höchstens bis 9 s, „Barren da“ frühestens nach 14 s.
+     */
+    @Test
+    void smelterChecksTheIngotOnlyWithLagBuffer() {
+        java.util.List<Machines.Step> seq = LIB.machine("schmelzanlage").orElseThrow().sequence();
+        int firstIngot = -1;
+        for (int i = 0; i < seq.size(); i++) {
+            Machines.Step st = seq.get(i);
+            assertFalse(st.commands().isEmpty(), "Schritt " + (i + 1) + " ohne Befehl wartet nur 1,2 s");
+            int seconds = 3 * (i + 1);
+            Boolean ingot = st.expect().get("BARREN");
+            if (Boolean.FALSE.equals(ingot)) {
+                assertTrue(seconds <= 9, "„noch kein Barren“ nach " + seconds + " s – zu nah an 10 s Schmelzzeit");
+            } else if (Boolean.TRUE.equals(ingot) && firstIngot < 0) {
+                firstIngot = seconds;
+            }
+        }
+        assertTrue(firstIngot >= 14, "„Barren da“ schon nach " + firstIngot + " s, weniger als 3 s Puffer");
+    }
+
+    /**
+     * Die MODULE LIBRARY geht mit jedem LLM-Auftrag ungekürzt in den Prompt (hinter dem Scan, also nicht im Cache);
+     * auf dem Celeron kostet jedes Token Prompt-Zeit. Die längste Beschreibung vor der vierten Runde hatte 217 Zeichen
+     * (zaehler); die neuen hatten bis zu 300 (item_sortierer). Bedienhinweise gehören ins Javadoc.
+     */
+    /**
+     * XP-Farm (2026-11-07): Fallhöhe, Wasser und Dunkelheit nachgerechnet am gebauten Raster. Schaden =
+     * ceil(Fallstrecke − 3): 20-Leben-Mobs müssen überleben, Spinnen (16) nicht – sonst verstopfen sie den Schacht.
+     */
+    @Test
+    void xpFarmDropLeavesMobsAliveAndKillsSpiders() {
+        Map<Pos, BlockSpec> c = cells(LIB.machine("xp_farm").orElseThrow().module());
+        int top = Machines.XP_FARM_CHANNEL_Y;
+        // Start auf dem Kanalboden (oben bündig mit top), Landung auf Teppich (1/16 hoch) über einem Trichter.
+        assertEquals("cobblestone", c.get(new Pos(9, top - 1, 8)).id(), "Kanalboden am Loch");
+        assertEquals("gray_carpet", c.get(new Pos(9, 1, 9)).id());
+        assertEquals("hopper", c.get(new Pos(9, 0, 9)).id());
+        double fall = top - (1 + 1 / 16.0);
+        int damage = (int) Math.ceil(fall - 3);
+        assertTrue(damage < 20 && damage >= 16, "Schaden " + damage + " bei " + fall + " Blöcken");
+        // Schacht frei von der Kammer bis unter das Dach; kein Wasser darin.
+        for (int y = 2; y <= top + 3; y++) {
+            for (int x = 9; x <= 10; x++) {
+                for (int z = 9; z <= 10; z++) {
+                    assertTrue(c.get(new Pos(x, y, z)) == null, "Schacht frei bei " + x + "," + y + "," + z);
+                }
+            }
+        }
+        // Je Kanal zwei Quellen über dem äußeren Ende der Bahnen (8 Felder vor dem Loch, eine Lage über dem Wasser),
+        // sonst kein Wasser: Die Bahnen füllen sich erst, wenn ihre Wände stehen.
+        long sources = c.entrySet().stream().filter(e -> e.getValue().id().equals("water")).count();
+        assertEquals(8, sources);
+        for (Pos p : List.of(new Pos(9, top + 1, 1), new Pos(10, top + 1, 18), new Pos(1, top + 1, 9),
+                new Pos(18, top + 1, 10))) {
+            assertEquals("water", c.get(p).id(), "Quelle " + p);
+            assertTrue(c.get(p.add(0, -1, 0)) == null, "fällt in die Bahn " + p);
+        }
+        // Dunkel: Licht nur unter der Plattform (y=1) und auf dem Dach – keine Fackel im Laichraum.
+        for (Map.Entry<Pos, BlockSpec> e : c.entrySet()) {
+            if (e.getValue().id().contains("torch")) {
+                assertTrue(e.getKey().y() == 1 || e.getKey().y() == top + 5, "Fackel " + e.getKey());
+            }
+        }
+        // Zwei Blöcke Luft über der Laichfläche, Dach darüber: Endermen (2,9 hoch) laichen nicht.
+        assertEquals("cobblestone", c.get(new Pos(4, top + 1, 4)).id());
+        assertTrue(c.get(new Pos(4, top + 2, 4)) == null && c.get(new Pos(4, top + 3, 4)) == null);
+        assertEquals("cobblestone", c.get(new Pos(4, top + 4, 4)).id());
+        // Truhen vor der Scheibe im Boden, darüber Luft (zu erreichen, everyChestCanBeOpenedAndReached); unter dem Glas
+        // der letzte Trichter, Schlagspalt über der Stufe.
+        assertEquals("chest", c.get(new Pos(9, 0, 7)).id());
+        assertTrue(c.get(new Pos(9, 1, 7)) == null, "über der Truhe Luft");
+        assertEquals("hopper", c.get(new Pos(9, 0, 8)).id());
+        assertEquals("glass", c.get(new Pos(9, 1, 8)).id());
+        assertEquals("smooth_stone_slab", c.get(new Pos(9, 2, 8)).id());
+    }
+
+    /**
+     * XP-Farm-Bahnen (2026-11-08, XpTrace Spigot Süd: eine Bahn blieb nach dem Bau trocken, ein Zombie sprang aus dem
+     * 1 tiefen Kanal). Der Plan baut Lage für Lage von unten (PlanCompiler.order); jede Quelle liegt deshalb eine Lage
+     * ÜBER allen Wänden, Böden und der Fläche neben den Bahnen – sie fließt erst, wenn die Bahn ringsum geschlossen ist.
+     * Neben jedem Bahnfeld steht auf Wasserhöhe Stein, und die Fläche liegt 2 über dem Wasser: Ein Sprung (1,25)
+     * führt nicht hinaus. Gegenprobe: alte Farm → beide Prüfungen rot.
+     */
+    @Test
+    void xpFarmLanesAreClosedBeforeTheWaterFlowsAndCannotBeJumpedOutOf() {
+        Map<Pos, BlockSpec> c = cells(LIB.machine("xp_farm").orElseThrow().module());
+        int top = Machines.XP_FARM_CHANNEL_Y;
+        int sourceY = c.entrySet().stream().filter(e -> e.getValue().id().equals("water")).mapToInt(e -> e.getKey().y())
+                .min().orElseThrow();
+        for (int x = 1; x <= 18; x++) {
+            for (int z = 1; z <= 18; z++) {
+                boolean channel = x == 9 || x == 10 || z == 9 || z == 10;
+                boolean hole = (x == 9 || x == 10) && (z == 9 || z == 10);
+                if (!channel || hole) {
+                    continue;
+                }
+                assertTrue(c.get(new Pos(x, top, z)) == null, "Bahnfeld leer, das Wasser kommt von oben " + x + "," + z);
+                for (int[] n : new int[][] {{x + 1, z}, {x - 1, z}, {x, z + 1}, {x, z - 1}}) {
+                    boolean nChannel = n[0] == 9 || n[0] == 10 || n[1] == 9 || n[1] == 10;
+                    if (nChannel) {
+                        continue;
+                    }
+                    BlockSpec wall = c.get(new Pos(n[0], top, n[1]));
+                    assertTrue(wall != null && !wall.isAir(), "Kanalwand neben " + x + "," + z + " bei " + n[0] + ","
+                            + n[1]);
+                    assertTrue(wall != null && sourceY > top, "Wand in einer tieferen Baulage als die Quellen");
+                    BlockSpec floor = c.get(new Pos(n[0], top + 1, n[1]));
+                    assertTrue(floor != null && !floor.isAir(), "Fläche über der Wand " + n[0] + "," + n[1]);
+                }
+            }
+        }
+        // Jede Quelle kann nur nach unten fließen: ringsum Stein (Steg, Fläche, Wand) oder die Nachbarquelle, darüber
+        // ein Deckel. Eine Quelle über vollem Wasser fließt sonst zur Seite, die Bahn reichte ein Feld weiter, und
+        // Wasser fiel ins Loch (gemessen 2026-11-08: Kammer unter Wasser, Teppiche weg).
+        for (Map.Entry<Pos, BlockSpec> e : c.entrySet()) {
+            if (!e.getValue().id().equals("water")) {
+                continue;
+            }
+            Pos q = e.getKey();
+            for (Pos n : List.of(q.add(1, 0, 0), q.add(-1, 0, 0), q.add(0, 0, 1), q.add(0, 0, -1), q.add(0, 1, 0))) {
+                BlockSpec b = c.get(n);
+                assertTrue(b != null && !b.isAir(), "Quelle " + q + " offen zu " + n);
+            }
+            assertTrue(c.get(q.add(0, -1, 0)) == null, "Quelle " + q + " fällt in ihre Bahn");
+        }
+        // Wasser auf top (Füße), Fläche oben auf top + 1, Mobs dort auf top + 2: 2 Blöcke Stufe.
+        assertEquals(top + 1, sourceY, "Quellen eine Lage über den Bahnen");
+        double step = (top + 2) - top;
+        assertTrue(step > 1.25, "Stufe " + step + " ist mit einem Sprung zu nehmen");
+    }
+
+    /**
+     * Jede Truhe einer Maschine geht auf und ist zu erreichen (2026-11-08): Über ihr nur Luft oder Glas (Glas leitet
+     * nicht, ChestBlock lässt sie dann auf), und mindestens die Oberseite oder eine Seite grenzt an Luft. Außerhalb der
+     * Maschine zählt nur, was ab y=1 liegt – darunter ist dort der Boden der Welt. Vorher lagen die Truhen der XP-Farm
+     * unter Glas, ringsum Boden, Truhe und Trichter: Sie gingen auf, aber kein Spieler kam an sie heran.
+     */
+    @Test
+    void everyChestCanBeOpenedAndReached() {
+        for (Machines.Machine m : LIB.machines()) {
+            Map<Pos, BlockSpec> c = cells(m.module());
+            Pos s = m.module().size();
+            c.forEach((p, b) -> {
+                if (!b.id().equals("chest")) {
+                    return;
+                }
+                String where = m.module().name() + " Truhe bei " + p;
+                BlockSpec above = c.get(p.add(0, 1, 0));
+                // Glas und Glasscheiben leiten nicht: Die Truhe geht darunter auf (Eisenfarm: Scheibe über der Truhe).
+                assertTrue(above == null || above.isAir() || above.id().endsWith("glass")
+                        || above.id().endsWith("glass_pane"), where + ": darüber " + above);
+                boolean reachable = false;
+                for (Pos d : List.of(new Pos(0, 1, 0), new Pos(1, 0, 0), new Pos(-1, 0, 0), new Pos(0, 0, 1),
+                        new Pos(0, 0, -1))) {
+                    Pos q = p.add(d.x(), d.y(), d.z());
+                    boolean inside = q.x() >= 0 && q.y() >= 0 && q.z() >= 0 && q.x() < s.x() && q.y() < s.y()
+                            && q.z() < s.z();
+                    BlockSpec n = c.get(q);
+                    reachable |= inside ? n == null || n.isAir() : q.y() >= 1;
+                }
+                assertTrue(reachable, where + ": keine Seite frei");
+            });
+        }
+    }
+
+    @Test
+    void machineDescriptionsStayShortForThePrompt() {
+        for (Machines.Machine m : LIB.machines()) {
+            assertTrue(m.module().description().length() <= 220,
+                    m.module().name() + ": " + m.module().description().length() + " Zeichen");
+        }
+    }
+
+    /**
+     * Item-Sortierer: Die Schwelle 22/23 rechnet mit 64er-Stapeln, und bis der Filtertrichter gefüllt ist, zieht er
+     * beliebige Gegenstände aus der Linie. Beides muss in der Beschreibung stehen, die LLM und Spieler sehen.
+     */
+    @Test
+    void itemSorterDescriptionNamesStackSizeAndFilling() {
+        String d = LIB.machine("item_sortierer").orElseThrow().module().description();
+        assertTrue(d.contains("stack to 64"), d);
+        assertTrue(d.contains("before use"), d);
+    }
+
+    @Test
+    void allCellsLieInsideTheSizeAndOnlyOnePerPosition() {
+        for (Machines.Machine m : LIB.machines()) {
+            Set<Pos> seen = new HashSet<>();
+            Pos s = m.module().size();
+            for (Change c : m.module().cells()) {
+                Pos p = c.pos();
+                assertTrue(seen.add(p), m.module().name() + " doppelt " + p);
+                assertTrue(p.x() >= 0 && p.y() >= 0 && p.z() >= 0 && p.x() < s.x() && p.y() < s.y() && p.z() < s.z(),
+                        m.module().name() + " außerhalb " + p);
+            }
+        }
+    }
+
+    @Test
+    void wiresTorchesAndRepeatersStandOnSomethingSolid() {
+        for (Machines.Machine m : LIB.machines()) {
+            Map<Pos, BlockSpec> c = cells(m.module());
+            c.forEach((p, b) -> {
+                if (NEEDS_FLOOR.contains(b.id()) && !"wall".equals(b.props().get("face"))) {
+                    BlockSpec below = c.get(p.add(0, -1, 0));
+                    assertNotNull(below, m.module().name() + ": nichts unter " + b.id() + " bei " + p);
+                    assertFalse(below.isAir() || NEEDS_FLOOR.contains(below.id()),
+                            m.module().name() + ": " + b.id() + " bei " + p + " steht auf " + below.id());
+                }
+            });
+        }
+    }
+
+    @Test
+    void pinsPointAtTheRightBlocks() {
+        for (Machines.Machine m : LIB.machines()) {
+            Map<Pos, BlockSpec> c = cells(m.module());
+            for (Machines.Pin in : m.inputs()) {
+                assertTrue(Set.of("lever", "stone_pressure_plate", "stone_button").contains(c.get(in.at()).id()),
+                        m.module().name() + " Eingang " + in.name() + ": " + c.get(in.at()).id());
+            }
+            for (Machines.Pin out : m.outputs()) {
+                if (m.outputKind().equals("lamp") || m.outputKind().equals("blink")) {
+                    assertEquals("redstone_lamp", c.get(out.at()).id(), m.module().name() + " Ausgang " + out.name());
+                } else if (m.outputKind().equals("state")) {
+                    // Geprüfter Zustand gehört zum Block an der Stelle (Wasser wird über Seelensand zur Blasensäule).
+                    if (out.onState().startsWith("items:")) {
+                        // Werfer und Spender sind Behälter wie Truhe und Trichter (pfeilfalle prüft Pfeile im Werfer).
+                        assertTrue(Set.of("chest", "barrel", "hopper", "dispenser", "dropper")
+                                .contains(c.get(out.at()).id()),
+                                m.module().name() + " Ausgang " + out.name() + " ist kein Behälter");
+                        continue;
+                    }
+                    if (out.onState().startsWith("entity:")) {
+                        // Mob im Quader at..testAt (xp_farm, 2026-11-07): Dort darf nichts Festes stehen, sonst kann
+                        // kein Mob hinein – Teppich zählt als begehbar (er liegt auf den Trichtern).
+                        for (int x = Math.min(out.at().x(), out.testAt().x()); x <= Math.max(out.at().x(),
+                                out.testAt().x()); x++) {
+                            for (int y = Math.min(out.at().y(), out.testAt().y()); y <= Math.max(out.at().y(),
+                                    out.testAt().y()); y++) {
+                                for (int z = Math.min(out.at().z(), out.testAt().z()); z <= Math.max(out.at().z(),
+                                        out.testAt().z()); z++) {
+                                    BlockSpec b = c.get(new Pos(x, y, z));
+                                    assertTrue(b == null || b.isAir() || b.id().endsWith("_carpet"),
+                                            m.module().name() + " Ausgang " + out.name() + ": " + b + " im Mob-Quader");
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if (out.onState().startsWith("entsteht:")) {
+                        // Zustand, den die Maschine selbst herstellt (Bruchstein aus Lava und Wasser, abgebrochene
+                        // Frucht, Spülwasser über dem Weizen, 2026-11-07): beim Bau noch nicht so, und kein Befehl des
+                        // Ablaufs darf genau ihn setzen – sonst prüfte die Probe den Bau oder ihren eigenen setblock
+                        // statt der Maschine.
+                        String want = out.onState().substring("entsteht:".length());
+                        BlockSpec built = c.get(out.at());
+                        String cell = "setblock {" + out.at().x() + "," + out.at().y() + "," + out.at().z() + "} ";
+                        boolean filled = m.sequence().stream().flatMap(st -> st.commands().stream())
+                                .anyMatch(cmd -> cmd.startsWith(cell));
+                        // Leer und Luft erwartet prüft nur etwas, wenn der Ablauf dort erst etwas hinsetzt, das die
+                        // Maschine wieder wegnimmt (Frucht, Bambus, drittes Kaktusstück).
+                        boolean empty = built == null || built.isAir();
+                        assertTrue(empty ? !want.equals("air") || filled : !built.id().equals(want),
+                                m.module().name() + " Ausgang " + out.name() + ": beim Bau schon "
+                                        + (built == null ? "leer" : built));
+                        String self = cell + "minecraft:" + want;
+                        assertFalse(m.sequence().stream().flatMap(st -> st.commands().stream())
+                                .anyMatch(cmd -> cmd.equals(self) || cmd.startsWith(self + " ")),
+                                m.module().name() + " Ausgang " + out.name() + ": der Ablauf setzt ihn selbst");
+                        continue;
+                    }
+                    if (c.get(out.at()) == null && out.onState().equals("air")) {
+                        continue;  // muss frei bleiben (xp_farm: kein Wasser im Schacht) – die Probe fragt Luft ab
+                    }
+                    if (c.get(out.at()) == null || c.get(out.at()).isAir()) {
+                        // Leer im Bau ist ein Ausgang nur, wenn der Ablauf genau diese Zelle mit genau dem geprüften
+                        // Block füllt (zuckerrohrfarm: Wachsen dauert für die Probe zu lange). Ohne diese Bindung
+                        // ginge ein vergessener Block als „wird schon gesetzt“ durch und die Probe fragte Luft ab.
+                        // Ausdrücklich Luft (bruchsteingenerator: Lavafach, das der Bau freiräumt) zählt wie leer.
+                        String fill = "setblock {" + out.at().x() + "," + out.at().y() + "," + out.at().z()
+                                + "} minecraft:" + out.onState();
+                        assertTrue(m.sequence().stream().flatMap(st -> st.commands().stream())
+                                .anyMatch(cmd -> cmd.equals(fill) || cmd.startsWith(fill + " ")),
+                                m.module().name() + " Ausgang " + out.name() + ": leer und von keinem Ablauf gefüllt");
+                        continue;
+                    }
+                    String want = out.onState().replaceAll("\\[.*", "");
+                    String built = c.get(out.at()).id();
+                    assertTrue(want.equals(built) || want.equals("bubble_column") && built.equals("water"),
+                            m.module().name() + " Ausgang " + out.name() + ": " + built + " statt " + want);
+                } else {
+                    assertTrue(c.get(out.at()) == null || c.get(out.at()).isAir(),
+                            m.module().name() + ": Türöffnung muss beim Bau frei sein");
+                }
+            }
+            // Jede Ausgangstabelle nennt genau alle Belegungen der Eingänge.
+            int combos = 1 << m.inputs().size();
+            m.expect().values().forEach(t -> assertEquals(combos, t.size(), m.module().name()));
+            // Abläufe nennen in jedem Schritt jeden Ausgang – außer einem reinen Warteschritt (leer, mit Befehl), der
+            // nur Zeit verstreichen lässt (schmelzanlage); der letzte Schritt prüft immer.
+            m.sequence().forEach(st -> assertTrue(st.expect().size() == m.outputs().size()
+                    || st.expect().isEmpty() && !st.commands().isEmpty(), m.module().name()));
+            if (!m.sequence().isEmpty()) {
+                assertFalse(m.sequence().getLast().expect().isEmpty(), m.module().name());
+            }
+        }
+    }
+
+    @Test
+    void machinesCompileThroughThePlanCompilerInEveryDirection() throws Exception {
+        // Grenzen wie config.yml (bau.max-ausdehnung 192): Vorher 6000/48 – addierer_4bit ist 110 breit.
+        PlanCompiler compiler = new PlanCompiler(id -> true, "stone", new PlanCompiler.Limits(150000, 192), LIB);
+        for (Machines.Machine m : LIB.machines()) {
+            for (String facing : new String[] {"front", "back", "left", "right"}) {
+                CompiledBuild b = compiler.compile(PlanParser.parse("{\"steps\":[{\"op\":\"module\",\"name\":\""
+                        + m.module().name() + "\",\"pos\":[0,0,0],\"facing\":\"" + facing + "\"}]}"));
+                assertTrue(b.warnings().isEmpty(), m.module().name() + " " + facing + ": " + b.warnings());
+                int n = 0;
+                for (Action a : b.actions()) {
+                    n += a.changes().size();
+                }
+                assertEquals(m.module().cells().size(), n, m.module().name() + " " + facing);
+            }
+        }
+    }
+}

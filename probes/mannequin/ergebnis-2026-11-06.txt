@@ -1,0 +1,30 @@
+attribute | fall_damage_multiplier=1.0 movement_speed=0.7 max_health=20.0 oxygen_bonus=0.0 armor_toughness=0.0 gravity=0.08 camera_distance=4.0 burning_time=1.0 max_absorption=0.0 movement_efficiency=0.0 attack_knockback=0.0 knockback_resistance=0.0 armor=0.0 safe_fall_distance=3.0 jump_strength=0.41999998688697815 water_movement_efficiency=0.0 waypoint_transmit_range=0.0 explosion_knockback_resistance=0.0 step_height=0.6 scale=1.0
+chunk | ladestufe=ENTITY_TICKING
+step_block_attr11 | step_height vorher=0.6
+passenger | addPassenger=true träger=WOLF
+vera_mauer | teleport tick=52 dx=3.20
+vera_flach | angekommen tick=52
+vera_mauer | angekommen tick=53
+vera_parcours | angekommen tick=57
+passenger | fahrzeug am ende=CraftWolf{uuid=3c670c74-3807-4eb6-8b07-cda60a1c5f20}
+ende | vera_parcours        dx=14.720 dy=0.000 boden=true wasser=false
+ende | vera_mauer           dx=8.000 dy=0.000 boden=true wasser=false
+ende | vera_flach           dx=14.680 dy=0.000 boden=true wasser=false
+ende | fall                 dx=0.000 dy=-5.000 boden=true wasser=false
+ende | fall_immovable       dx=0.000 dy=0.000 boden=false wasser=false
+ende | fall_nogravity       dx=0.000 dy=0.000 boden=false wasser=false
+ende | push_once            dx=1.863 dy=0.000 boden=true wasser=false
+ende | walk                 dx=35.000 dy=0.000 boden=true wasser=false
+ende | walk_immovable       dx=0.000 dy=0.000 boden=false wasser=false
+ende | walk_nogravity_air   dx=35.000 dy=0.000 boden=false wasser=false
+ende | step_slab_walk       dx=35.000 dy=0.000 boden=true wasser=false
+ende | step_block_walk      dx=3.200 dy=0.000 boden=true wasser=false
+ende | step_block_jump      dx=34.200 dy=0.000 boden=true wasser=false
+ende | step_block_attr11    dx=35.000 dy=0.000 boden=true wasser=false
+ende | wall_walk_jump       dx=3.200 dy=1.252 boden=false wasser=false
+ende | wall_teleport_steps  dx=63.000 dy=0.000 boden=false wasser=false
+ende | water_fall           dx=0.000 dy=-5.000 boden=true wasser=true
+ende | water_walk           dx=12.200 dy=-5.000 boden=true wasser=true
+ende | water_jump_up        dx=0.000 dy=-2.179 boden=false wasser=true
+ende | ladder_walk          dx=25.912 dy=0.000 boden=true wasser=false
+ende | passenger            dx=1.488 dy=0.219 boden=false wasser=false

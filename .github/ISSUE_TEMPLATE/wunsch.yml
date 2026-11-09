@@ -1,0 +1,19 @@
+name: Idee oder Wunsch
+description: Ein neuer Schnellbau, eine Maschine, eine Funktion für Vera …
+labels: ["wunsch"]
+body:
+  - type: textarea
+    id: idee
+    attributes:
+      label: Was soll gehen?
+      description: Wie würdest du es im Spiel benutzen?
+    validations:
+      required: true
+  - type: dropdown
+    id: selbst
+    attributes:
+      label: Willst du es selbst bauen?
+      options:
+        - "Ja, mit Pull Request"
+        - "Vielleicht, mit Hilfe"
+        - "Nein, nur die Idee"

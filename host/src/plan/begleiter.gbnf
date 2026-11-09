@@ -1,0 +1,43 @@
+# Begleiter-Grammatik (GBNF) – feste Übersetzung von src/main/resources/begleiter-schema.json des Plugins.
+#
+# WOZU: Der Begleiter (Plugin-Paket companion, 2026-11-04) antwortet mit einem Satz und höchstens drei Aktionen. Ohne
+# Grammatik schreibt ein kleines Modell gern Erklärtext statt JSON oder erfindet Aktionen; das Plugin müsste die
+# Antwort verwerfen und der Spieler warten. Wie bei bauplan.gbnf gibt es keinen Schema→GBNF-Wandler.
+# Reihenfolge der Felder wie im Schema: say, actions; in der Aktion op zuerst, dann item, count, block, radius, expr,
+# text, name.
+# FALLE: Ändert das Plugin begleiter-schema.json, muss diese Datei mit. tests/plan/test_plan.cpp vergleicht Feldnamen,
+# Aufzählungen und Grenzen mit dem Schema und wird rot, wenn sie auseinanderlaufen.
+
+root ::= "{" ws "\"say\"" ws ":" ws say ws "," ws "\"actions\"" ws ":" ws actions ws "}"
+
+say ::= "\"" char{1,300} "\""
+
+actions ::= "[" ws "]" | "[" ws action ( ws "," ws action ){0,2} ws "]"
+
+# Äußere Klammer: Der GBNF-Leser von llama.cpp erlaubt Zeilenumbrüche nur innerhalb von Klammern.
+action ::= ( "{" ws "\"op\"" ws ":" ws op
+  ( ws "," ws "\"item\"" ws ":" ws str48 )?
+  ( ws "," ws "\"count\"" ws ":" ws count )?
+  ( ws "," ws "\"block\"" ws ":" ws str48 )?
+  ( ws "," ws "\"radius\"" ws ":" ws radius )?
+  ( ws "," ws "\"expr\"" ws ":" ws str80 )?
+  ( ws "," ws "\"text\"" ws ":" ws str200 )?
+  ( ws "," ws "\"name\"" ws ":" ws str32 )?
+  ws "}" )
+
+op ::= "\"give\"" | "\"find\"" | "\"calc\"" | "\"follow\"" | "\"stay\"" | "\"come\"" | "\"build\"" | "\"song\"" | "\"time\"" | "\"weather\"" | "\"command\"" | "\"recipe\"" | "\"repair\"" | "\"mark\"" | "\"goto\"" | "\"where\"" | "\"remind\"" | "\"look\"" | "\"use\"" | "\"character\""
+
+str32 ::= "\"" char{0,32} "\""
+str48 ::= "\"" char{0,48} "\""
+str80 ::= "\"" char{0,80} "\""
+str200 ::= "\"" char{0,200} "\""
+
+# count 1 … 64 (ein Stapel), radius 1 … 64 Blöcke
+count ::= [1-9] | [1-5] [0-9] | "6" [0-4]
+radius ::= [1-9] | [1-5] [0-9] | "6" [0-4]
+
+# JSON-Zeichen ohne Steuerzeichen; Escapes wie in JSON.
+char ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} )
+
+# Leerraum begrenzt wie in bauplan.gbnf.
+ws ::= | " " | "\n" [ \t]{0,8}

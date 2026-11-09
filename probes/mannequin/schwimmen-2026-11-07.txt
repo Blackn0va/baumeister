@@ -1,0 +1,9 @@
+tauchen_jetzt | teleport tick=118
+ufer_jetzt | teleport tick=191
+tauchen_jetzt | teleport tick=205
+ende | see_jetzt      teleports=0 festgehangen=0 abstand_mittel=3.3 abstand_max=4.1 tiefenfehler=- an_land=nie geist_an_land=- ende=27.3,-0.6,0.5
+ende | see_neu        teleports=0 festgehangen=0 abstand_mittel=3.1 abstand_max=4.1 tiefenfehler=- an_land=nie geist_an_land=- ende=28.6,-0.8,0.5
+ende | tauchen_jetzt  teleports=2 festgehangen=0 abstand_mittel=3.4 abstand_max=4.2 tiefenfehler=2.5 an_land=nie geist_an_land=- ende=27.7,-0.2,0.5
+ende | tauchen_neu    teleports=0 festgehangen=0 abstand_mittel=3.3 abstand_max=4.1 tiefenfehler=0.3 an_land=nie geist_an_land=- ende=26.8,-0.8,0.5
+ende | ufer_jetzt     teleports=1 festgehangen=22 abstand_mittel=3.9 abstand_max=12.5 tiefenfehler=- an_land=192 geist_an_land=137 ende=31.0,1.0,0.5
+ende | ufer_neu       teleports=0 festgehangen=2 abstand_mittel=3.2 abstand_max=4.1 tiefenfehler=- an_land=153 geist_an_land=137 ende=30.8,1.0,0.5

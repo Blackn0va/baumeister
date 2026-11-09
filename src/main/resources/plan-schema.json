@@ -1,0 +1,165 @@
+{
+  "type": "object",
+  "properties": {
+    "design": {
+      "type": "string",
+      "maxLength": 700
+    },
+    "reply": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "mode": {
+      "enum": [
+        "new",
+        "update"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "fill",
+              "walls",
+              "hollow",
+              "line",
+              "set",
+              "cylinder",
+              "sphere",
+              "roof",
+              "door",
+              "module",
+              "skyscraper",
+              "house",
+              "logic",
+              "castle",
+              "wall",
+              "bridge",
+              "garden",
+              "tree"
+            ]
+          },
+          "block": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Block like /setblock: id[states]{data}. Data only for signs, containers and command blocks."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "expr": {
+            "type": "string",
+            "maxLength": 480
+          },
+          "from": {
+            "$ref": "#/$defs/vec"
+          },
+          "to": {
+            "$ref": "#/$defs/vec"
+          },
+          "pos": {
+            "$ref": "#/$defs/vec"
+          },
+          "radius": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 24
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 48
+          },
+          "hollow": {
+            "type": "boolean"
+          },
+          "floors": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 45
+          },
+          "window_block": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "roof_block": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "dome": {
+            "type": "boolean"
+          },
+          "shape": {
+            "enum": [
+              "gable",
+              "hip",
+              "flat"
+            ]
+          },
+          "overhang": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "gable_block": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "facing": {
+            "enum": [
+              "front",
+              "back",
+              "left",
+              "right",
+              "up",
+              "down"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "style": {
+            "enum": [
+              "arch",
+              "beam",
+              "round",
+              "cone",
+              "square"
+            ]
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "design",
+    "reply",
+    "mode",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "vec": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": -64,
+        "maximum": 200
+      },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}

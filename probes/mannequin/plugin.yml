@@ -1,0 +1,4 @@
+name: MannequinProbe
+version: 1
+main: MannequinProbe
+api-version: "1.21"

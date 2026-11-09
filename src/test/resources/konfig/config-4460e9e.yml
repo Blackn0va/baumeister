@@ -1,0 +1,50 @@
+# Baumeister – Konfiguration
+# Änderungen wirken nach /bm neuladen oder einem Server-Neustart.
+
+npc:
+  # Anzeigename. Chatnachrichten, die mit "<name>," / "<name>:" / "@<name>" beginnen,
+  # gehen als Bauauftrag an den NPC.
+  name: Baumeister
+  # Wird von /bm spawn gesetzt – nicht von Hand ändern.
+  uuid: ''
+
+llm:
+  # OpenAI-kompatibler Endpunkt von llama-server. 127.0.0.1:18080 ist das Server-Ende
+  # des SSH-Rückwärtstunnels aus llm-host/start-llm.ps1 – das LLM selbst läuft auf dem PC.
+  url: http://127.0.0.1:18080/v1/chat/completions
+  # Gemessen 2026-10-28: Qwen2.5-VL-7B Q4_K_M auf Core Ultra 7 155U (CPU) 4,6–8 Token/s; ein Plan
+  # mit Lageplan (Anbau) überschritt 360 s. 900 s reichen auf der CPU; auf einer GPU ist das Polster.
+  timeout-sekunden: 900
+  max-tokens: 3000
+  temperatur: 0.4
+  # Ein zweiter Versuch mit der Fehlermeldung, falls der Plan nicht passt.
+  reparatur-versuche: 1
+
+bau:
+  # 20 Ticks = 1 Sekunde. 3 → knapp 7 Blöcke pro Sekunde.
+  ticks-pro-block: 3
+  # Obergrenzen gegen versehentliche Riesenbauten.
+  max-blöcke: 6000
+  max-ausdehnung: 48
+  # Abstand zwischen Spieler und Vorderkante des Bauwerks.
+  abstand-vor-spieler: 3
+  # Unbekannte Blocknamen des LLM werden hierdurch ersetzt (statt Lücken im Bauwerk).
+  ersatzblock: stone
+  # Vor dem Bau wird für jeden Block ein BlockPlaceEvent/BlockBreakEvent im Namen des
+  # Spielers ausgelöst. So greifen WorldGuard und PlotSquared, als würde er selbst bauen.
+  # Ein einziges Nein bricht den Bau ab, bevor ein Block gesetzt ist.
+  rechte-prüfen: true
+  # Wie viele Bauten /bm rückgängig zurückdrehen kann (nur bis zum nächsten Neustart).
+  undo-tiefe: 5
+  # Steht am Bauplatz schon ein Bauwerk, darf ein Plan höchstens so viele seiner Blöcke verändern
+  # (Durchgang = 2, Fenster = 1). Mehr geht zur Nachbesserung zurück ans LLM. Sagt der Spieler
+  # "umbauen", "abreißen" oder "ersetzen", gilt die Grenze nicht.
+  max-überbauen: 12
+
+# Bei großen Bauten holt sich der Baumeister Helfer (eigene NPCs, verschwinden nach dem Bau).
+helfer:
+  zweiter-ab-blöcken: 300
+  dritter-ab-blöcken: 700
+
+# Rohantwort des LLM pro Auftrag unter plugins/Baumeister/pläne/ ablegen (die letzten 50).
+pläne-speichern: true

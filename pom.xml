@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.blackn0va</groupId>
+  <artifactId>baumeister</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>Baumeister</name>
+  <description>Spigot-NPC, der per lokalem LLM Bauwerke Block für Block errichtet</description>
+  <licenses>
+    <license>
+      <name>GPL-3.0-or-later</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.html</url>
+    </license>
+  </licenses>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.jupiter.version>6.1.0-M1</junit.jupiter.version>
+    <!--
+      Die Server-APIs stammen 1:1 aus /root/1.21.11/bundler/libraries auf dev01
+      (siehe lib/README.md). Vorher: keiner – Spigot veröffentlicht 1.21.11 nicht
+      auf Maven Central, und das Spigot-Nexus wäre ein weiterer externer Dienst.
+      So kompiliert das Plugin gegen genau die Fassung, die auf dem Server läuft.
+      Maven warnt wegen systemPath im Projekt; das ist hier gewollt.
+    -->
+    <server.lib>${project.basedir}/lib</server.lib>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.spigotmc</groupId>
+      <artifactId>spigot-api</artifactId>
+      <version>1.21.11-R0.2-SNAPSHOT</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/spigot-api-1.21.11-R0.2-SNAPSHOT.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.13.2</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/gson-2.13.2.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>33.5.0-jre</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/guava-33.5.0-jre.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>net.md-5</groupId>
+      <artifactId>bungeecord-chat</artifactId>
+      <version>1.21-R0.4</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/bungeecord-chat-1.21-R0.4.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>org.joml</groupId>
+      <artifactId>joml</artifactId>
+      <version>1.10.8</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/joml-1.10.8.jar</systemPath>
+    </dependency>
+
+    <!--
+      SnakeYAML bringt der Server mit (bundler/libraries). Vorher fehlte es hier, weil nur kompiliert wurde –
+      YamlConfiguration lief in keinem Test. Jetzt prüfen die Tests Config-Migration und /bm neuladen mit echtem
+      YAML samt Kommentaren; ohne diesen Eintrag scheitern sie mit NoClassDefFoundError org/yaml/snakeyaml.
+    -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>2.2</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/snakeyaml-2.2.jar</systemPath>
+    </dependency>
+    <!-- Simple Voice Chat (softdepend, 2026-11-04): Begleiter im Spiel hören und sprechen lassen. API 2.6.0 als
+         Untergrenze (läuft mit jedem neueren Voice-Chat-Plugin); SHA-1 gegen maven.maxhenkel.de geprüft (lib/README.md). -->
+    <dependency>
+      <groupId>de.maxhenkel.voicechat</groupId>
+      <artifactId>voicechat-api</artifactId>
+      <version>2.6.0</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/voicechat-api-2.6.0.jar</systemPath>
+    </dependency>
+    <!-- CoreProtect (softdepend, 2026-11-05): Reparieren nach Explosionen und „wer war an meiner Kiste?“. Nur zum
+         Kompilieren; angefasst nur über CoreProtectBridge, wenn das Plugin läuft. -->
+    <dependency>
+      <groupId>net.coreprotect</groupId>
+      <artifactId>coreprotect</artifactId>
+      <version>24.1</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/CoreProtect-CE-24.1.jar</systemPath>
+    </dependency>
+    <!-- WorldEdit nur für die Bauteil-Bibliothek (softdepend), Fassung wie auf dev01. -->
+    <dependency>
+      <groupId>com.sk89q.worldedit</groupId>
+      <artifactId>worldedit-bukkit</artifactId>
+      <version>7.4.1</version>
+      <scope>system</scope>
+      <systemPath>${server.lib}/worldedit-bukkit-7.4.1.jar</systemPath>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${junit.jupiter.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <version>${junit.jupiter.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>Baumeister-${project.version}</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>plugin.yml</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>plugin.yml</exclude>
+        </excludes>
+      </resource>
+      <!--
+        MIT (terraplusplus, earth/AiroceanProjection) verlangt den Lizenzhinweis in jeder Kopie – die Kommentare im
+        Quelltext landen nicht in der .class. Deshalb liegt die Datei im JAR unter META-INF. Seit 2026-11-09 auch
+        LICENSE: Das Plugin selbst steht unter GPL-3.0-or-later, wer das JAR weitergibt, gibt den Lizenztext mit.
+      -->
+      <resource>
+        <directory>${project.basedir}</directory>
+        <targetPath>META-INF</targetPath>
+        <filtering>false</filtering>
+        <includes>
+          <include>THIRD-PARTY-NOTICES.md</include>
+          <include>LICENSE</include>
+        </includes>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <compilerArgs>
+            <arg>-Xlint:all,-processing,-serial</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

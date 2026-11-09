@@ -1,0 +1,88 @@
+// Baumeister-Client: baut Pläne des Baumeisters mit dem echten Minecraft-Client statt über das Server-Plugin.
+// Die Plan-Logik (Pakete plan und logic) kommt unverändert aus dem Plugin (../src/main/java) – eine Codebasis, keine
+// Kopie. Wer hier eigene Fassungen davon anlegt, hat zwei Prüfketten, die auseinanderlaufen.
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+base {
+    archivesName = 'baumeister-client'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir '../src/main/java'
+            include 'com/blackn0va/baumeister/plan/**'
+            include 'com/blackn0va/baumeister/logic/**'
+            include 'com/blackn0va/baumeister/client/**'
+        }
+        resources {
+            srcDir '../src/main/resources'
+            include 'system-prompt.txt'
+            include 'plan-schema.json'
+            include 'fabric.mod.json'
+            include 'assets/**'
+        }
+    }
+}
+
+// Spieltest im echten Client (Fabric Client-Gametests): ./gradlew runClientGameTest startet Minecraft, legt eine Welt
+// an und baut in beiden Bauweisen – siehe src/gametest.
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = 'baumeister-client-test'
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+        username = 'Baumeister'
+    }
+}
+
+// Der Spieltest synchronisiert normalerweise jeden Tick mit dem Netz; die Spieler-Bauweise schickt Eingabe-Pakete
+// selbst (Schleich-Klick, PlayerPlacer.sneakClick), das bricht die Synchronisation ab („Network synchronizer in invalid
+// state“, 2026-10-31). Nur für den Testlauf aus; im Spiel gibt es diese Synchronisation nicht.
+loom {
+    runs {
+        configureEach {
+            if (name == 'clientGameTest') {
+                vmArg '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
+            }
+        }
+    }
+}
+
+dependencies {
+    // Ab 26.x ohne Mappings: Minecraft kommt mit seinen echten (Mojang-)Namen, die der Code ohnehin benutzt.
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Schnelle Unit-Tests für reine Logik (ohne Minecraft-Start); der Spieltest bleibt runClientGameTest.
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+processResources {
+    def version = project.version
+    inputs.property 'version', version
+    filesMatching('fabric.mod.json') {
+        expand 'version': version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+    it.options.encoding = 'UTF-8'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}

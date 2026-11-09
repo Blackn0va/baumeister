@@ -1,0 +1,22 @@
+# Zeilenenden im Repo: LF (Hausstil). Ausnahmen wie im Code-Stil festgelegt.
+* text=auto eol=lf
+
+# PowerShell: UTF-8 mit BOM und CRLF (Windows PowerShell 5.1 liest sonst ANSI); cmd/bat: CRLF und ASCII.
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# Dateien, deren SHA-256 der Bau prüft (deps.lock.json, licenses.json): byte-genau, nie umwandeln.
+# Wer das zurückdreht, bricht CMake/build.ps1 auf jedem Klon mit anderem core.autocrlf ab.
+host/third_party/** -text
+host/licenses/**    -text
+*.qm               binary
+
+# Binärdateien
+*.jar  binary
+*.ico  binary
+*.png  binary
+*.gguf binary
+*.zip  binary

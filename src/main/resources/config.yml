@@ -1,0 +1,350 @@
+# Baumeister – Konfiguration
+# Änderungen wirken nach /bm neuladen oder einem Server-Neustart; /bm neuladen sagt, was erst nach dem laufenden
+# Bau oder nach einem Neustart gilt. Fehlende Schlüssel trägt das Plugin beim Start samt Kommentar nach (vorhandene
+# Werte bleiben, Sicherung unter plugins/Baumeister/sicherung/).
+
+npc:
+  # Anzeigename. Chatnachrichten, die mit "<name>," / "<name>:" / "@<name>" beginnen,
+  # gehen als Bauauftrag an den NPC.
+  name: Baumeister
+  # Wird von /bm spawn gesetzt – nicht von Hand ändern.
+  uuid: ''
+
+llm:
+  # OpenAI-kompatibler Endpunkt von llama-server. 127.0.0.1:18080 ist das Server-Ende
+  # des SSH-Rückwärtstunnels aus llm-host/start-llm.ps1 – das LLM selbst läuft auf dem PC.
+  url: http://127.0.0.1:18080/v1/chat/completions
+  # Modellname in jeder Anfrage. Baumeister-App und llama-server übergehen ihn – „lokal“ passt. Mit Ollama
+  # (url: http://127.0.0.1:11434/v1/chat/completions) der Name aus „ollama list“, z. B. qwen2.5:7b.
+  modell: lokal
+  # Gemessen 2026-10-28: Qwen2.5-VL-7B Q4_K_M auf Core Ultra 7 155U (CPU) 4,6–8 Token/s; ein Plan
+  # mit Lageplan (Anbau) überschritt 360 s. 900 s reichen auf der CPU; auf einer GPU ist das Polster.
+  timeout-sekunden: 900
+  max-tokens: 3000
+  temperatur: 0.4
+  # Ein zweiter Versuch mit der Fehlermeldung, falls der Plan nicht passt.
+  reparatur-versuche: 1
+  # Plan-Prüfer (Tür nicht in der Wand, Vollklotz statt Hohlraum, schwebende oder überlappende Teile …).
+  # Schwere Befunde gehen in die Reparaturrunde oben (kein Extra-Aufruf, wenn der Plan sauber ist).
+  # streng: bleibt der Fehler nach der Reparatur, Absage (Hochhaus: bewährter Ersatzbau).
+  # reparieren: nach der Reparatur trotzdem bauen, Befunde nur ins Log. aus: keine Prüfung.
+  plan-prüfer: streng
+  # Recherche vor dem Planen: Nennt der Auftrag ein echtes Bauwerk („bau den Kölner Dom“), holt der Baumeister Maße,
+  # Art, Baustil und Material aus Wikipedia/Wikidata und gibt sie dem LLM mit; der Plan-Prüfer achtet auf die Höhe.
+  # Ohne Netz oder Treffer wird wie bisher geplant. Ergebnisse liegen 30 Tage unter plugins/Baumeister/wissen/.
+  recherche: true
+  # Wikimedia verlangt eine Kontaktangabe (URL oder E-Mail) im User-Agent – ohne sie drosselt es (HTTP 429).
+  recherche-kontakt: https://github.com/Blackn0va/baumeister
+  recherche-wikipedia: https://de.wikipedia.org/w/api.php
+  recherche-wikidata: https://www.wikidata.org/w/api.php
+
+bau:
+  # 20 Ticks = 1 Sekunde. 3 → knapp 7 Blöcke pro Sekunde.
+  ticks-pro-block: 3
+  # Obergrenzen gegen Unsinn (ein 40-stöckiges Hochhaus hat ~17 000 Blöcke und 120+ Blöcke Höhe).
+  max-blöcke: 150000
+  max-ausdehnung: 192
+  # Bauten, die Block für Block länger bräuchten, setzt der Baumeister im Schnellgang
+  # (mehrere Blöcke je Tick), damit sie in etwa dieser Zeit stehen.
+  zieldauer-sekunden: 120
+  # Abstand zwischen Spieler und Vorderkante des Bauwerks.
+  abstand-vor-spieler: 3
+  # Unbekannte Blocknamen des LLM werden hierdurch ersetzt (statt Lücken im Bauwerk).
+  ersatzblock: stone
+  # Vor dem Bau wird für jeden Block ein BlockPlaceEvent/BlockBreakEvent im Namen des
+  # Spielers ausgelöst. So greifen WorldGuard und PlotSquared, als würde er selbst bauen.
+  # Ein einziges Nein bricht den Bau ab, bevor ein Block gesetzt ist.
+  rechte-prüfen: true
+  # Wie viele Bauten /bm rückgängig zurückdrehen kann (über Neustarts hinweg, siehe komfort:).
+  undo-tiefe: 5
+  # Steht am Bauplatz schon ein Bauwerk, darf ein Plan höchstens so viele seiner Blöcke verändern
+  # (Durchgang = 2, Fenster = 1). Mehr geht zur Nachbesserung zurück ans LLM. Sagt der Spieler
+  # "umbauen", "abreißen" oder "ersetzen", gilt die Grenze nicht.
+  max-überbauen: 12
+
+# Bei großen Bauten holt sich der Baumeister Helfer (eigene NPCs, verschwinden nach dem Bau).
+# Ohne Wunsch des Spielers. Mit Wunsch: "... mit 4 Helfern" im Auftrag, /bm helfer <0-16|auto>, Chat "mehr helfer".
+helfer:
+  zweiter-ab-blöcken: 300
+  dritter-ab-blöcken: 700
+
+# Rohantwort des LLM pro Auftrag unter plugins/Baumeister/pläne/ ablegen (die letzten 50).
+pläne-speichern: true
+
+# Echte Orte 1:1 aus OpenStreetMap (/bm stadt <Ort> [radius], dann /bm stadt los).
+# Kartendaten © OpenStreetMap-Mitwirkende, Lizenz ODbL – bei Veröffentlichung von Bildern nennen.
+# Die öffentlichen Dienste haben Nutzungsregeln (keine Dauerabfragen); für viele Orte eigenen Overpass betreiben.
+stadt:
+  # Öffentliche Overpass-Instanzen (OSM-Wiki); ist eine ausgelastet, fragt der Baumeister sofort die nächste.
+  overpass-urls:
+    - https://overpass-api.de/api/interpreter
+    - https://overpass.kumi.systems/api/interpreter
+    - https://overpass.private.coffee/api/interpreter
+  nominatim-url: https://nominatim.openstreetmap.org/search
+  # Land für eine fünfstellige Postleitzahl ohne Landesangabe (/bm stadt 71735). Andere Länder: /bm stadt 8001 ch.
+  # Leer = jedes Land (dann trifft eine PLZ, was Nominatim zuerst findet).
+  plz-land: de
+  radius-standard: 150
+  # Große Orte baut der Baumeister in Etappen (256 × 256 m), die Karte kommt in Kacheln (1 km²) –
+  # der Speicher hält nur zwei davon. 5000 m = eine Großstadt wie München (dauert Stunden).
+  radius-max: 5000
+  # /bm stadt <Ort> ohne Radius baut den ganzen Ort so weit, wie Nominatim ihn umgrenzt – höchstens so viele Meter.
+  radius-max-ganz: 25000
+  # Blöcke je Tick für alle Bots zusammen (20 Ticks = 1 s). Im Lauf: /bm tempo <n>, Chat "schneller".
+  blöcke-pro-tick: 2000
+  # So viele schon passende Zellen (Luft auf Luft, gleicher Block) kosten so viel Tempo wie ein gesetzter Block.
+  # 4 = gemessen auf dem Laptop (2026-10-29); 1 = altes Verhalten, jede Zelle zählt voll (falls dev01 ruckelt).
+  gleiche-zellen-je-block: 4
+  # Helfer-NPCs zusätzlich zum Baumeister. Im Lauf: /bm helfer <n>, Chat "mehr helfer".
+  helfer: 4
+  # Tick-Bremse: Neue Chunks zu erzeugen ist das Teure (dev01: bis zu 21 s Stillstand beim ersten Bau eines Dorfs).
+  # Je Tick höchstens so viele noch nicht geladene Chunks anfassen und höchstens so viele Millisekunden bauen;
+  # ein neuer Chunk kommt nur dran, solange die Millisekunden noch reichen.
+  neue-chunks-pro-tick: 8
+  ms-pro-tick: 25
+  # Erst ab so vielen Millisekunden zwischen zwei Ticks gilt der Server als überlastet und der Stadtbau bremst.
+  # 75 war auf dev01 (Celeron) zu streng: die Stadt wuchs nur noch im geladenen Bereich um den Spieler.
+  lag-ms: 150
+  # Obergrenze je Etappe – nur gegen kaputte Kartendaten.
+  max-blöcke-je-etappe: 12000000
+  # Rückgängig für Städte liegt unter plugins/Baumeister/rückgängig/ (gzip, ~3 Byte je Block) und wird beim
+  # Zurücksetzen und beim Herausfallen aus dem Stapel gelöscht (beim Neustart nur ohne komfort.rückgängig-über-neustart).
+  rückgängig: true
+  # Ein laufender Stadtbau übersteht Pause und Neustart: Der Stand liegt in plugins/Baumeister/stadt/fortsetzen.json,
+  # nach dem Start geht es an der ersten nicht ganz fertigen Etappe weiter (war er pausiert, bleibt er pausiert –
+  # /bm weiter). false = nur von Hand mit /bm weiter. /bm stop löscht den Stand.
+  fortsetzen-nach-neustart: true
+
+# Die ganze Erde 1:1 als eine Welt, die beim Erkunden entsteht (/bm erde, /bm reise <Ort>, /bm wo).
+# Braucht das Datapack aus /bm gelaende einrichten und danach einen Neustart (Welt <Hauptwelt>_baumeister_erde).
+# Höhen: Mapzen/AWS Terrain Tiles (SRTM, USGS u. a.), Ortssuche: Nominatim (OpenStreetMap, ODbL).
+erde:
+  # airocean = Fullers Netz (Kontinente am Stück, Längen ±11 %, in Hepberg Nord = −z);
+  # sinus6 = 60 Streifen à 6° (Norden überall oben, fast verzerrungsfrei, aber Lücken zwischen den Streifen).
+  # Wird beim ersten Start mit Erdwelt in plugins/Baumeister/erde/welt.json festgeschrieben – danach gilt immer
+  # die gespeicherte Wahl (sonst passten neue Chunks nicht mehr zu alten), eine Änderung hier gibt nur eine Warnung.
+  projektion: airocean
+  # Meeresboden höchstens so viele Meter unter dem Meer; tiefer wird angehoben (Tiefsee 1:1 = Millionen Wasserblöcke).
+  meerestiefe-max: 200
+  # Grundgestein so viele Blöcke unter der Oberfläche, darunter Luft.
+  tiefe: 64
+  # Höhenkacheln im Speicher (je ~256 KB, 256 ≈ 64 MB); ältere liegen auf der Platte unter höhen/.
+  kacheln-im-speicher: 256
+  # Senken unter Meereshöhe ohne Verbindung zum Ozean (Death Valley, Totes Meer, Kaspisches Becken) und Polder bleiben
+  # trocken, Seen bekommen ihre eigene Wasserfläche. Aus = jede Stelle unter 0 m ist Meer (Stand vor 2026-10-29).
+  # Ändert nur das Wasser neuer Chunks, nie die Höhe des Geländes. Schon erzeugte Chunks behalten ihr altes Wasser:
+  # Grenzt ein alter, bis 0 gefüllter Chunk an einen neuen trockenen Polder oder eine Senke, läuft das alte Wasser
+  # beim ersten Blockupdate hinein. Vor dem Einschalten in einer schon erkundeten Erdwelt prüfen, ob dort Chunks unter
+  # 0 m im Landesinneren liegen.
+  senken: true
+  # Chunks, die bei fehlenden Höhendaten (Netz) geschätzt entstanden, neu malen, sobald die Daten da sind – nur Säulen,
+  # deren Oberfläche noch unverändert ist (Spielerbauten bleiben). Liste unter plugins/Baumeister/erde/geschätzt.txt.
+  neu-malen: true
+# Weltbau: OpenStreetMap auf das Gelände der Erdwelt, Kachel für Kachel (1024 × 1024 Blöcke). Kartendienst und
+# Zwischenspeicher wie unter stadt:, Tempo/Chunks/Lastregelung ebenfalls aus stadt:. Fertige Kacheln stehen in
+# plugins/Baumeister/erde/weltbau.txt und werden nie zweimal gebaut.
+weltbau:
+  # Beim Start automatisch Kacheln rund um die Spieler in der Erdwelt bauen (/bm weltbau auto an|aus).
+  auto: false
+  # Umkreis der Automatik in Kacheln um die Kachel jedes Spielers: 1 = 3 × 3, 2 = 5 × 5.
+  radius-kacheln: 1
+  # Mindestabstand zwischen zwei Overpass-Abfragen (öffentlicher Dienst – nicht unter 10).
+  abstand-sekunden: 20
+  # /bm weltbau <Ort> ohne Radius: der ganze Ort laut Nominatim, sonst so viele Meter; nie mehr als radius-max.
+  radius-standard: 500
+  radius-max: 5000
+  # Helfer-NPCs je Kachel zusätzlich zum Baumeister.
+  helfer: 2
+  # Rückgängig je Kachel in einem eigenen Speicher, NICHT auf dem Stapel von /bm rückgängig (sonst verdrängten die
+  # Kacheln die Spielerbauten). Zurück: /bm weltbau rückgängig [tx tz] – nimmt die Kachel auch aus weltbau.txt.
+  rückgängig: true
+  # So viele zuletzt gebaute Kacheln lassen sich zurücksetzen (~2,8 MB je Million Blöcke unter rückgängig/).
+  rückgängig-tiefe: 3
+
+# Komfort: Fortschrittsbalken, Warteschlange, Bauvorschau, Rückgängig über Neustart.
+komfort:
+  # Fortschrittsbalken (BossBar) bei Bau, Stadtbau und Weltbau – der Auftraggeber sieht ihn überall,
+  # andere Spieler nur in diesem Umkreis (Blöcke) um die Baustelle. 0 = nur der Auftraggeber.
+  bossbar: true
+  bossbar-umkreis: 64
+  # Aufträge, die während eines Baus kommen, warten in einer Reihe (/bm warteschlange) statt abgewiesen zu
+  # werden. Die Rechteprüfung läuft erst, wenn der Auftrag dran ist. 0 = keine Warteschlange (alte Absage).
+  warteschlange-max: 10
+  warteschlange-je-spieler: 2
+  # Bauvorschau (/bm vorschau <auftrag>, Chat "Baumeister, zeig mir …"): Umriss aus Partikeln, "ja" baut.
+  # Danach verfällt die Vorschau.
+  vorschau-sekunden: 120
+  # /bm rückgängig über einen Neustart hinweg: Einträge liegen mit Begleitzettel unter rückgängig/ und werden
+  # beim Start geprüft (beschädigte werden gelöscht, nicht geladen). false = beim Start alles löschen (alter Stand).
+  rückgängig-über-neustart: true
+  # Ältere Einträge und alles über dieser Größe fallen beim Start heraus (die neuesten bleiben).
+  rückgängig-max-tage: 7
+  rückgängig-max-mb: 512
+gui:
+  # Stadt- und Weltbau als Karte im Baumeister-Host zeigen (Reiter „Stadt“): Das Plugin schickt je Etappe eine
+  # Draufsicht und einmal je Sekunde den Fortschritt – über denselben Weg wie die LLM-Anfragen (llm.url, auf dev01 der
+  # SSH-Tunnel). Reine Anzeige: Ist der Host nicht erreichbar, baut der Baumeister weiter.
+  stadt-anzeige: true
+  # Leer = Adresse aus llm.url (gleicher Host und Port, Pfad /baumeister/v1/stadt). Nur setzen, wenn der Host woanders
+  # lauscht, z. B. http://127.0.0.1:18080/baumeister/v1/stadt.
+  url: ""
+  # Nach jedem Auftrag melden, was im Spiel daraus wurde (gebaut, verworfen, abgesagt) – die App zeigt es in der Karte
+  # „Letzter Auftrag“ und im Reiter „Verlauf“. Reine Anzeige, derselbe Weg wie oben (Pfad /baumeister/v1/ergebnis).
+  ergebnis-melden: true
+# Minikarte (/bm karte): eine Karte in der Hand, die mitwandert – Plotgrenze, Baustelle, Baumeister und Helfer.
+# Liest nur Chunks, die ohnehin geladen sind, und nur mit festem Zeitbudget je Tick (statt Cartographer2, das den
+# Server-Thread auf dev01 voll auslastete).
+karte:
+  an: true
+  # Welten mit Karte; leer = jede Welt außer Nether und End (auch Erd- und Geländewelt). Beispiel: [plotwelt, stadtwelt]
+  welten: []
+  # Bild neu zusammensetzen alle n Ticks, je Spieler mit Karte in der Hand (10 = zweimal je Sekunde).
+  bild-ticks: 10
+  # Höchstens so viele Millisekunden je Tick für das Einlesen von Chunks (0,2–10).
+  ms-pro-tick: 2.0
+  # Sichtbare Chunks nach so vielen Sekunden neu einlesen – so wächst ein Bau auf der Karte mit.
+  # Was Spieler setzen oder abbauen, erscheint sofort.
+  auffrischen-sekunden: 15
+  # Zwischenspeicher in Chunks (je rund 0,8 KB).
+  kacheln-im-speicher: 4096
+  # Blöcke je Kartenpunkt, bis ein Spieler selbst zoomt (Links-/Rechtsklick mit der Karte, /bm karte zoom): 1/16–64.
+  zoom: 1
+  # Karte dreht sich mit dem Blick (oben = Blickrichtung); je Spieler umschaltbar: /bm karte drehen an|aus.
+  drehen: true
+  # Übersicht, damit die ganze Karte aufgedeckt ist: je Chunk 4 × 4 Stichproben – vorab aus den Regionsdateien gelesen
+  # (eigener Thread, alle 10 min nur Geändertes), dazu beim Laden und Entladen jedes Chunks; gespeichert unter
+  # minikarte/<welt>/. false = nur, was gerade geladen ist.
+  übersicht: true
+  # Übersichtsregionen (32 × 32 Chunks, je 64 KB) im Speicher; ganz herausgezoomt berührt ein Bild bis zu ~300.
+  regionen-im-speicher: 512
+# Begleiter (2026-11-04): ein Helfer, den jeder Spieler holen kann – „Hey Vera“ im Chat oder /bm begleiter. Er folgt,
+# antwortet über das LLM (Grammatik „begleiter“ im Baumeister-Host), rechnet, sucht Blöcke, spielt Lieder und gibt
+# Gegenstände – Letzteres nur im Kreativmodus oder mit Recht baumeister.begleiter.geben, Erze suchen im
+# Überlebensmodus nur mit baumeister.begleiter.suchen.
+# Rucksack: eine Kiste im Inventar mit sehr viel Platz (Rechtsklick oder /rucksack). Der Inhalt liegt auf dem Server
+# in plugins/Baumeister/rucksack/<uuid>.yml und gehört dem Spieler – eine kopierte Kiste kopiert nichts.
+rucksack:
+  an: true
+  # Seiten zu je 45 Plätzen (1–1000, wirkt nach Neustart). 100 Seiten = 4500 Stapel. Weniger einstellen, als
+  # belegt ist, öffnet den Rucksack nicht mehr (fail-closed, nichts geht verloren) – dann den Wert wieder anheben.
+  seiten: 100
+  # In diesen Spielmodi geht er auf. Ohne CREATIVE: sonst wandern Sachen aus dem Kreativmodus ins Überleben.
+  spielmodi: [SURVIVAL, ADVENTURE]
+  # Wer keinen hat, bekommt die Kiste beim Beitreten.
+  beim-beitreten-geben: true
+
+# Hilfebuch (/hilfe): beim allerersten Beitreten öffnet es sich einmal von selbst.
+hilfe:
+  beim-ersten-beitreten: true
+  # Jeder bekommt das Hilfebuch als Gegenstand ins Inventar (wie den Rucksack); Rechtsklick schlägt es aktuell auf.
+  buch-im-inventar: true
+
+# Sprache auf dem Server (2026-11-08): Baumeister und Vera sprechen im Spiel über Simple Voice Chat, gerechnet mit
+# Piper (github.com/rhasspy/piper) auf diesem Server – ohne Baumeister-App. Gemessen auf einem Celeron J4125: 8 s
+# Sprache in 2,6 s, 153 MB je Satz. Fertige Sätze liegen unter plugins/Baumeister/sprache/ (bis speicher-mb).
+# stimme: Piper-Modell des Baumeisters (.onnx, daneben .onnx.json), z. B. de_DE-thorsten-medium (CC0).
+# vera-stimme: Veras eigenes Modell (leer = wie stimme), z. B. de_DE-kerstin-low (CC0); vera-tonhöhe: 1 = wie
+# aufgenommen, 1,25 = Cartoon-Kumpel (höher, kaum schneller), 0,7–1,8. Englische Modelle sprechen Deutsch schlecht.
+# Bequemer: im Hilfebuch, Kapitel „Stimme“ (Admins), oder /bm sprache. Modelle in plugins/Baumeister/stimmen/ stehen
+# dort zur Wahl. quelle: server = diese Stimmen auch für Vera, wenn die App verbunden ist; app = Stimme der App.
+sprache:
+  an: false
+  piper: ""
+  stimme: ""
+  tonhöhe: 1.0
+  vera-stimme: ""
+  vera-tonhöhe: 1.25
+  # Alle festen Sätze von Vera und dem Baumeister einmal vorab sprechen (eine Minute nach dem Start, niedrige
+  # Priorität): Danach kommen sie sofort, auch ohne LLM. Liegt unter plugins/Baumeister/sprache/.
+  vorrat: true
+  quelle: server
+  baumeister: true
+  max-zeichen: 400
+  speicher-mb: 300
+
+# Schematics (.schem, .schematic, .litematic, .nbt in plugins/Baumeister/schematics/): Ein Auftrag, der genau ein
+# solches Bauteil baut, darf so groß sein wie hier – größer als bau.max-blöcke/bau.max-ausdehnung, die für Pläne des
+# LLM gelten. Gemessen 2026-11-08: Olymp vom eigenen Server 952 911 Blöcke, bedwars 327 × 140 × 327.
+schematics:
+  max-blöcke: 1000000
+  max-ausdehnung: 384
+
+# Tagesaufgaben (/aufgaben): drei je Tag für alle, Punkte, Serie, Rangliste, Belohnung in Erfahrung. Zählen nur im
+# Überleben/Abenteuer in diesen Welten (leer = überall; hauptwelt = die Welt aus level-name samt Nether und End, wie
+# immer sie heißen); Abbau selbst gesetzter Blöcke zählt nicht.
+aufgaben:
+  an: true
+  welten: [hauptwelt]
+
+# So heißt im Chat die Welt, in der Tagesaufgaben zählen und Veras Abenteuer läuft („nur in der Hauptwelt“). Auf
+# einem Server mit eigener Farmwelt z. B. Farmwelt.
+spielwelt-name: Hauptwelt
+
+# Warps für alle (/warp, /warps, /setwarp, /delwarp) – ersetzt GWarp; dessen Warps.data wird beim ersten Start
+# übernommen (danach plugins/Baumeister/warps.json).
+warp:
+  an: true
+  # So viele eigene Warps darf jeder setzen (0 = keine; baumeister.warp.unbegrenzt hebt die Grenze auf).
+  anzahl-je-spieler: 1
+  # Wartezeit zwischen zwei Sprüngen (Sekunden; baumeister.warp.sofort hebt sie auf).
+  abklingzeit-sekunden: 10
+
+begleiter:
+  an: true
+  # Kurzer heller Laut zu jedem Satz (wie eine Trickfilmfigur), nur beim angesprochenen Spieler. false = still.
+  plapperton: true
+  # Ins Wort fallen (Simple Voice Chat): Sprichst du ~0,4 s am Stück, während Vera redet, hört sie auf. Ohne
+  # Kopfhörer kann ihre eigene Stimme aus deinem Lautsprecher sie abbrechen – dann false.
+  unterbrechen: true
+  # Name und Rufwort (2–16 Buchstaben). Kurze, deutlich gesprochene Namen erkennt die Spracherkennung am besten.
+  name: Vera
+  # Abstand zum Spieler beim Folgen (Blöcke, 1,5–8).
+  abstand: 2.5
+  # So lange nach seiner letzten Antwort hört er auch ohne Namen zu (Sekunden, 0 = nur mit Namen).
+  gespräch-sekunden: 30
+  # Höchstens so viele Gegenstände je Aktion (1–64).
+  max-geben: 64
+  # Länge der LLM-Antwort (Token); die Grammatik begrenzt den Satz ohnehin auf 300 Zeichen.
+  max-tokens: 400
+  # Vorlesen und Sprechen über die Baumeister-App auf dem PC des Spielers (Pfade /baumeister/v1/begleiter/…, Adresse
+  # wie gui.url bzw. llm.url). false = nur Chat.
+  sprache: true
+  # Abenteuer (2026-11-04): Vera spielt Minecraft mit dir – Etappen vom ersten Holz bis zum Enderdrachen, normal
+  # (sie kämpft mit) oder Hardcore (ein Leben, nur Rat). Start: „Vera, lass uns Minecraft spielen“ bzw. „… hardcore“
+  # oder /bm begleiter abenteuer [normal|hardcore|stand|aus]. Solange es läuft, gibt Vera nichts, führt keine Befehle
+  # aus, teleportiert nicht und lässt nicht bauen – auch nicht für Admins.
+  abenteuer:
+    # Nur in diesen Welten (hauptwelt = die Welt aus level-name samt Nether und End; feste Namen gehen auch).
+    welten:
+      - hauptwelt
+    # Im normalen Modus schlägt Vera Monster in der Nähe (Schwert, etwa 5 Schaden). Im Hardcore nie.
+    mitkämpfen: true
+# Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
+# und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
+fernverbindung:
+  # Für wen eine App sprechen darf: Was sie über ihr Mikrofon erkennt, gilt nur für Spieler, die hier unter ihrem
+  # Pin-Namen stehen. Alles andere wird verworfen – auch ohne Kopf oder von einer App, die hier fehlt. Leer = wie über
+  # den SSH-Tunnel: Die App spricht für den Spieler, den sie nennt. Beispiel:
+  #   apps:
+  #     gpu-pc:
+  #       spieler: [Blackkn0va]
+  apps: {}
+mods:
+  # /mods im Spiel: Download-Link für das Modpaket (z. B. ein geteilter Ordner). Leer = „gibt dir der Admin“. Das Paket
+  # baut tools/modpaket/Modpaket-Erstellen.ps1 auf dem Spiele-PC; es enthält fremde Mods – nicht öffentlich teilen.
+  link: ""
+  # Download direkt vom Server (2026-11-08): /mods gibt jedem Spieler einen eigenen Link (24 h) auf eine kleine Seite
+  # mit den Dateien aus plugins/Baumeister/modpaket/ (Modpaket-Erstellen.ps1 -Hochladen). Ohne Link kommt niemand an die
+  # Dateien. Öffnet einen Port: Router-Freigabe TCP <port> auf diesen Rechner nötig, ggf. Firewall. Nur http.
+  # Änderungen hier wirken nach einem Neustart. Ist es an und läuft, gilt es vor mods.link.
+  download:
+    an: false
+    # So erreichen Spieler den Server von außen (DNS-Name oder IPv4), z. B. mein-server.ddns.net.
+    adresse: ""
+    port: 25581
+    # Auf welcher Adresse gelauscht wird (0.0.0.0 = alle).
+    binden: 0.0.0.0
+    # HTTPS: PEM-Dateien von certbot (Let's Encrypt), z. B. /etc/letsencrypt/live/<adresse>/fullchain.pem und
+    # privkey.pem. Leer = http. Ein neues oder verlängertes Zertifikat gilt nach spätestens einer Minute, ohne Neustart.
+    zertifikat: ""
+    schlüssel: ""
