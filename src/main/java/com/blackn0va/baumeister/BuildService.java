@@ -512,6 +512,15 @@ final class BuildService {
     }
 
     /** Paketweit für ComfortService (Warteschlange, Vorschau). Beschäftigt: einreihen statt abweisen. */
+    private static boolean missingChunks(World w, long[] keys) {
+        for (long k : keys) {
+            if (!w.isChunkLoaded(ChunkPrefetch.cx(k), ChunkPrefetch.cz(k))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void request(Request req) {
         Request r = req;
         // Abenteuer in der Farmwelt (CompanionAdventure): Dort baut der Spieler selbst. Vorher sperrte nur Vera – „Baumeister,
@@ -565,6 +574,24 @@ final class BuildService {
             } else {
                 plot = found.get();
             }
+        }
+        // Bauplatz vorladen (ChunkPrefetch, 2026-11-14): Ohne Spieler daneben hielt der Scan den Server-Thread bis
+        // 4,4 s an (Paper-Kopie, echtes Gelände). Danach läuft request erneut; dann sind die Chunks da und gehalten.
+        SiteFrame ahead = new SiteFrame(r.feet().getWorld(), r.feet().getBlockX(), r.feet().getBlockY(),
+                r.feet().getBlockZ(), new Orientation(r.facing()), settings.distanceAhead());
+        if (missingChunks(r.feet().getWorld(), ahead.scanChunks())) {
+            thinking = true;
+            Request again = r;
+            Texts.info(r.sender(), "Ich lade erst den Bauplatz …");
+            ChunkPrefetch.ensure(ChunkPrefetch.of(plugin, r.feet().getWorld()), ahead.scanChunks(), 2, p -> {
+                thinking = false;
+                // Tickets bis nach dem Scan halten; der läuft gleich in request – 10 s sind reichlich.
+                if (p != null) {
+                    Bukkit.getScheduler().runTaskLater(plugin, p::release, 200L);
+                }
+                request(again);
+            });
+            return;
         }
         thinking = true;
         // Folgeauftrag in der Nähe des letzten Baus: derselbe Rahmen, damit der alte Plan und der neue dieselben

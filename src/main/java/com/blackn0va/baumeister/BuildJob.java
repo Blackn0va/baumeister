@@ -348,8 +348,22 @@ final class BuildJob {
         npc.status("prüft den Bauplatz …");
         LOG.info(() -> String.format("bau | prüfung | besitzer=%s aktionen=%d rechteprüfung=%s", ownerName,
                 actions.size(), checkAs != null));
-        holdChunks();
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::tickGuarded, 1L, 1L);
+        // Erst vorladen, dann halten (ChunkPrefetch, 2026-11-14): Vorher lud addPluginChunkTicket fehlende Chunks
+        // synchron, und die Prüfphase las den Rest – gemessen 1,2–2,0 s in 1–2 Ticks an einer neuen Stelle.
+        long[] keys = siteChunks();
+        ChunkPrefetch.ensure(ChunkPrefetch.of(plugin, center.getWorld()), keys, 2, p -> {
+            if (phase == Phase.DONE) {
+                if (p != null) {
+                    p.release();
+                }
+                return;  // während des Vorladens abgebrochen
+            }
+            holdChunks(keys);
+            if (p != null) {
+                p.release();  // jetzt hält der Bau seine eigenen Tickets (held)
+            }
+            task = Bukkit.getScheduler().runTaskTimer(plugin, this::tickGuarded, 1L, 1L);
+        });
     }
 
     /**
@@ -361,8 +375,7 @@ final class BuildJob {
      * Hänger zurück. Plugin-Tickets gibt es je Plugin und Chunk nur einmal – ein paralleler Stadtbau, der denselben
      * Chunk hält, verliert ihn mit finish(); das ist unkritisch, weil CityJob seine Chunks je Abschnitt neu bestellt.
      */
-    private void holdChunks() {
-        World w = center.getWorld();
+    private long[] siteChunks() {
         int[] box = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
         for (WorldAction a : actions) {
             Block b = a.anchor();
@@ -371,7 +384,12 @@ final class BuildJob {
             box[2] = Math.max(box[2], b.getX() >> 4);
             box[3] = Math.max(box[3], b.getZ() >> 4);
         }
-        held = chunkKeys(box, center.getBlockX() >> 4, center.getBlockZ() >> 4);
+        return chunkKeys(box, center.getBlockX() >> 4, center.getBlockZ() >> 4);
+    }
+
+    private void holdChunks(long[] keys) {
+        World w = center.getWorld();
+        held = keys;
         for (long k : held) {
             w.addPluginChunkTicket((int) (k >> 32), (int) k, plugin);
         }

@@ -19,6 +19,31 @@ record SiteFrame(World world, int feetX, int feetY, int feetZ, Orientation orien
     static final Pos SCAN_MIN = new Pos(-16, -4, -6);
     static final Pos SCAN_MAX = new Pos(32, 20, 36);
 
+    /** Chunks (ChunkPrefetch.key) unter dem Scan-Kasten – die vier Ecken gedreht, dazwischen alles. */
+    long[] scanChunks() {
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (int x : new int[] {SCAN_MIN.x(), SCAN_MAX.x()}) {
+            for (int z : new int[] {SCAN_MIN.z(), SCAN_MAX.z()}) {
+                Pos w = orientation.toWorldOffset(new Pos(x, 0, z + ahead));
+                minX = Math.min(minX, (feetX + w.x()) >> 4);
+                minZ = Math.min(minZ, (feetZ + w.z()) >> 4);
+                maxX = Math.max(maxX, (feetX + w.x()) >> 4);
+                maxZ = Math.max(maxZ, (feetZ + w.z()) >> 4);
+            }
+        }
+        long[] out = new long[(maxX - minX + 1) * (maxZ - minZ + 1)];
+        int n = 0;
+        for (int cx = minX; cx <= maxX; cx++) {
+            for (int cz = minZ; cz <= maxZ; cz++) {
+                out[n++] = ChunkPrefetch.key(cx, cz);
+            }
+        }
+        return out;
+    }
+
     Block blockAt(Pos local) {
         Pos w = orientation.toWorldOffset(local.add(0, 0, ahead));
         return world.getBlockAt(feetX + w.x(), feetY + w.y(), feetZ + w.z());

@@ -163,6 +163,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- Ein Auftrag an einer noch nie besuchten Stelle (`/bm bauenbei`, Warteschlange, Vera) hielt den Server bis zu 4,4 s an,
+  weil der Bauplatz synchron erzeugt wurde. Jetzt lädt der Baumeister ihn vorher – auf Paper im Hintergrund, auf
+  Spigot höchstens 2 Chunks je Tick („Ich lade erst den Bauplatz …“). Gemessen: 4,4 s → 0,08 s für den Befehl.
 - Ein nach Süden gebauter Akkumulator (`akkumulator_4bit`) startete mit dem Wert 8 statt 0: Ein Speicher fing beim
   Bau einen Zwischenzustand ein. Jeder frisch gebaute Speicher beginnt jetzt bei 0, in jeder Richtung.
 - Client-Mod: `/kbau stop` während der Planung verwarf nur das Ergebnis, die Anfrage lief weiter, und der
