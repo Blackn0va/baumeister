@@ -59,6 +59,10 @@ public final class Structures {
     static final int DEFAULT_WIDTH = 3;
     /** Torhaus 7 breit (3 Durchfahrt, je 2 Wange), Torstube 3 hoch über dem Wehrgang. */
     private static final int GATE_HALF = 3;
+    /** Mauer-Tor: erst ab 9 Blöcken – kürzer wäre die 3 breite Durchfahrt ein Drittel der Mauer. */
+    static final int GATE_MIN_LENGTH = 9;
+    /** Wie beim Burgtor: unter 4 bliebe über der Durchfahrt kein Sturz für den Wehrgang. */
+    static final int MIN_GATE_WALL_HEIGHT = 4;
     /** Laternen- und Pfeilerabstand: Licht etwa alle 6 Blöcke hält Monster vom Deck fern. */
     private static final int SPACING = 6;
 
@@ -610,6 +614,22 @@ public final class Structures {
                 ladderV = (sigma > 0 ? hi : lo) + sigma * t;
             }
             prev = base;
+        }
+        // Tor (2026-11-14, Gedächtnis „Offen“: „Mauer ohne Tor“): Vorher war jede Mauer ein geschlossener Riegel – wer
+        // auf die andere Seite wollte, musste klettern oder abreißen. Jetzt hat eine gerade Mauer ab GATE_MIN_LENGTH
+        // in der Mitte eine Durchfahrt wie das Burgtor (3 breit, darüber mindestens ein Block Sturz, Wehrgang und
+        // Zinnen laufen darüber weg). Schräge Mauern bleiben ohne: Dort ist „die Mitte“ eine Treppenstufe.
+        if (dv == 0 && len >= GATE_MIN_LENGTH && s.height() >= MIN_GATE_WALL_HEIGHT) {
+            int mid = (len - 1) / 2;
+            int passage = Math.min(4, s.height() - 1);
+            BlockSpec air = BlockSpec.of("air");
+            for (int u = mid - 1; u <= mid + 1; u++) {
+                for (int k = 0; k < t; k++) {
+                    for (int y = y0 + 1; y <= y0 + passage; y++) {
+                        f.put(u, y, sigma * k, air);
+                    }
+                }
+            }
         }
         BlockSpec ladder = firstKnown("ladder");
         if (ladder != null) {

@@ -232,6 +232,30 @@ class StructuresTest {
         assertTrue(z.get(new Pos(1, 6, 0)) == null && z.get(new Pos(2, 5, 0)) != null);
     }
 
+    @Test
+    void straightWallHasAGateInTheMiddleShortAndSlantedOnesDoNot() throws Exception {
+        // 2026-11-14 (Gedächtnis „Offen“: „Mauer ohne Tor“): Durchfahrt wie das Burgtor, 3 breit, durch die ganze Dicke.
+        Map<Pos, BlockSpec> s = state(compile(wall(new int[] {0, 0, 0}, new int[] {20, 0, 0}, "", 3)));
+        for (int x = 9; x <= 11; x++) {
+            for (int z = 0; z <= 2; z++) {
+                for (int y = 1; y <= 4; y++) {
+                    BlockSpec c = s.get(new Pos(x, y, z));
+                    assertTrue(c == null || c.id().equals("air"), "Durchfahrt bei " + x + "/" + y + "/" + z + ": " + c);
+                }
+                assertEquals("stone_bricks", s.get(new Pos(x, 5, z)).id(), "Sturz und Wehrgang über dem Tor");
+            }
+        }
+        assertEquals("stone_bricks", s.get(new Pos(8, 1, 1)).id(), "Wange links");
+        assertEquals("stone_bricks", s.get(new Pos(12, 1, 1)).id(), "Wange rechts");
+        // Kurze Mauer: kein Tor (die Durchfahrt wäre ein Drittel der Mauer).
+        Map<Pos, BlockSpec> shortWall = state(compile(wall(new int[] {0, 0, 0}, new int[] {6, 0, 0}, "", 3)));
+        assertEquals("stone_bricks", shortWall.get(new Pos(3, 1, 1)).id());
+        // Schräge Mauer: kein Tor, sie bleibt geschlossen.
+        Map<Pos, BlockSpec> slant = state(compile(wall(new int[] {0, 0, 0}, new int[] {20, 0, 5}, "", 1)));
+        assertTrue(slant.entrySet().stream().filter(e -> e.getKey().y() == 1)
+                .allMatch(e -> !e.getValue().id().equals("air")), "schräg: keine Luft in der untersten Reihe");
+    }
+
     // ---------------------------------------------------------------- Brücke
 
     private static String bridge(int[] a, int[] b, String style, String block, int width) {

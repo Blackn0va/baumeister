@@ -5,6 +5,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Mauern mit Tor:** Eine gerade Mauer ab 9 Blöcken hat in der Mitte eine Durchfahrt wie das Burgtor (3 breit,
+  Wehrgang und Zinnen laufen darüber weg) – vorher war jede Mauer ein geschlossener Riegel.
 - **Mehrere Hochhäuser ohne KI:** „3 mal 20 Stockwerke“ oder „drei Hochhäuser mit 20 Etagen“ baut die Türme sofort
   nebeneinander (bis 8, so viele wie in `bau.max-ausdehnung` passen). Vorher wurde daraus eine Grundfläche 3×20, und
   der Auftrag ging ohne Geschosszahl ans Modell.
