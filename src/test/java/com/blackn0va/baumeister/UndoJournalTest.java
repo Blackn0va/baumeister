@@ -94,6 +94,34 @@ class UndoJournalTest {
     }
 
     @Test
+    void placedTypeSurvivesARestartAndAForgedOneRejectsTheEntry() throws Exception {
+        // Format 2 (2026-11-14): Was der Bau gesetzt hat, kommt über den Neustart mit – sonst setzte das Rückgängig
+        // nach jedem Deploy wieder blind zurück (UndoCheck).
+        Path root = root();
+        UndoSpool.Part h = house(50);
+        String[] placed = new String[50];
+        for (int i = 0; i < 50; i++) {
+            placed[i] = i % 2 == 0 ? "minecraft:oak_planks" : null;
+        }
+        Path good = root.resolve("bau-" + (NOW - 2000) + "-1");
+        UndoJournal.writeCopy(good, new UndoSpool.Part(h.x(), h.y(), h.z(), h.state(), placed, 50),
+                manifest(NOW - 2000, 50));
+        List<UndoJournal.Loaded> loaded = UndoJournal.validate(List.of(good), LIMITS, NOW);
+        assertEquals(1, loaded.size());
+        assertTrue(loaded.getFirst().states().contains("minecraft:oak_planks"), "Typ wird beim Start mitgeprüft");
+        UndoSpool.Part back = UndoSpool.read(good.resolve("teil-00001.bin.gz"));
+        assertEquals("minecraft:oak_planks", back.placedAt(0));
+        assertEquals(null, back.placedAt(1));
+
+        // Ein Typ, der kein Blockname ist, verwirft den Eintrag wie ein kaputter Zustand (fail-closed).
+        placed[4] = "minecraft:Stein mit Leerzeichen";
+        Path bad = root.resolve("bau-" + (NOW - 1000) + "-2");
+        UndoJournal.writeCopy(bad, new UndoSpool.Part(h.x(), h.y(), h.z(), h.state(), placed, 50),
+                manifest(NOW - 1000, 50));
+        assertEquals(List.of(), UndoJournal.validate(List.of(bad), LIMITS, NOW));
+    }
+
+    @Test
     void citySpoolGetsAManifestAndOrphansAreSweptAsBefore() throws Exception {
         Path root = root();
         UndoSpool city = new UndoSpool(root.resolve(String.valueOf(NOW - 5000)));

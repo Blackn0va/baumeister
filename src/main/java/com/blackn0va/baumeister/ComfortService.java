@@ -338,7 +338,7 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         if (rec.spool() != null) {
             journal.persistSpool(rec.spool(), m);
         } else {
-            journal.persistCopy(rec, UndoJournal.snapshot(rec.originals()), m);
+            journal.persistCopy(rec, UndoJournal.snapshot(rec.originals(), rec.placed()), m);
         }
     }
 

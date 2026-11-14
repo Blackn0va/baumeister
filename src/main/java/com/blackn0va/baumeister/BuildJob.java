@@ -140,9 +140,18 @@ final class BuildJob {
         }
     }
 
-    /** originals im Speicher (normaler Bau) oder spool auf der Platte (Stadtbau, sonst null). */
+    /**
+     * originals im Speicher (normaler Bau) oder spool auf der Platte (Stadtbau, sonst null). placed: je Stelle aus
+     * originals der Blocktyp, den der Bau zuletzt gesetzt hat (leer = unbekannt, z. B. Stadtbau – dort steht er im
+     * Spool).
+     */
     record UndoRecord(UUID owner, String ownerName, World world, List<Map.Entry<Block, BlockData>> originals,
-            Instant when, UndoSpool spool) {
+            Instant when, UndoSpool spool, Map<Block, Material> placed) {
+
+        UndoRecord(UUID owner, String ownerName, World world, List<Map.Entry<Block, BlockData>> originals,
+                Instant when, UndoSpool spool) {
+            this(owner, ownerName, world, originals, when, spool, Map.of());
+        }
 
         boolean empty() {
             return originals.isEmpty() && (spool == null || spool.count() == 0);
@@ -204,6 +213,8 @@ final class BuildJob {
     private final Consumer<BuildJob> onFinish;
 
     private final Map<Block, BlockData> originals = new LinkedHashMap<>();
+    /** Je Stelle der zuletzt gesetzte Blocktyp – das Rückgängig setzt nur zurück, wo der noch steht (UndoCheck). */
+    private final Map<Block, Material> placedTypes = new HashMap<>();
     private final List<Worker> workers = new ArrayList<>();
     private Phase phase = Phase.CHECK;
     private BukkitTask task;
@@ -796,6 +807,7 @@ final class BuildJob {
             } else {
                 data = setLikeABuild(b, c.data(), c.placement().explicit());
             }
+            placedTypes.put(b, data.getMaterial());
             touched(b);
             placed++;
             // Gefährliches und Befehle je Zelle ins Log (Sicherheitsprüfung 2026-11-08, Befund 11, ASVS V7.2.2): Was
@@ -1139,6 +1151,6 @@ final class BuildJob {
 
     UndoRecord undoRecord() {
         return new UndoRecord(ownerId, ownerName, center.getWorld(), new ArrayList<>(originals.entrySet()),
-                Instant.now(), null);
+                Instant.now(), null, Map.copyOf(placedTypes));
     }
 }

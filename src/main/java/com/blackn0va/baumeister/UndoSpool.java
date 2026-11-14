@@ -31,8 +31,8 @@ import org.bukkit.block.data.BlockData;
  *
  * Vorher hielt CityJob je geänderten Block einen Eintrag (Block + BlockData, ~100 Byte) im Speicher und schaltete
  * Rückgängig ab 500 000 Blöcken ab – auf dev01 schon beim Dorf Hepberg (504 468 Blöcke, 2026-10-28). Eine Großstadt hat
- * zig Millionen. Jetzt: je PART Einträge eine gzip-Teildatei (x, y, z, Zustands-Nr.; die Zustände als Text mit
- * eigenem Wörterbuch je Teil). Zurückgesetzt wird Teil für Teil von hinten, innerhalb eines Teils rückwärts – so
+ * zig Millionen. Jetzt: je PART Einträge eine gzip-Teildatei (x, y, z, Zustands-Nr., seit Format 2 auch die Nr. des
+ * gesetzten Blocktyps; die Zustände als Text mit eigenem Wörterbuch je Teil). Zurückgesetzt wird Teil für Teil von hinten, innerhalb eines Teils rückwärts – so
  * gewinnt bei doppelt gesetzten Blöcken (Boden, dann Haus) der echte Ursprungszustand. Im Speicher liegt dabei nur ein
  * Teil.
  *
@@ -48,9 +48,29 @@ final class UndoSpool {
 
     static final int PART = 50_000;
     private static final int NEW_STATE = Integer.MIN_VALUE;
+    /**
+     * Kopf eines Teils im Format 2 (2026-11-14): Je Eintrag steht danach zusätzlich, welcher Blocktyp gesetzt wurde
+     * (Nummer im selben Wörterbuch, -1 = unbekannt). Format 1 beginnt immer mit NEW_STATE – der erste Eintrag braucht
+     * einen neuen Zustand –, also lässt sich beides am ersten Wort unterscheiden. Wer den Kopf weglässt, liest Teile
+     * aus Format 2 als kaputtes Format 1.
+     */
+    private static final int MAGIC_V2 = Integer.MIN_VALUE + 2;
 
-    /** Ein geladener Teil: Einträge in Schreibreihenfolge. */
-    record Part(int[] x, int[] y, int[] z, String[] state, int size) {
+    /**
+     * Ein geladener Teil: Einträge in Schreibreihenfolge. placed: je Eintrag der gesetzte Blocktyp
+     * („minecraft:stone“, ohne Eigenschaften) oder null, wenn unbekannt; das Feld selbst ist null bei einem Teil im
+     * Format 1. Damit prüft das Rückgängig, ob dort noch der Bau steht (UndoCheck).
+     */
+    record Part(int[] x, int[] y, int[] z, String[] state, String[] placed, int size) {
+
+        Part(int[] x, int[] y, int[] z, String[] state, int size) {
+            this(x, y, z, state, null, size);
+        }
+
+        /** Gesetzter Blocktyp des Eintrags i oder null. */
+        String placedAt(int i) {
+            return placed == null ? null : placed[i];
+        }
     }
 
     private final Path dir;
@@ -111,8 +131,29 @@ final class UndoSpool {
         return record(x, y, z, text);
     }
 
-    /** false, wenn Rückgängig für diesen Bau aus ist (Schreibfehler). */
+    /** Wie record(x, y, z, BlockData), dazu der Blocktyp, den der Bau an die Stelle setzt (UndoCheck). */
+    boolean record(int x, int y, int z, BlockData state, org.bukkit.Material placed) {
+        String text = texts.get(state);
+        if (text == null) {
+            text = state.getAsString();
+            if (texts.size() >= TEXT_CACHE) {
+                texts.clear();
+            }
+            texts.put(state, text);
+        }
+        return record(x, y, z, text, placed == null ? null : placed.getKey().toString());
+    }
+
+    /** false, wenn Rückgängig für diesen Bau aus ist (Schreibfehler). Ohne Angabe, was gesetzt wurde. */
     boolean record(int x, int y, int z, String state) {
+        return record(x, y, z, state, null);
+    }
+
+    /**
+     * false, wenn Rückgängig für diesen Bau aus ist (Schreibfehler). placed: gesetzter Blocktyp („minecraft:stone“)
+     * oder null.
+     */
+    boolean record(int x, int y, int z, String state, String placed) {
         if (readOnly) {
             throw new IllegalStateException("Rückgängig-Eintrag aus einem früheren Lauf ist schreibgeschützt: " + dir);
         }
@@ -126,20 +167,17 @@ final class UndoSpool {
                 parts++;
                 out = new DataOutputStream(new BufferedOutputStream(gzip(Files.newOutputStream(
                         dir.resolve(String.format("teil-%05d.bin.gz", parts)))), 1 << 16));
+                out.writeInt(MAGIC_V2);
                 dict.clear();
                 inPart = 0;
             }
-            Integer id = dict.get(state);
-            if (id == null) {
-                id = dict.size();
-                dict.put(state, id);
-                out.writeInt(NEW_STATE);
-                out.writeUTF(state);
-            }
+            int id = idOf(state);
+            int placedId = placed == null ? -1 : idOf(placed);
             out.writeInt(x);
             out.writeInt(y);
             out.writeInt(z);
             out.writeInt(id);
+            out.writeInt(placedId);
             inPart++;
             count++;
             return true;
@@ -148,6 +186,18 @@ final class UndoSpool {
             closeQuietly();
             throw new IllegalStateException("Rückgängig-Datei nicht schreibbar: " + e.getMessage(), e);
         }
+    }
+
+    /** Nummer im Wörterbuch des Teils; ein neuer Text wird vor dem Eintrag geschrieben. */
+    private int idOf(String text) throws IOException {
+        Integer id = dict.get(text);
+        if (id == null) {
+            id = dict.size();
+            dict.put(text, id);
+            out.writeInt(NEW_STATE);
+            out.writeUTF(text);
+        }
+        return id;
     }
 
     /** Schreiben beenden; danach sind die Teile vollständig lesbar. */
@@ -228,6 +278,12 @@ final class UndoSpool {
         int[] ys = new int[cap];
         int[] zs = new int[cap];
         String[] st = new String[cap];
+        boolean v2 = buf.remaining() >= 4 && buf.getInt(0) == MAGIC_V2;
+        String[] pl = v2 ? new String[cap] : null;
+        if (v2) {
+            buf.position(4);
+        }
+        int words = v2 ? 16 : 12;
         int n = 0;
         while (buf.remaining() >= 4) {
             int x = buf.getInt();
@@ -252,7 +308,7 @@ final class UndoSpool {
             if (n >= maxEntries) {
                 throw new IOException("teil_zu_groß");
             }
-            if (buf.remaining() < 12) {
+            if (buf.remaining() < words) {
                 throw new EOFException("Rückgängig-Teil abgeschnitten: " + file.getFileName());
             }
             if (n == cap) {
@@ -261,6 +317,9 @@ final class UndoSpool {
                 ys = Arrays.copyOf(ys, cap);
                 zs = Arrays.copyOf(zs, cap);
                 st = Arrays.copyOf(st, cap);
+                if (pl != null) {
+                    pl = Arrays.copyOf(pl, cap);
+                }
             }
             xs[n] = x;
             ys[n] = buf.getInt();
@@ -270,21 +329,28 @@ final class UndoSpool {
                 throw new IOException("Rückgängig-Teil kaputt (Zustand " + id + "): " + file.getFileName());
             }
             st[n] = states.get(id);
+            if (pl != null) {
+                int placedId = buf.getInt();
+                if (placedId < -1 || placedId >= states.size()) {
+                    throw new IOException("Rückgängig-Teil kaputt (Typ " + placedId + "): " + file.getFileName());
+                }
+                pl[n] = placedId < 0 ? null : states.get(placedId);
+            }
             n++;
         }
         if (buf.hasRemaining()) {
             throw new EOFException("Rückgängig-Teil abgeschnitten: " + file.getFileName());
         }
-        return new Part(xs, ys, zs, st, n);
+        return new Part(xs, ys, zs, st, pl, n);
     }
 
     /**
-     * Höchste entpackte Größe eines Teils mit maxEntries Einträgen: 16 Byte je Eintrag plus 16 MiB für die
+     * Höchste entpackte Größe eines Teils mit maxEntries Einträgen: 20 Byte je Eintrag (Format 2) plus 16 MiB für die
      * Zustandstexte (ein Teil von PART = 50 000 Einträgen hat in der Praxis einige hundert verschiedene Zustände zu je
      * unter 200 Byte). Für PART also ~17 MB statt unbegrenzt.
      */
     static int maxBytes(int maxEntries) {
-        return (int) Math.min(Integer.MAX_VALUE - 16L, maxEntries * 16L + (16L << 20));
+        return (int) Math.min(Integer.MAX_VALUE - 16L, maxEntries * 20L + (16L << 20) + 4);
     }
 
     /** Ordner samt Teilen löschen (nach dem Zurücksetzen oder wenn der Eintrag aus dem Stapel fällt). */

@@ -721,7 +721,7 @@ final class CityJob {
             }
             if (spool != null && !spool.failed()) {
                 try {
-                    spool.record(x, y, z, before);
+                    spool.record(x, y, z, before, data.getMaterial());
                 } catch (IllegalStateException e) {
                     LOG.log(Level.WARNING, "stadt | rückgängig_aus | ort=" + place, e);
                     Texts.info(requester, "Rückgängig ist für diesen Bau aus: " + e.getMessage());

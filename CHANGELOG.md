@@ -162,6 +162,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ### Behoben
 - Ein nach Süden gebauter Akkumulator (`akkumulator_4bit`) startete mit dem Wert 8 statt 0: Ein Speicher fing beim
   Bau einen Zwischenzustand ein. Jeder frisch gebaute Speicher beginnt jetzt bei 0, in jeder Richtung.
+- `/bm rückgängig` überschrieb, was andere nach dem Bau an derselben Stelle gebaut hatten – auch eine gefüllte Truhe.
+  Jetzt bleiben solche Blöcke stehen, und die Meldung sagt, wie viele. Rückgängig-Einträge von vor dem Update
+  setzen weiter wie bisher zurück.
 - Burg, Mauer, Brücke, Garten oder Baum ohne Materialangabe vom Modell wurden verworfen („Schritt 1: block fehlt“).
   Jetzt nimmt der Baumeister das Standardmaterial (Steinziegel, Eichenzaun, Eichenstamm) und baut.
 - Ein Bauplan mit einem Gegenstand statt Block (z. B. Elytren) wurde still mit Stein gebaut. Jetzt geht er zuerst zur

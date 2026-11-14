@@ -273,15 +273,11 @@ final class UndoJournal {
             // unbegrenzt, und eine präparierte gzip-Datei triebe den Server in einen OutOfMemoryError.
             UndoSpool.Part part = UndoSpool.read(p, UndoSpool.PART);
             for (int i = 0; i < part.size(); i++) {
-                String st = part.state()[i];
-                if (!states.contains(st)) {
-                    if (!STATE.matcher(st).matches()) {
-                        throw new IOException("zustand_ungültig");
-                    }
-                    if (states.size() >= MAX_STATES) {
-                        throw new IOException("zu_viele_zustände");
-                    }
-                    states.add(st);
+                check(states, part.state()[i]);
+                // Gesetzter Typ (Format 2) wie ein Zustand: Muster, Obergrenze, beim Start gegen die Serverfassung.
+                String placed = part.placedAt(i);
+                if (placed != null) {
+                    check(states, placed);
                 }
                 if (Math.abs(part.x()[i]) > MAX_XZ || Math.abs(part.z()[i]) > MAX_XZ || Math.abs(part.y()[i]) > MAX_Y) {
                     throw new IOException("koordinate_ungültig");
@@ -293,6 +289,19 @@ final class UndoJournal {
             throw new IOException("anzahl_passt_nicht zettel=" + m.count() + " teile=" + total);
         }
         return new Loaded(dir, m, bytes, Set.copyOf(states));
+    }
+
+    private static void check(Set<String> states, String st) throws IOException {
+        if (states.contains(st)) {
+            return;
+        }
+        if (!STATE.matcher(st).matches()) {
+            throw new IOException("zustand_ungültig");
+        }
+        if (states.size() >= MAX_STATES) {
+            throw new IOException("zu_viele_zustände");
+        }
+        states.add(st);
     }
 
     /**
@@ -427,21 +436,26 @@ final class UndoJournal {
      * danach im Hintergrund. Zustände je BlockData einmal als Text: Ein Haus hat Tausende Einträge, aber nur wenige
      * Dutzend verschiedene Zustände.
      */
-    static UndoSpool.Part snapshot(List<Map.Entry<org.bukkit.block.Block, org.bukkit.block.data.BlockData>> list) {
+    static UndoSpool.Part snapshot(List<Map.Entry<org.bukkit.block.Block, org.bukkit.block.data.BlockData>> list,
+            Map<org.bukkit.block.Block, org.bukkit.Material> placed) {
         int n = list.size();
         int[] xs = new int[n];
         int[] ys = new int[n];
         int[] zs = new int[n];
         String[] st = new String[n];
+        String[] pl = new String[n];
         Map<org.bukkit.block.data.BlockData, String> names = new java.util.HashMap<>();
+        Map<org.bukkit.Material, String> types = new java.util.EnumMap<>(org.bukkit.Material.class);
         for (int i = 0; i < n; i++) {
             org.bukkit.block.Block b = list.get(i).getKey();
             xs[i] = b.getX();
             ys[i] = b.getY();
             zs[i] = b.getZ();
             st[i] = names.computeIfAbsent(list.get(i).getValue(), org.bukkit.block.data.BlockData::getAsString);
+            org.bukkit.Material m = placed.get(b);
+            pl[i] = m == null ? null : types.computeIfAbsent(m, t -> t.getKey().toString());
         }
-        return new UndoSpool.Part(xs, ys, zs, st, n);
+        return new UndoSpool.Part(xs, ys, zs, st, pl, n);
     }
 
     /** Geprüfter Eintrag als Stapel-Eintrag: nur auf der Platte, Spool schreibgeschützt (UndoSpool.existing). */
@@ -520,7 +534,7 @@ final class UndoJournal {
             Files.createDirectories(dir);
             UndoSpool spool = new UndoSpool(dir);
             for (int i = 0; i < data.size(); i++) {
-                spool.record(data.x()[i], data.y()[i], data.z()[i], data.state()[i]);
+                spool.record(data.x()[i], data.y()[i], data.z()[i], data.state()[i], data.placedAt(i));
             }
             spool.finish();
             writeManifest(dir, m);

@@ -1804,6 +1804,8 @@ final class BuildService {
         // Einträge überleben Neustarts und damit Spigot-Updates: Ein unbekannter Zustand wird übersprungen
         // (StateCache), statt im Timer bei jedem Tick an derselben Stelle zu werfen.
         StateCache<BlockData> states = new StateCache<>(Bukkit::createBlockData);
+        // Stellen, an denen inzwischen etwas anderes steht als der Bau (UndoCheck) – die bleiben.
+        long[] kept = {0};
         World world = rec.world();
         RestoreJob.Source source;
         long total;
@@ -1822,9 +1824,10 @@ final class BuildService {
             total = spool.count();
             partCount = parts.size();
             Iterator<Path> it = parts.iterator();
-            source = () -> it.hasNext() ? spoolPart(world, UndoSpool.read(it.next()), states) : null;
+            source = () -> it.hasNext() ? spoolPart(world, UndoSpool.read(it.next()), states, kept) : null;
         } else {
             List<Map.Entry<Block, BlockData>> list = rec.originals();
+            Map<Block, Material> placed = rec.placed();
             total = list.size();
             partCount = 1;
             boolean[] given = {false};
@@ -1833,7 +1836,7 @@ final class BuildService {
                     return null;
                 }
                 given[0] = true;
-                return originalsPart(list);
+                return originalsPart(list, placed, kept);
             };
         }
         Texts.info(sender, "Ich räume " + total + " Blöcke weg …");
@@ -1869,11 +1872,14 @@ final class BuildService {
                 rec.spool().delete();
             }
             long skipped = states.skipped();
+            long changed = kept[0];
             Texts.info(sender, "Rückgängig gemacht: " + job.restored() + " Blöcke wiederhergestellt."
+                    + (changed == 0 ? "" : " " + changed + " Blöcke habe ich stehen lassen – dort steht inzwischen "
+                            + "etwas anderes als mein Bau.")
                     + (skipped == 0 ? "" : " " + skipped + " Blöcke mit unbekanntem Zustand übersprungen."));
             LOG.info(() -> String.format("bau | rückgängig | besitzer=%s blöcke=%d teile=%d übersprungen=%d "
-                    + "tickets=%d dauer_s=%d", rec.ownerName(), job.restored(), partCount, skipped, job.tickets(),
-                    (System.nanoTime() - t0) / 1_000_000_000L));
+                    + "verändert_behalten=%d tickets=%d dauer_s=%d", rec.ownerName(), job.restored(), partCount,
+                    skipped, changed, job.tickets(), (System.nanoTime() - t0) / 1_000_000_000L));
             startNextUndo();
         }, 1L, 1L);
     }
@@ -1924,7 +1930,8 @@ final class BuildService {
         };
     }
 
-    private static RestoreJob.Part spoolPart(World w, UndoSpool.Part p, StateCache<BlockData> states) {
+    private static RestoreJob.Part spoolPart(World w, UndoSpool.Part p, StateCache<BlockData> states,
+            long[] kept) {
         return new RestoreJob.Part() {
             @Override
             public int size() {
@@ -1947,13 +1954,19 @@ final class BuildService {
                 if (data == null) {
                     return false;
                 }
-                w.getBlockAt(p.x()[i], p.y()[i], p.z()[i]).setBlockData(data, false);
+                Block b = w.getBlockAt(p.x()[i], p.y()[i], p.z()[i]);
+                if (!mayRestore(b, p.placedAt(i))) {
+                    kept[0]++;
+                    return false;
+                }
+                b.setBlockData(data, false);
                 return true;
             }
         };
     }
 
-    private static RestoreJob.Part originalsPart(List<Map.Entry<Block, BlockData>> list) {
+    private static RestoreJob.Part originalsPart(List<Map.Entry<Block, BlockData>> list, Map<Block, Material> placed,
+            long[] kept) {
         return new RestoreJob.Part() {
             @Override
             public int size() {
@@ -1973,10 +1986,28 @@ final class BuildService {
             @Override
             public boolean set(int i) {
                 Map.Entry<Block, BlockData> e = list.get(i);
+                Material m = placed.get(e.getKey());
+                if (!mayRestore(e.getKey(), m == null ? null : m.getKey().toString())) {
+                    kept[0]++;
+                    return false;
+                }
                 e.getKey().setBlockData(e.getValue(), false);
                 return true;
             }
         };
+    }
+
+    /**
+     * Steht hier noch der Bau (UndoCheck)? Und nie über einen Behälter mit Inhalt: Setzte der Bau eine Truhe, die
+     * danach gefüllt wurde, passt der Typ – der Inhalt ginge trotzdem verloren (Sicherheitsprüfung 1, Befund 6).
+     */
+    private static boolean mayRestore(Block b, String placed) {
+        if (placed == null) {
+            return true;
+        }
+        BlockData now = b.getBlockData();
+        return UndoCheck.restorable(now.getMaterial().getKey().getKey(), placed)
+                && !ProtectedBlocks.hasContents(b, now);
     }
 
     /**
