@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Keine Lag-Maschinen:** Nach jedem Bau misst der Baumeister 10 s lang, was dort ohne Eingabe von selbst schaltet.
+  Liegt das über `bau.lag-grenze-je-sekunde` (50), sagt er es und baut den Bau wieder ab – egal ob der Plan von der
+  KI, aus dem Katalog oder aus einer Vorlage kommt. `/bm lagprobe` misst einen Bereich von Hand. Schematics lassen sich
+  über `gesperrt.txt` im Schematic-Ordner aus dem Katalog nehmen.
 - **Mehr Bauten aus dem Spiel ohne KI:** 6 Schiffswracks, 2 Segelschiffe, 8 Fossilien, 14 Netherfossilien („bau mir
   ein Netherfossil“), 16 große und 32 kleine Unterwasserruinen („eine kleine Ruine“) und ein überwachsener Wachturm –
   die Varianten wechseln von Bau zu Bau. 263 statt 189 Vorlagen.

@@ -1167,6 +1167,50 @@ final class BuildJob {
         return sb.append('.').toString();
     }
 
+    /** Teile, die ohne Eingabe weiterlaufen können – nur dann misst der Lag-Wächter nach dem Bau (LagWatch). */
+    private static final java.util.Set<Material> SELF_RUNNING = java.util.EnumSet.of(Material.REDSTONE_WIRE,
+            Material.REPEATER, Material.COMPARATOR, Material.REDSTONE_TORCH, Material.REDSTONE_WALL_TORCH,
+            Material.OBSERVER, Material.PISTON, Material.STICKY_PISTON, Material.HOPPER, Material.DISPENSER,
+            Material.DROPPER, Material.DAYLIGHT_DETECTOR, Material.TNT, Material.SPAWNER, Material.REDSTONE_BLOCK,
+            Material.CRAFTER, Material.SCULK_SENSOR, Material.CALIBRATED_SCULK_SENSOR);
+
+    /** Hat der Bau etwas gesetzt, das von selbst schalten kann? */
+    boolean mayRunByItself() {
+        for (Material m : placedTypes.values()) {
+            if (SELF_RUNNING.contains(m)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Baubereich samt einem Block Rand für den Lag-Wächter; null ohne gesetzte Blöcke. */
+    LagWatch.Box lagBox() {
+        if (placedTypes.isEmpty()) {
+            return null;
+        }
+        int x0 = Integer.MAX_VALUE;
+        int y0 = Integer.MAX_VALUE;
+        int z0 = Integer.MAX_VALUE;
+        int x1 = Integer.MIN_VALUE;
+        int y1 = Integer.MIN_VALUE;
+        int z1 = Integer.MIN_VALUE;
+        for (Block b : placedTypes.keySet()) {
+            x0 = Math.min(x0, b.getX());
+            y0 = Math.min(y0, b.getY());
+            z0 = Math.min(z0, b.getZ());
+            x1 = Math.max(x1, b.getX());
+            y1 = Math.max(y1, b.getY());
+            z1 = Math.max(z1, b.getZ());
+        }
+        return LagWatch.Box.of(center.getWorld(), x0 - 1, y0 - 1, z0 - 1, x1 + 1, y1 + 1, z1 + 1);
+    }
+
+    /** Wem die Meldungen gelten (Spieler oder Konsole). */
+    CommandSender replyTo() {
+        return replyTo;
+    }
+
     UndoRecord undoRecord() {
         return new UndoRecord(ownerId, ownerName, center.getWorld(), new ArrayList<>(originals.entrySet()),
                 Instant.now(), null, Map.copyOf(placedTypes));

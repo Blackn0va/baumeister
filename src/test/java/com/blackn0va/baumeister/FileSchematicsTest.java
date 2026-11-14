@@ -40,6 +40,26 @@ class FileSchematicsTest {
     }
 
     @Test
+    void blockedNamesAreNeitherListedNorBuildableAndTheListReloads() throws Exception {
+        // 2026-11-14: Dauerläufer aus der Leerlauf-Messung (LagWatch) kommen über gesperrt.txt aus dem Katalog.
+        Path w = Files.createDirectories(dir.resolve("redstone"));
+        Files.write(w.resolve("taktgeber_1.nbt"), NbtAccess.structureNbt(clock()));
+        Files.write(w.resolve("objekt_zaehler_2.nbt"), NbtAccess.structureNbt(clock()));
+        Files.writeString(dir.resolve(FileSchematics.BLOCKED), "# Dauerläufer ohne Eingabe\n"
+                + "Objekt_Zaehler_2   # 118 je Sekunde im Leerlauf\n\n", StandardCharsets.UTF_8);
+        FileSchematics f = new FileSchematics(dir, now::get);
+        assertEquals(1, f.catalog().size());
+        assertTrue(f.find("objekt_zaehler_2").isEmpty(), "gesperrt heißt auch: nicht baubar");
+        assertTrue(f.find("taktgeber_1").isPresent());
+        // Liste geändert: nach dem nächsten Einlesen wieder da.
+        Files.writeString(dir.resolve(FileSchematics.BLOCKED), "# leer\n", StandardCharsets.UTF_8);
+        Files.setLastModifiedTime(dir.resolve(FileSchematics.BLOCKED),
+                java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+        now.addAndGet(30_000);
+        assertEquals(2, f.catalog().size());
+    }
+
+    @Test
     void indexNamesTheFilesAndModulesLoadOnFirstUse() throws Exception {
         Path w = Files.createDirectories(dir.resolve("redstone"));
         Files.write(w.resolve("taktgeber_1.nbt"), NbtAccess.structureNbt(clock()));

@@ -50,6 +50,8 @@ final class FileSchematics implements ModuleLibrary {
     private static final long RESCAN_MILLIS = 30_000;
     private static final int CACHE = 48;
     private static final int MAX_DEPTH = 4;
+    /** Sperrliste im Schematic-Ordner (readBlocked). */
+    static final String BLOCKED = "gesperrt.txt";
 
     /** Eintrag samt Datei. */
     record Item(SchematicCatalog.Entry entry, Path file) {
@@ -148,16 +150,22 @@ final class FileSchematics implements ModuleLibrary {
         signature = sig;
         Map<String, Item> next = new LinkedHashMap<>();
         Map<Path, Map<String, String[]>> indexes = new HashMap<>();
+        java.util.Set<String> blocked = readBlocked(folder);
         int bad = 0;
+        int barred = 0;
         for (Path f : files) {
             String fileName = f.getFileName().toString();
-            if (fileName.equals("index.tsv")) {
+            if (fileName.equals("index.tsv") || fileName.equals(BLOCKED)) {
                 continue;
             }
             String[] row = indexes.computeIfAbsent(f.getParent(), FileSchematics::readIndex).get(fileName);
             String name = row != null && row.length > 1 ? row[1].strip() : slug(stem(fileName));
             if (!SchematicCatalog.NAME.matcher(name).matches() || next.containsKey(name)) {
                 bad++;
+                continue;
+            }
+            if (blocked.contains(name)) {
+                barred++;
                 continue;
             }
             SchematicCatalog.Entry e = SchematicCatalog.entry(name, row != null && row.length > 2 ? row[2] : null,
@@ -168,8 +176,36 @@ final class FileSchematics implements ModuleLibrary {
         catalog = new SchematicCatalog(next.values().stream().map(Item::entry).toList());
         cache.clear();
         int skipped = bad;
+        int locked = barred;
         LOG.info(() -> "schematics | bereit | ordner=" + folder.getFileName() + " bauteile=" + next.size()
-                + " familien=" + catalog.families("").size() + " verworfen=" + skipped);
+                + " familien=" + catalog.families("").size() + " verworfen=" + skipped + " gesperrt=" + locked);
+    }
+
+    /**
+     * gesperrt.txt im Schematic-Ordner: je Zeile ein Bauteilname, „#“ leitet einen Grund ein. Gesperrte Namen stehen
+     * weder im Katalog noch lassen sie sich bauen. Anlass 2026-11-14 (Wunsch: keine Lag-Maschinen): Die Leerlauf-
+     * Messung aller 804 Technik-Wiki-Bauten (LagWatch) fand vier Dauerläufer über 50 Schaltvorgängen je Sekunde ohne
+     * Eingabe; die Liste liegt beim Server, weil die Namen aus der fremden Sammlung kommen. Fehlt die Datei, ist nichts
+     * gesperrt.
+     */
+    static java.util.Set<String> readBlocked(Path folder) {
+        Path f = folder.resolve(BLOCKED);
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (!Files.isRegularFile(f)) {
+            return out;
+        }
+        try {
+            for (String line : Files.readAllLines(f, java.nio.charset.StandardCharsets.UTF_8)) {
+                String n = line.replaceAll("#.*", "").strip().toLowerCase(Locale.ROOT);
+                if (!n.isEmpty()) {
+                    out.add(n);
+                }
+            }
+        } catch (IOException e) {
+            // fail-open für den Katalog: Ohne lesbare Liste ist nichts gesperrt, der Lag-Wächter greift nach dem Bau.
+            LOG.log(Level.WARNING, "schematics | sperrliste_unlesbar | datei=" + f, e);
+        }
+        return out;
     }
 
     /** Bauwerk-Dateien und index.tsv unter dem Ordner, nur echte Dateien darin (keine Links nach draußen). */
@@ -182,7 +218,7 @@ final class FileSchematics implements ModuleLibrary {
                     .filter(p -> {
                         String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
                         return n.endsWith(".nbt") || n.endsWith(".schem") || n.endsWith(".schematic") || n.endsWith(".litematic")
-                                || n.equals("index.tsv");
+                                || n.equals("index.tsv") || n.equals(BLOCKED);
                     }).sorted().toList();
         } catch (IOException e) {
             LOG.log(Level.WARNING, "schematics | ordner_unlesbar | ordner=" + folder, e);

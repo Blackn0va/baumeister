@@ -1676,7 +1676,9 @@ final class BuildService {
     }
 
     private void onJobFinished(BuildJob job) {
-        pushUndo(job.undoRecord());
+        UndoRecord finished = job.undoRecord();
+        pushUndo(finished);
+        watchForLag(job, finished);
         if (active == job && activeKind != LedgerKind.REPAIR && job.done() >= job.total()) {
             record(job, activeKind == LedgerKind.UPDATE, activeLedgerOrder, activeLedgerInfo);
         }
@@ -1695,6 +1697,35 @@ final class BuildService {
         if (active == job) {
             active = null;
         }
+    }
+
+    /**
+     * Lag-Wächter nach dem Bau (Wunsch 2026-11-14: keine Lag-Maschinen): Steckt im fertigen Bau etwas, das von selbst
+     * schalten kann, misst LagWatch 3 s nach dem Ende 10 s lang, was dort ohne Eingabe passiert. Liegt das über
+     * bau.lag-grenze-je-sekunde (Vorgabe LagWatch.LIMIT_PER_SECOND), baut der Baumeister den Bau über den normalen Rückgängig-Weg wieder ab und sagt
+     * warum. Gilt für jede Quelle – LLM-Plan, Schematic, Bauteil, Vorlage. Fail-open: Fehlt der Wächter (vor onEnable)
+     * oder ist der Eintrag schon vom Stapel (Spieler war schneller), passiert nichts.
+     */
+    private void watchForLag(BuildJob job, UndoRecord rec) {
+        LagWatch lw = plugin.lagWatch();
+        LagWatch.Box box = job.lagBox();
+        if (lw == null || box == null || job.done() < job.total() || !job.mayRunByItself()) {
+            return;
+        }
+        CommandSender to = job.replyTo();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> lw.watch(box, 200, r -> {
+            double limit = Math.max(1, plugin.getConfig().getDouble("bau.lag-grenze-je-sekunde",
+                    LagWatch.LIMIT_PER_SECOND));
+            if (!r.lagging(limit) || !undo.remove(rec)) {
+                return;
+            }
+            comfort.forget(rec);
+            LOG.warning(() -> "lag | maschine_abgebaut | besitzer=" + rec.ownerName() + " " + r.line());
+            Texts.say(npc.name(), npcLocation(job.center()), to, String.format(java.util.Locale.GERMAN,
+                    "Das ist eine Lag-Maschine – %.0f Schaltvorgänge je Sekunde, ohne dass jemand etwas tut. "
+                    + "So etwas baue ich nicht, ich räume sie wieder weg.", r.perSecond()));
+            restore(to, rec);
+        }), 60L);
     }
 
     /**

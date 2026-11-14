@@ -44,6 +44,7 @@ final class ConfigCheck {
             Map.entry("bau.undo-tiefe", new Range(1, 50)),
             Map.entry("bau.max-überbauen", new Range(0, 1000)),
             Map.entry("bau.zieldauer-sekunden", new Range(10, 3600)),
+            Map.entry("bau.lag-grenze-je-sekunde", new Range(1, 1_000_000)),
             Map.entry("helfer.zweiter-ab-blöcken", new Range(1, Integer.MAX_VALUE)),
             Map.entry("helfer.dritter-ab-blöcken", new Range(1, Integer.MAX_VALUE)),
             Map.entry("stadt.radius-standard", new Range(30, 20_000)),

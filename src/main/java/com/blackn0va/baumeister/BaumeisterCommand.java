@@ -104,6 +104,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             new Sub("logikbei", true, List.of()),
             new Sub("neuladen", true, List.of("reload")),
             new Sub("leistung", true, List.of("perf", "tps")),
+            // Lag-Wächter (2026-11-14): Leerlauf-Aktivität eines Bereichs messen – nur Admins und Konsole.
+            new Sub("lagprobe", true, List.of()),
             new Sub("stadt", true, List.of("dorf", "city")),
             new Sub("stadtwelt", true, List.of()),
             new Sub("gelaende", true, List.of("gelände", "terrain")),
@@ -276,6 +278,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "neuladen", "reload" -> {
                 if (requireAdmin(sender)) {
                     plugin.configReload().run(sender, args);
+                }
+            }
+            case "lagprobe" -> {
+                if (requireAdmin(sender)) {
+                    lagProbe(sender, label, args);
                 }
             }
             case "leistung", "perf", "tps" -> {
@@ -1109,6 +1116,37 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                 + bz + ").");
         LOG.info(() -> "orte | gereist | spieler=" + player.getName() + " name=" + label + " höher="
                 + (safe.getAsInt() - by));
+    }
+
+    /**
+     * /bm lagprobe &lt;welt&gt; &lt;x1&gt; &lt;y1&gt; &lt;z1&gt; &lt;x2&gt; &lt;y2&gt; &lt;z2&gt; [sekunden] – zählt, was im Bereich von selbst schaltet
+     * (LagWatch). Antwort erst nach der Messzeit; RCON wartet nicht, das Ergebnis steht dann im Log
+     * („lag | gemessen“) und geht an den Absender.
+     */
+    private void lagProbe(CommandSender sender, String label, String[] args) {
+        if (args.length < 8) {
+            Texts.info(sender, "/" + label + " lagprobe <welt> <x1> <y1> <z1> <x2> <y2> <z2> [sekunden 1..60]");
+            return;
+        }
+        World w = Bukkit.getWorld(args[1]);
+        if (w == null) {
+            Texts.info(sender, "Welt " + Texts.clean(args[1], 64) + " gibt es nicht.");
+            return;
+        }
+        int[] c = new int[6];
+        int seconds;
+        try {
+            for (int i = 0; i < 6; i++) {
+                c[i] = Integer.parseInt(args[2 + i]);
+            }
+            seconds = args.length > 8 ? Math.clamp(Integer.parseInt(args[8]), 1, 60) : 10;
+        } catch (NumberFormatException e) {
+            Texts.info(sender, "Koordinaten und Sekunden als ganze Zahlen angeben.");
+            return;
+        }
+        LagWatch.Box box = LagWatch.Box.of(w, c[0], c[1], c[2], c[3], c[4], c[5]);
+        Texts.info(sender, "Ich messe " + seconds + " s …");
+        plugin.lagWatch().watch(box, seconds * 20, r -> Texts.info(sender, "Lagprobe: " + r.line()));
     }
 
     private static boolean isFree(Block b) {

@@ -49,6 +49,10 @@ bau:
   zieldauer-sekunden: 120
   # Abstand zwischen Spieler und Vorderkante des Bauwerks.
   abstand-vor-spieler: 3
+  # Lag-Wächter: Schaltet ein fertiger Bau ohne Eingabe öfter als so oft je Sekunde (Redstone, Kolben, Werfer,
+  # Trichter, neue Objekte), baut der Baumeister ihn wieder ab. Gemessen: Taktgeber ~18, Farmen 22–36,
+  # Dauerläufer ohne Eingabe 53–118.
+  lag-grenze-je-sekunde: 50
   # Unbekannte Blocknamen des LLM werden hierdurch ersetzt (statt Lücken im Bauwerk).
   ersatzblock: stone
   # Vor dem Bau wird für jeden Block ein BlockPlaceEvent/BlockBreakEvent im Namen des
