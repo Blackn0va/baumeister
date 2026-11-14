@@ -31,6 +31,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.type.Repeater;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
@@ -1012,7 +1013,31 @@ final class BuildJob {
                 }
             }
         }
-        LOG.info(() -> "bau | redstone_aufgefrischt | teile=" + parts.size());
+        // Speicher auf 0 erst NACH dem Anstupsen: Erst dann stehen alle Riegel so, wie die fertige Schaltung sie hält.
+        int cleared = 0;
+        for (Block b : parts) {
+            BlockData d = b.getBlockData();
+            if (frozenHigh(d)) {
+                ((Repeater) d).setPowered(false);
+                b.setBlockData(d, true);
+                cleared++;
+            }
+        }
+        int latches = cleared;
+        LOG.info(() -> "bau | redstone_aufgefrischt | teile=" + parts.size() + " speicher_gelöscht=" + latches);
+    }
+
+    /**
+     * Ein verriegelter Verstärker, der an ist, hat beim Bau einen Zwischenzustand eingefangen. Gemessen 2026-11-14
+     * (Spigot 1.21.11, akkumulator_4bit, ohne Last): Nach Süden gebaut stand der Slave-Riegel der Stufe 3 3 von 3 Mal
+     * auf „an/zu“, Q3 = 1 vor dem ersten Takt – die Summenlampe leuchtete kurz, solange ihr Volladdierer halb gebaut
+     * war, und der Slave hielt das fest. Nach Nord, Ost und West war er aus. Welcher Teil der Bau-Reihenfolge das
+     * entscheidet, ist nicht untersucht – die Reihenfolge allein festzuzurren hielte jede andere Schaltung nicht davon
+     * ab. Ein frisch gebauter Speicher beginnt jetzt immer bei 0; in der Regression (47 Maschinen × 4 Richtungen) griff
+     * das genau einmal, eben dort. Wer das entfernt, baut Rechenwerke, die je nach Richtung mit Müll starten.
+     */
+    static boolean frozenHigh(BlockData d) {
+        return d instanceof Repeater r && r.isLocked() && r.isPowered();
     }
 
     /**

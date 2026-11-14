@@ -160,6 +160,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- Ein nach Süden gebauter Akkumulator (`akkumulator_4bit`) startete mit dem Wert 8 statt 0: Ein Speicher fing beim
+  Bau einen Zwischenzustand ein. Jeder frisch gebaute Speicher beginnt jetzt bei 0, in jeder Richtung.
 - Burg, Mauer, Brücke, Garten oder Baum ohne Materialangabe vom Modell wurden verworfen („Schritt 1: block fehlt“).
   Jetzt nimmt der Baumeister das Standardmaterial (Steinziegel, Eichenzaun, Eichenstamm) und baut.
 - Ein Bauplan mit einem Gegenstand statt Block (z. B. Elytren) wurde still mit Stein gebaut. Jetzt geht er zuerst zur
