@@ -92,6 +92,9 @@ final class WorldBuildService {
     private final Deque<Order> manual = new ArrayDeque<>();
     /** Rückgängig der Kacheln – eigener Speicher, nicht der Stapel von /bm rückgängig (siehe TileUndo). */
     private final TileUndo undo;
+    private final Path tileRoot;
+    private final UndoJournal tileJournal;
+    private List<Path> tileKept;
     /** Grund, warum der Weltbau gesperrt ist (Merkliste unlesbar), sonst null. */
     private String blocked;
     private List<Tile> nearby = List.of();
@@ -130,12 +133,28 @@ final class WorldBuildService {
         this.cacheDir = data.resolve("karten");
         this.throttle = new Throttle(clock, gapMillis());
         this.undo = new TileUndo(undoDepth());
+        // Kacheln über den Neustart (2026-11-14): Vor dem ersten Spool aufräumen (wie BaumeisterPlugin für DIR),
+        // geprüft und übernommen wird in start(), wenn die Welten da sind. Vorher lagen die Kachel-Spools ohne Zettel
+        // unter rückgängig/, und jeder Neustart löschte sie – /bm weltbau rückgängig ging nur in derselben Sitzung.
+        this.tileRoot = data.resolve(UndoJournal.TILE_DIR);
+        ComfortSettings comfort = ComfortSettings.from(plugin.getConfig());
+        this.tileJournal = new UndoJournal(tileRoot, comfort.undoAcrossRestart());
+        this.tileKept = UndoJournal.sweep(tileRoot, comfort.undoAcrossRestart());
         loadDone();
         auto = plugin.getConfig().getBoolean("weltbau.auto", false) && blocked == null;
     }
 
     void start() {
         timer = Bukkit.getScheduler().runTaskTimer(plugin, this::tickGuarded, 20L, 20L);
+        List<Path> kept = tileKept;
+        tileKept = List.of();
+        ComfortSettings comfort = ComfortSettings.from(plugin.getConfig());
+        tileJournal.loadAsync(kept, new UndoJournal.Limits(undoDepth(), comfort.undoMaxDays() * 86_400_000L,
+                comfort.undoMaxMb() * 1024L * 1024L), task -> {
+                    if (plugin.isEnabled()) {
+                        Bukkit.getScheduler().runTask(plugin, task);
+                    }
+                }, this::adoptTiles);
         LOG.info(() -> "weltbau | bereit | fertig=" + done.size() + " auto=" + auto + " abstand_s="
                 + gapMillis() / 1000 + (blocked != null ? " gesperrt=" + blocked : ""));
     }
@@ -659,8 +678,7 @@ final class WorldBuildService {
         int ms = cfg("stadt.ms-pro-tick", 25, 5, 45);
         int lagMs = cfg("stadt.lag-ms", 150, 60, 2000);
         UndoSpool spool = plugin.getConfig().getBoolean("weltbau.rückgängig", true)
-                ? new UndoSpool(plugin.getDataFolder().toPath().resolve("rückgängig")
-                        .resolve(String.valueOf(System.currentTimeMillis())))
+                ? new UndoSpool(tileRoot.resolve(String.valueOf(System.currentTimeMillis())))
                 : null;
         UUID owner = requester instanceof Player p ? p.getUniqueId() : null;
         WorldTileSource src = source;
@@ -678,10 +696,47 @@ final class WorldBuildService {
         job.start();
     }
 
+    /**
+     * Geprüfte Kachel-Einträge vom letzten Lauf übernehmen, älteste zuerst (validate liefert die neuesten zuerst) –
+     * so bleibt die jüngste Kachel die, die /bm weltbau rückgängig ohne Angabe nimmt. Zustände gegen diese
+     * Serverfassung (keepKnown, fail-closed). Hat die Kachel in dieser Sitzung schon einen Eintrag, geht der vor.
+     */
+    private void adoptTiles(List<UndoJournal.Loaded> loaded) {
+        StateCache<org.bukkit.block.data.BlockData> states = new StateCache<>(Bukkit::createBlockData);
+        List<UndoJournal.Loaded> known = new ArrayList<>(tileJournal.keepKnown(loaded, states::knows));
+        java.util.Collections.reverse(known);
+        undo.depth(undoDepth());
+        int taken = 0;
+        for (UndoJournal.Loaded l : known) {
+            UndoJournal.Manifest m = l.manifest();
+            World w = Bukkit.getWorld(m.world());
+            if (m.tile() == null || w == null) {
+                LOG.info(() -> "weltbau | rückgängig_übersprungen | ordner=" + l.dir().getFileName() + " grund="
+                        + (m.tile() == null ? "ohne_kachel" : "welt_fehlt"));
+                continue;
+            }
+            String[] t = m.tile().split(",");
+            Tile tile = new Tile(Integer.parseInt(t[0]), Integer.parseInt(t[1]));
+            if (undo.has(tile)) {
+                UndoSpool.deleteDir(l.dir());
+                continue;
+            }
+            if (undo.add(tile, UndoJournal.toRecord(l, w))) {
+                taken++;
+            }
+        }
+        int n = taken;
+        LOG.info(() -> "weltbau | rückgängig_geladen | kacheln=" + n + " speicher=" + undo.size());
+    }
+
     private void onJobFinished(CityJob j, Tile tile) {
         // Eigener Speicher statt plugin.service().pushUndo – siehe TileUndo (Prüfbefund 2026-10-28).
         undo.depth(undoDepth());
-        undo.add(tile, j.undoRecord());
+        BuildJob.UndoRecord rec = j.undoRecord();
+        if (undo.add(tile, rec) && rec.spool() != null) {
+            // Zettel mit Kachel dazu: erst damit übersteht der Eintrag den Neustart (adoptTiles).
+            tileJournal.persistSpool(rec.spool(), UndoJournal.manifestOf(rec).withTile(tile.tx(), tile.tz()));
+        }
         if (!j.completed()) {
             // Gestoppt, abgebrochen oder mit übersprungenen Etappen: nicht als fertig merken – und für diese Sitzung
             // auch nicht gleich wieder anfassen. Vorher stand die Kachel weder in done noch in failed, und die
@@ -1031,5 +1086,6 @@ final class WorldBuildService {
             source = null;
         }
         worker.shutdownNow();
+        tileJournal.close();
     }
 }

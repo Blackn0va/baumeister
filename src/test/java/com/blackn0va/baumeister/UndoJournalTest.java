@@ -122,6 +122,36 @@ class UndoJournalTest {
     }
 
     @Test
+    void tileEntrySurvivesARestartWithItsTileAndAForgedTileIsRejected() throws Exception {
+        // 2026-11-14: Weltbau-Kacheln lagen ohne Zettel unter rückgängig/ und gingen bei jedem Start verloren.
+        Path root = Files.createDirectories(tmp.resolve(UndoJournal.TILE_DIR));
+        UndoJournal j = new UndoJournal(root, true);
+        UndoSpool tile = new UndoSpool(root.resolve(String.valueOf(NOW - 3000)));
+        for (int i = 0; i < 500; i++) {
+            tile.record(i, 70, -i, "minecraft:air", "minecraft:stone");
+        }
+        tile.finish();
+        j.persistSpool(tile, manifest(NOW - 3000, 500).withTile(3, -2));
+        List<Path> kept = UndoJournal.sweep(root, true);
+        assertEquals(1, kept.size(), "Kachel mit Zettel muss den Start überleben");
+        List<UndoJournal.Loaded> loaded = UndoJournal.validate(kept, LIMITS, NOW);
+        assertEquals(1, loaded.size());
+        assertEquals("3,-2", loaded.getFirst().manifest().tile());
+        assertEquals(500, loaded.getFirst().manifest().count());
+        // Ein normaler Eintrag trägt keine Kachel.
+        assertEquals(null, UndoJournal.readManifest(copy(root(), "bau-" + (NOW - 1) + "-1", NOW - 1, 10)).tile());
+        // Gefälschte Kachel: Eintrag verworfen und gelöscht (fail-closed wie jedes andere Feld).
+        Path forged = root.resolve(String.valueOf(NOW - 2000));
+        UndoSpool f = new UndoSpool(forged);
+        f.record(1, 70, 1, "minecraft:air");
+        f.finish();
+        UndoJournal.writeManifest(forged, new UndoJournal.Manifest(OWNER, "Heiko", "world", NOW - 2000, 1,
+                "3;rm -rf"));
+        assertEquals(List.of(), UndoJournal.validate(List.of(forged), LIMITS, NOW));
+        j.close();
+    }
+
+    @Test
     void citySpoolGetsAManifestAndOrphansAreSweptAsBefore() throws Exception {
         Path root = root();
         UndoSpool city = new UndoSpool(root.resolve(String.valueOf(NOW - 5000)));

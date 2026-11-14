@@ -73,7 +73,10 @@ class TileUndoTest {
         undo.add(new Tile(1, 1), second);
         assertEquals(1, undo.size());
         assertFalse(Files.exists(first.spool().dir()));
+        assertTrue(undo.has(new Tile(1, 1)), "Start-Übernahme fragt das, bevor sie einen alten Eintrag nimmt");
+        assertFalse(undo.has(new Tile(1, 2)));
         assertSame(second, undo.take(new Tile(1, 1)).record());
+        assertFalse(undo.has(new Tile(1, 1)));
     }
 
     @Test

@@ -63,6 +63,11 @@ final class TileUndo {
         return entries.remove(tile.key());
     }
 
+    /** Gibt es für die Kachel schon einen Eintrag? (Beim Start: ein Eintrag dieser Sitzung geht vor.) */
+    boolean has(Tile tile) {
+        return entries.containsKey(tile.key());
+    }
+
     /** Zuletzt gemerkte Kachel (ohne sie herauszunehmen), null ohne Eintrag. */
     Tile latest() {
         Tile last = null;

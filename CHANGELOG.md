@@ -170,6 +170,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   hört auf.
 - `/bm gelaende` legte für denselben Ort jedes Mal einen neuen Platz in der hohen Geländewelt an – der Reisepunkt
   zeigte nur noch auf den letzten. Derselbe Ort mit demselben Radius führt jetzt an den ersten Platz zurück.
+- `/bm weltbau rückgängig` ging nur bis zum nächsten Neustart – danach waren alle Kacheln vergessen. Jetzt überstehen
+  sie den Neustart (eigener Ordner `rückgängig-weltbau/`, gleiche Grenzen und Prüfungen wie `/bm rückgängig`).
 - Ein Rückgängig, das ein Neustart unterbrach (oder das noch in der Warteschlange stand), war verloren, und der halbe
   Bau blieb stehen. Der Eintrag bleibt jetzt bis zum Ende des Zurücksetzens gespeichert und lässt sich nach dem
   Neustart wieder aufrufen.

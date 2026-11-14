@@ -62,6 +62,14 @@ final class UndoJournal {
 
     /** Ordner unter dem Datenordner – derselbe, den CityService und WorldBuildService für ihre Spools nehmen. */
     static final String DIR = "rückgängig";
+    /**
+     * Weltbau-Kacheln (2026-11-14): eigener Ordner mit eigenen Grenzen, damit Kacheln weder den Stapel von
+     * /bm rückgängig verdrängen (Prüfbefund 2026-10-28, siehe TileUndo) noch beim Start mit ihm um bau.undo-tiefe
+     * konkurrieren. Vorher lagen sie ohne Zettel unter DIR, und jeder Start löschte sie.
+     */
+    static final String TILE_DIR = "rückgängig-weltbau";
+    /** Kachel auf dem Zettel: „tx,tz“. */
+    private static final Pattern TILE = Pattern.compile("-?\\d{1,7},-?\\d{1,7}");
     static final String MANIFEST = "eintrag.json";
     private static final int VERSION = 1;
     /** Stadtbau: Millisekunden (CityService), normaler Bau: bau-&lt;Millisekunden&gt;-&lt;Nummer&gt; (persistCopy). */
@@ -85,8 +93,16 @@ final class UndoJournal {
      */
     static final int MAX_STATES = 65_536;
 
-    /** Was auf dem Zettel steht. owner null = Konsole. */
-    record Manifest(UUID owner, String ownerName, String world, long when, long count) {
+    /** Was auf dem Zettel steht. owner null = Konsole. tile: Weltbau-Kachel „tx,tz“ oder null (normaler Eintrag). */
+    record Manifest(UUID owner, String ownerName, String world, long when, long count, String tile) {
+
+        Manifest(UUID owner, String ownerName, String world, long when, long count) {
+            this(owner, ownerName, world, when, count, null);
+        }
+
+        Manifest withTile(int tx, int tz) {
+            return new Manifest(owner, ownerName, world, when, count, tx + "," + tz);
+        }
     }
 
     /**
@@ -381,7 +397,15 @@ final class UndoJournal {
         if (count < 1 || count > MAX_COUNT) {
             throw new IOException("anzahl_ungültig");
         }
-        return new Manifest(owner, ownerName, world, when, count);
+        String tile = null;
+        JsonElement kt = o.get("kachel");
+        if (kt != null && !kt.isJsonNull()) {
+            tile = text(o, "kachel");
+            if (!TILE.matcher(tile).matches()) {
+                throw new IOException("kachel_ungültig");
+            }
+        }
+        return new Manifest(owner, ownerName, world, when, count, tile);
     }
 
     /** Zettel schreiben: erst Hilfsdatei, dann atomar umbenennen – ein halber Zettel darf nie als Zettel gelten. */
@@ -395,6 +419,9 @@ final class UndoJournal {
         o.addProperty("welt", m.world());
         o.addProperty("zeit", m.when());
         o.addProperty("anzahl", m.count());
+        if (m.tile() != null) {
+            o.addProperty("kachel", m.tile());
+        }
         Path tmp = dir.resolve(MANIFEST + ".neu");
         Files.writeString(tmp, o.toString(), StandardCharsets.UTF_8);
         try {
