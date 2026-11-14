@@ -156,6 +156,54 @@ public final class TemplateCatalog {
         SPECIAL.put("fossil_schaedel", "fossil/skull_1");  // umlaut-ok: Bauteilname, ASCII wie alle Namen
         SPECIAL.put("uralte_stadt", "ancient_city/city_center/city_center_1");
         SPECIAL.put("unterwasserruine", "underwater_ruin/big_brick_1");
+        // Mehr Varianten (2026-11-14, Wunsch „Monumente, Gebäude … massenhaft“): nur Vorlagen, die für sich ein
+        // ganzer Bau sind – halbe Schiffe, Iglu-Keller und Turmteile der Endstadt sind Bruchstücke (Jigsaw-Teile) und
+        // bleiben draußen. Die ersten Namen bleiben, wie sie waren (gespeicherte Pläne verweisen darauf).
+        SPECIAL.put("segelschiff_2", "shipwreck/rightsideup_full");
+        String[] wrecks = {"rightsideup_full_degraded", "sideways_full", "sideways_full_degraded", "upsidedown_full",
+            "upsidedown_full_degraded"};
+        for (int i = 0; i < wrecks.length; i++) {
+            SPECIAL.put("schiffswrack_" + (i + 2), "shipwreck/" + wrecks[i]);
+        }
+        SPECIAL.put("wachturm_2", "pillager_outpost/watchtower_overgrown");
+        for (int i = 2; i <= 4; i++) {
+            SPECIAL.put("fossil_wirbel_" + i, "fossil/spine_" + i);
+            SPECIAL.put("fossil_schaedel_" + i, "fossil/skull_" + i);  // umlaut-ok: Bauteilname
+        }
+        for (int i = 1; i <= 14; i++) {
+            SPECIAL.put("netherfossil_" + i, "nether_fossils/fossil_" + i);
+        }
+        int ruin = 2;
+        for (String kind : new String[] {"brick", "cracked", "mossy"}) {
+            for (int n : new int[] {1, 2, 3, 8}) {
+                String key = "underwater_ruin/big_" + kind + "_" + n;
+                if (!key.equals("underwater_ruin/big_brick_1")) {
+                    SPECIAL.put("unterwasserruine_" + ruin++, key);
+                }
+            }
+        }
+        for (int n = 4; n <= 7; n++) {
+            SPECIAL.put("unterwasserruine_" + ruin++, "underwater_ruin/big_warm_" + n);
+        }
+        for (String kind : new String[] {"brick", "cracked", "mossy", "warm"}) {
+            for (int n = 1; n <= 8; n++) {
+                SPECIAL.put("kleine_ruine_" + kind + "_" + n, "underwater_ruin/" + kind + "_" + n);
+            }
+        }
+    }
+
+    /** Alle Namen mit diesem Anfang (Varianten einer Familie), in der Reihenfolge von SPECIAL. */
+    private static List<String> family(String... prefixes) {
+        List<String> out = new ArrayList<>();
+        for (String n : SPECIAL.keySet()) {
+            for (String pre : prefixes) {
+                if (n.equals(pre) || n.startsWith(pre + "_")) {
+                    out.add(n);
+                    break;
+                }
+            }
+        }
+        return List.copyOf(out);
     }
 
     private record Special(String german, List<String> names) {
@@ -166,8 +214,8 @@ public final class TemplateCatalog {
 
     static {
         Special igloo = new Special("ein Iglu", List.of("iglu"));
-        Special ship = new Special("ein Segelschiff", List.of("segelschiff"));
-        Special wreck = new Special("ein Schiffswrack", List.of("schiffswrack"));
+        Special ship = new Special("ein Segelschiff", family("segelschiff"));
+        Special wreck = new Special("ein Schiffswrack", family("schiffswrack"));
         Special endShip = new Special("ein Endschiff", List.of("endschiff"));
         List<String> portals = new ArrayList<>();
         for (int i = 1; i <= 10; i++) {
@@ -176,10 +224,12 @@ public final class TemplateCatalog {
         Special ruinedPortal = new Special("ein Ruinenportal", List.copyOf(portals));
         Special giantPortal = new Special("ein Riesen-Ruinenportal",
                 List.of("riesenportal_1", "riesenportal_2", "riesenportal_3"));
-        Special tower = new Special("einen Wachturm", List.of("wachturm"));
+        Special tower = new Special("einen Wachturm", family("wachturm"));
         Special tent = new Special("ein Zelt", List.of("zelt_1", "zelt_2"));
-        Special fossil = new Special("ein Fossil", List.of("fossil_wirbel", "fossil_schaedel"));  // umlaut-ok
-        Special ruin = new Special("eine Ruine", List.of("unterwasserruine"));
+        Special fossil = new Special("ein Fossil", family("fossil_wirbel", "fossil_schaedel"));  // umlaut-ok
+        Special ruin = new Special("eine Ruine", family("unterwasserruine"));
+        Special smallRuin = new Special("eine kleine Ruine", family("kleine_ruine"));
+        Special netherFossil = new Special("ein Netherfossil", family("netherfossil"));
         for (String w : List.of("iglu", "iglus", "iglo", "iglos", "igloo")) {  // „Iglo“: so schreibt es Whisper (2026-11-04)
             SPECIAL_WORDS.put(w, igloo);
         }
@@ -207,6 +257,12 @@ public final class TemplateCatalog {
         }
         for (String w : List.of("ruine", "ruinen", "unterwasserruine")) {
             SPECIAL_WORDS.put(w, ruin);
+        }
+        for (String w : List.of("ruinchen", "mauerrest", "mauerreste")) {
+            SPECIAL_WORDS.put(w, smallRuin);
+        }
+        for (String w : List.of("netherfossil", "netherfossilien", "netherskelett", "riesenskelett")) {
+            SPECIAL_WORDS.put(w, netherFossil);
         }
     }
 

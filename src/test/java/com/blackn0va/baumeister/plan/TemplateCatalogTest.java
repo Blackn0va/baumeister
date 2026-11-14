@@ -87,6 +87,30 @@ class TemplateCatalogTest {
     }
 
     @Test
+    void moreWholeGameStructuresAndTheirVariantsRotate() throws PlanException {
+        // 2026-11-14: alle ganzen Schiffswracks, Fossilien, Netherfossilien und Unterwasserruinen – keine Bruchstücke.
+        assertEquals("nether_fossils/fossil_14", TemplateCatalog.key("netherfossil_14").get());
+        assertEquals("shipwreck/upsidedown_full_degraded", TemplateCatalog.key("schiffswrack_6").get());
+        assertEquals("underwater_ruin/warm_8", TemplateCatalog.key("kleine_ruine_warm_8").get());
+        assertTrue(TemplateCatalog.names().stream().noneMatch(n -> TemplateCatalog.key(n).get().contains("half")),
+                "halbe Schiffe sind Bruchstücke");
+        java.util.Set<String> wrecks = new HashSet<>();
+        for (long seed = 0; seed < 40; seed++) {
+            Optional<TemplateCatalog.Match> m = TemplateCatalog.match("bau mir ein Schiffswrack", SOURCE,
+                    TemplateCatalog.Biome.PLAINS, 192, seed, true);
+            assertTrue(m.isPresent());
+            wrecks.add(modules(m.get().json()).getFirst().get("name").getAsString());
+        }
+        assertTrue(wrecks.size() > 1, "Varianten wechseln: " + wrecks);
+        assertTrue(wrecks.stream().allMatch(n -> n.startsWith("schiffswrack")), wrecks.toString());
+        for (String p : List.of("bau mir ein Netherfossil", "eine kleine Ruine", "ein Fossil", "eine Ruine")) {
+            Optional<TemplateCatalog.Match> m = strict(p);
+            assertTrue(m.isPresent(), p);
+            COMPILER.compile(PlanParser.parse(m.get().json()));
+        }
+    }
+
+    @Test
     void plainHouseStaysWithLlmUnlessFallback() {
         // Gegenprobe zur Regel „schlichtes Haus bleibt beim LLM“: Material- und Zusatzwünsche kann die Vorlage nicht.
         assertTrue(strict("bau mir ein Haus").isEmpty());

@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Mehr Bauten aus dem Spiel ohne KI:** 6 Schiffswracks, 2 Segelschiffe, 8 Fossilien, 14 Netherfossilien („bau mir
+  ein Netherfossil“), 16 große und 32 kleine Unterwasserruinen („eine kleine Ruine“) und ein überwachsener Wachturm –
+  die Varianten wechseln von Bau zu Bau. 263 statt 189 Vorlagen.
 - **Mauern mit Tor:** Eine gerade Mauer ab 9 Blöcken hat in der Mitte eine Durchfahrt wie das Burgtor (3 breit,
   Wehrgang und Zinnen laufen darüber weg) – vorher war jede Mauer ein geschlossener Riegel.
 - **Mehrere Hochhäuser ohne KI:** „3 mal 20 Stockwerke“ oder „drei Hochhäuser mit 20 Etagen“ baut die Türme sofort
