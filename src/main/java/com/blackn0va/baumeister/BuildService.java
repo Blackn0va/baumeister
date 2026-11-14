@@ -1770,7 +1770,10 @@ final class BuildService {
             if (mayTouch(sender, candidate.owner())) {
                 rec = candidate;
                 it.remove();
-                comfort.forget(rec);
+                // Die Kopie auf der Platte bleibt, bis restore() fertig ist (forgetRestored). Vorher löschte
+                // comfort.forget sie hier – ein Neustart mitten im Zurücksetzen oder in der Warteschlange davor nahm den
+                // Eintrag mit, und der halbe Bau blieb stehen (Gedächtnis „Offen“). Ein zweites Rückgängig nach dem
+                // Neustart ist harmlos: Schon zurückgesetzte Stellen lässt UndoCheck in Ruhe bzw. setzt sie gleich.
                 break;
             }
         }
@@ -1816,6 +1819,7 @@ final class BuildService {
             try {
                 parts = spool.partsNewestFirst();
             } catch (IOException e) {
+                forgetRestored(rec);
                 LOG.log(Level.WARNING, "bau | rückgängig_unlesbar | ordner=" + spool.dir().getFileName(), e);
                 Texts.info(sender, "Die Rückgängig-Daten sind nicht lesbar: " + e.getMessage());
                 startNextUndo();
@@ -1859,6 +1863,7 @@ final class BuildService {
                 step = job.tick(gap);
             } catch (IOException e) {
                 endRestore(job);
+                forgetRestored(rec);
                 LOG.log(Level.WARNING, "bau | rückgängig_teil_unlesbar | besitzer=" + rec.ownerName(), e);
                 Texts.info(sender, "Rückgängig abgebrochen, ein Teil ist nicht lesbar: " + e.getMessage());
                 startNextUndo();
@@ -1868,6 +1873,7 @@ final class BuildService {
                 return;
             }
             endRestore(job);
+            forgetRestored(rec);
             if (rec.spool() != null) {
                 rec.spool().delete();
             }
@@ -1882,6 +1888,16 @@ final class BuildService {
                     skipped, changed, job.tickets(), (System.nanoTime() - t0) / 1_000_000_000L));
             startNextUndo();
         }, 1L, 1L);
+    }
+
+    /**
+     * Eintrag ist zurückgesetzt (oder unlesbar): erst jetzt die Kopie auf der Platte löschen. Für Einträge, die nie im
+     * Stapel lagen (Weltbau-Kacheln, TileUndo), tut das nichts. Bewusst offen: Läuft während des Zurücksetzens
+     * /bm neuladen, gehört die Kopie schon dem neuen Journal, und dieser Aufruf löscht sie nicht – nach dem nächsten
+     * Neustart steht der Eintrag noch einmal im Stapel, ein zweites Rückgängig darauf ändert nichts (UndoCheck).
+     */
+    private void forgetRestored(UndoRecord rec) {
+        comfort.forget(rec);
     }
 
     private void endRestore(RestoreJob job) {
@@ -2217,7 +2233,7 @@ final class BuildService {
             RestoreJob job = restoring;
             endRestore(job);
             LOG.warning(() -> "bau | rückgängig_unterbrochen | wiederhergestellt=" + job.restored() + " wartend="
-                    + undoQueue.size() + " – der Rest bleibt stehen");
+                    + undoQueue.size() + " – Einträge bleiben gespeichert, /bm rückgängig nach dem Start setzt fort");
             undoQueue.clear();
         }
         comfort.shutdown();

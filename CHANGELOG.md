@@ -170,6 +170,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   hört auf.
 - `/bm gelaende` legte für denselben Ort jedes Mal einen neuen Platz in der hohen Geländewelt an – der Reisepunkt
   zeigte nur noch auf den letzten. Derselbe Ort mit demselben Radius führt jetzt an den ersten Platz zurück.
+- Ein Rückgängig, das ein Neustart unterbrach (oder das noch in der Warteschlange stand), war verloren, und der halbe
+  Bau blieb stehen. Der Eintrag bleibt jetzt bis zum Ende des Zurücksetzens gespeichert und lässt sich nach dem
+  Neustart wieder aufrufen.
 - `/bm rückgängig` überschrieb, was andere nach dem Bau an derselben Stelle gebaut hatten – auch eine gefüllte Truhe.
   Jetzt bleiben solche Blöcke stehen, und die Meldung sagt, wie viele. Rückgängig-Einträge von vor dem Update
   setzen weiter wie bisher zurück.
