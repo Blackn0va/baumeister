@@ -179,4 +179,19 @@ class TerrainServiceTest {
         assertEquals(-1, TerrainPopulator.slotOf(-32_769));
         assertTrue(TerrainPopulator.SLOT_BLOCKS > 2 * TerrainService.MAX_RADIUS + 32);
     }
+
+    @Test
+    void sameOrtAndRadiusReusesItsSlotOtherRadiusDoesNot(@TempDir Path tmp) throws Exception {
+        // dev01 hatte den Grand Canyon dreimal (je /bm gelaende ein neuer Platz) – der zweite Aufruf soll zurückführen.
+        Path dir = Files.createDirectories(tmp.resolve("gelaende"));
+        Files.writeString(dir.resolve("3_grand_canyon.json"), "{\"welt\":\"w\",\"ort\":\"Grand Canyon\","
+                + "\"lat\":36.0997631,\"lon\":-112.1124846,\"radius\":8000,\"platz\":3}", StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("tief.json"), "{\"welt\":\"gelaende_tief\",\"lat\":36.0997631,"
+                + "\"lon\":-112.1124846,\"radius\":8000}", StandardCharsets.UTF_8);  // flache Welt: kein Platz
+        Files.writeString(dir.resolve("0_kaputt.json"), "{", StandardCharsets.UTF_8);  // vor dem Treffer: darf ihn nicht verdecken
+        assertEquals(java.util.OptionalInt.of(3), TerrainService.existingSlot(dir, 36.0997631, -112.1124846, 8000));
+        assertTrue(TerrainService.existingSlot(dir, 36.0997631, -112.1124846, 4000).isEmpty(), "anderer Radius");
+        assertTrue(TerrainService.existingSlot(dir, 36.1, -112.1124846, 8000).isEmpty(), "anderer Ort");
+        assertTrue(TerrainService.existingSlot(tmp.resolve("fehlt"), 0, 0, 8000).isEmpty());
+    }
 }

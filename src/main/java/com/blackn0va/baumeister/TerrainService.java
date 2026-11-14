@@ -418,12 +418,53 @@ final class TerrainService {
         return max + 1;
     }
 
-    /** Ergebnis der Vorarbeit im Hintergrund. */
-    private record Prepared(String world, String place, JsonObject params, double min, double max, int tiles,
-            Vertical v, boolean high) {
+    /**
+     * Platz, auf dem derselbe Ort (Breite/Länge auf ~1 cm, gleicher Radius) schon liegt – sonst leer.
+     *
+     * Vorher bekam jeder Aufruf von /bm gelaende einen neuen Platz, auch für denselben Ort: auf dev01 lag der Grand
+     * Canyon dreimal in der Welt (Gedächtnis, „Offen“), und der Reisepunkt zeigte nur noch auf den letzten. Jetzt
+     * führt der zweite Aufruf an den ersten Platz zurück. Ein anderer Radius ist ein anderes Gelände und bekommt einen
+     * neuen Platz – sonst passten schon erzeugte Chunks nicht zu den neuen. Wer das entfernt, füllt die hohe Welt mit
+     * Kopien (jeder Platz 65 536 Blöcke weiter).
+     */
+    static java.util.OptionalInt existingSlot(Path dir, double lat, double lon, int radius) {
+        if (!Files.isDirectory(dir)) {
+            return java.util.OptionalInt.empty();
+        }
+        List<Path> list;
+        try (Stream<Path> files = Files.list(dir)) {
+            list = files.filter(p -> p.toString().endsWith(".json")).sorted().toList();
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "gelände | plätze_lesen_fehlgeschlagen", e);
+            return java.util.OptionalInt.empty();
+        }
+        for (Path f : list) {
+            try {
+                JsonObject o = JsonParser.parseString(Files.readString(f, StandardCharsets.UTF_8)).getAsJsonObject();
+                if (o.has("platz") && o.has("lat") && o.has("lon") && o.has("radius")
+                        && Math.abs(o.get("lat").getAsDouble() - lat) < 1e-7
+                        && Math.abs(o.get("lon").getAsDouble() - lon) < 1e-7
+                        && o.get("radius").getAsInt() == radius) {
+                    return java.util.OptionalInt.of(o.get("platz").getAsInt());
+                }
+            } catch (IOException | RuntimeException e) {
+                // Eine unlesbare Datei kostet nur sich selbst; ohne Treffer gibt es einen neuen Platz – lieber eine
+                // Kopie als ein falsches Gelände.
+                LOG.log(Level.WARNING, "gelände | platz_unlesbar | datei=" + f.getFileName(), e);
+            }
+        }
+        return java.util.OptionalInt.empty();
     }
 
-    private Prepared prepare(CommandSender sender, OsmClient.Place place, int radius, Range high, int slot) {
+    /** Ergebnis der Vorarbeit im Hintergrund. reused: Platz gab es schon (existingSlot). */
+    private record Prepared(String world, String place, JsonObject params, double min, double max, int tiles,
+            Vertical v, boolean high, boolean reused) {
+    }
+
+    private Prepared prepare(CommandSender sender, OsmClient.Place place, int radius, Range high, int freeSlot) {
+        java.util.OptionalInt known = high == null ? java.util.OptionalInt.empty()
+                : existingSlot(plugin.getDataFolder().toPath().resolve("gelaende"), place.lat(), place.lon(), radius);
+        int slot = known.orElse(freeSlot);
         double cos = Math.cos(Math.toRadians(place.lat()));
         double dLat = radius / 110_540.0;
         double dLon = radius / (111_320.0 * cos);
@@ -498,7 +539,7 @@ final class TerrainService {
         } catch (IOException e) {
             throw new IllegalStateException("Kann die Geländedaten nicht speichern: " + e.getMessage(), e);
         }
-        return new Prepared(name, place.name(), o, min, max, count, v, high != null);
+        return new Prepared(name, place.name(), o, min, max, count, v, high != null, known.isPresent());
     }
 
     private void finish(CommandSender sender, Prepared p) {
@@ -541,8 +582,8 @@ final class TerrainService {
                 : " Für 1:1 auch in der Höhe: /bm gelaende einrichten, dann Neustart.";
         Texts.info(sender, String.format(Locale.GERMAN, "%s: Gelände von %.0f m bis %.0f m, %d Höhenkacheln, "
                 + "1 Block = 1 m waagerecht, %s. Welt: %s – sie entsteht beim Erkunden. Höhen: Mapzen/AWS Terrain "
-                + "Tiles (SRTM, USGS u. a.).%s", shortName(p.place()), p.min(), p.max(), p.tiles(), scale, w.getName(),
-                hint));
+                + "Tiles (SRTM, USGS u. a.).%s%s", shortName(p.place()), p.min(), p.max(), p.tiles(), scale,
+                w.getName(), hint, p.reused() ? " Diesen Ort gab es schon – du landest am selben Platz wie vorher." : ""));
         plugin.places().remember(shortName(p.place()), target, PlaceRegistry.Kind.TERRAIN);
         if (sender instanceof Player player) {
             player.teleport(target);
