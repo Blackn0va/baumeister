@@ -162,6 +162,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ### Behoben
 - Ein nach Süden gebauter Akkumulator (`akkumulator_4bit`) startete mit dem Wert 8 statt 0: Ein Speicher fing beim
   Bau einen Zwischenzustand ein. Jeder frisch gebaute Speicher beginnt jetzt bei 0, in jeder Richtung.
+- Client-Mod: `/kbau stop` während der Planung verwarf nur das Ergebnis, die Anfrage lief weiter, und der
+  Baumeister-Host rechnete den Plan samt Nachbesserungen zu Ende. Jetzt schließt der Stopp die Verbindung, und der Host
+  hört auf.
 - `/bm gelaende` legte für denselben Ort jedes Mal einen neuen Platz in der hohen Geländewelt an – der Reisepunkt
   zeigte nur noch auf den letzten. Derselbe Ort mit demselben Radius führt jetzt an den ersten Platz zurück.
 - `/bm rückgängig` überschrieb, was andere nach dem Bau an derselben Stelle gebaut hatten – auch eine gefüllte Truhe.

@@ -52,6 +52,8 @@ final class ClientBuilder {
     /** Gültigkeit des LLM-Rückrufs (/kbau stop während der Planung) und der Auftrag dazu für die Meldung an die App. */
     private final PlanTicket tickets = new PlanTicket();
     private String planningPrompt;
+    /** Laufende Anfrage an den Host – /kbau stop bricht sie ab, nicht nur ihr Ergebnis (PlanRequest). */
+    private PlanRequest planningRequest;
     private int verifyWait;
     private int progressTicks;
     private int hudTicks;
@@ -119,6 +121,8 @@ final class ClientBuilder {
         }
         planning = true;
         planningPrompt = prompt;
+        PlanRequest request = new PlanRequest();
+        planningRequest = request;
         int ticket = tickets.issue();
         // Die Welt des Scans: Kommt der Plan erst nach einem Welt- oder Dimensionswechsel, gehören feet und survey
         // nicht zur neuen Welt. Vorher prüfte der Rückruf nur mc.level == null und baute dann in der fremden Welt.
@@ -128,7 +132,7 @@ final class ClientBuilder {
             if (tickets.isCurrent(ticket)) {
                 say.accept(msg);
             }
-        })).whenComplete((planned, err) ->
+        }), request).whenComplete((planned, err) ->
                 mc.execute(() -> {
                     if (!tickets.isCurrent(ticket)) {
                         // Per /kbau stop abgebrochen und schon gemeldet; planning gehört womöglich einem neuen Auftrag.
@@ -213,8 +217,11 @@ final class ClientBuilder {
         if (planning) {
             // Vorher: „Gerade läuft kein Bau.“ – und der Plan wurde Minuten später trotzdem gebaut (PlanTicket).
             tickets.cancel();
+            if (planningRequest != null) {
+                planningRequest.cancel();
+            }
             planning = false;
-            say.accept("Planung abgebrochen – das Ergebnis des Hosts wird verworfen.");
+            say.accept("Planung abgebrochen – der Host hört auf zu rechnen.");
             results.send(planningPrompt, "abgebrochen", "während der Planung", 0);
             return;
         }

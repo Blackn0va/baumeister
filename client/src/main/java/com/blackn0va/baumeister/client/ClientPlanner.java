@@ -101,8 +101,11 @@ final class ClientPlanner {
         return Optional.of(new Planned(build, plan.reply(), build.warnings()));
     }
 
-    /** LLM mit Prüfer und höchstens repairAttempts Nachbesserungen. say: Zwischenstand für den Chat (beliebiger Thread). */
-    CompletableFuture<Planned> llm(String prompt, SiteSurvey survey, Consumer<String> say) {
+    /**
+     * LLM mit Prüfer und höchstens repairAttempts Nachbesserungen. say: Zwischenstand für den Chat (beliebiger Thread).
+     * request: über ihn bricht /kbau stop die laufende Anfrage samt weiterer Runden ab (PlanRequest).
+     */
+    CompletableFuture<Planned> llm(String prompt, SiteSurvey survey, Consumer<String> say, PlanRequest request) {
         List<String> names = modules.all().stream().map(ModuleLibrary.Module::name).toList();
         PlanReview review = new PlanReview(compiler, modules, new PlanReview.Context(prompt,
                 RequestHints.parse(prompt, names), survey, false, settings.maxOverbuild, settings.repairAttempts,
@@ -112,20 +115,31 @@ final class ClientPlanner {
         messages.add(LlmProtocol.message("user", PlanPrompt.userMessage(prompt, survey, settings.distanceAhead,
                 modules, null, null, 0, null)));
         CompletableFuture<Planned> result = new CompletableFuture<>();
-        ask(review, messages, 0, say, result);
+        ask(review, messages, 0, say, result, request);
         return result;
     }
 
     private void ask(PlanReview review, List<JsonObject> messages, int attempt, Consumer<String> say,
-            CompletableFuture<Planned> result) {
+            CompletableFuture<Planned> result, PlanRequest request) {
         JsonObject body = LlmProtocol.body(messages, schema, settings.temperature, settings.maxTokens);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(settings.llmUrl))
+        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(settings.llmUrl))
                 .timeout(Duration.ofMinutes(10))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body), StandardCharsets.UTF_8))
                 .build();
         long start = System.nanoTime();
-        http.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).whenComplete((r, err) -> {
+        CompletableFuture<HttpResponse<String>> call = http.sendAsync(httpRequest,
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (!request.track(call)) {
+            result.completeExceptionally(new PlanException("Planung abgebrochen."));
+            return;
+        }
+        call.whenComplete((r, err) -> {
+            if (request.cancelled()) {
+                // Abgebrochen: keine Meldung mehr, keine Nachbesserungsrunde (ClientBuilder hat schon gemeldet).
+                result.completeExceptionally(new PlanException("Planung abgebrochen."));
+                return;
+            }
             if (err != null) {
                 result.completeExceptionally(new PlanException("Der Baumeister-Host ist nicht erreichbar ("
                         + settings.llmUrl + "): " + err.getClass().getSimpleName()
@@ -152,7 +166,7 @@ final class ClientPlanner {
                 List<JsonObject> next = PlanPrompt.repairConversation(messages, review.prompt(),
                         modules.all().stream().map(ModuleLibrary.Module::name).toList(), rep.assistant(),
                         rep.llmRequest());
-                ask(review, next, attempt + 1, say, result);
+                ask(review, next, attempt + 1, say, result, request);
             } else if (v instanceof PlanReview.GiveUp g) {
                 result.completeExceptionally(new PlanException("Kein brauchbarer Plan: " + g.playerText()));
             } else {
