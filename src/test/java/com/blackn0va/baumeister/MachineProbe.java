@@ -172,7 +172,12 @@ public final class MachineProbe {
             boolean here = test(rcon, String.format("execute if block %d %d %d minecraft:%s", w.x(), w.y(), w.z(), id))
                     // Wasser über Seelensand wird von selbst zur Blasensäule – das ist das Ziel, keine Abweichung.
                     || id.equals("water") && test(rcon, String.format("execute if block %d %d %d minecraft:bubble_column",
-                            w.x(), w.y(), w.z()));
+                            w.x(), w.y(), w.z()))
+                    // Ein ausgewachsener Stängel (age=7) neben freiem Fruchtfeld hat schon während des Baus eine
+                    // Frucht angesetzt – die Farm tut ihre Arbeit. Gemessen 2026-11-14 (Spigot, melonenfarm Nord,
+                    // random_tick_speed 3): „fehlt/anders: melon_stem“, in 8 früheren Läufen nie.
+                    || id.endsWith("_stem") && test(rcon, String.format("execute if block %d %d %d minecraft:attached_%s",
+                            w.x(), w.y(), w.z(), id));
             if (!here) {
                 if (wrong++ < 5) {
                     System.out.println("  fehlt/anders: " + e.getValue().id() + " bei lokal " + e.getKey());
