@@ -38,7 +38,10 @@ public final class QuickOrders {
     private static final Set<String> FILLER = Set.of("bau", "baue", "bitte", "mir", "uns", "mal", "ein", "eine",
             "einen", "das", "die", "der", "hier", "mit", "hin");
     private static final Set<String> TOWER_WORDS = Set.of("hochhaus", "wolkenkratzer",
-            "buerohaus", "plattenbau"); // umlaut-ok
+            "buerohaus", "plattenbau", "hochhaeuser", "buerohaeuser", "plattenbauten", "tuerme"); // umlaut-ok
+    /** Mehrere Hochhäuser („3 mal 20 Stockwerke“, „drei Hochhäuser“): höchstens so viele, Abstand dazwischen. */
+    static final int MAX_TOWERS = 8;
+    static final int TOWER_GAP = 4;
     private static final Pattern SIZE = Pattern.compile("\\b(\\d{1,3}) ?x ?(\\d{1,3})\\b");
 
     private QuickOrders() {
@@ -623,6 +626,35 @@ public final class QuickOrders {
                 used[i] = true;
             }
         }
+        // Anzahl: Zahl direkt vor „mal“ oder vor einem Turmwort („3 mal 20 stockwerke“, „drei hochhaeuser“). Genau
+        // einmal – zwei Anzahlen sind unklar und gehen ans LLM. Danach muss ein Turmwort ODER „mal“ + Geschosse da sein:
+        // „3 mal 20 stockwerke“ meint Hochhäuser, auch ohne das Wort.
+        int count = 1;
+        boolean counted = false;
+        boolean times = false;
+        for (int i = 0; i + 1 < tokens.size(); i++) {
+            if (used[i]) {
+                continue;
+            }
+            String next = tokens.get(i + 1);
+            java.util.OptionalInt n = RequestHints.number(tokens.get(i));
+            if (n.isEmpty() || !next.equals("mal") && !TOWER_WORDS.contains(next)) {
+                continue;
+            }
+            if (counted) {
+                return Optional.empty();
+            }
+            counted = true;
+            count = n.getAsInt();
+            used[i] = true;
+            if (next.equals("mal")) {
+                times = true;
+                used[i + 1] = true;
+            }
+        }
+        if (counted && (count < 1 || count > MAX_TOWERS)) {
+            return Optional.empty();
+        }
         List<RequestHints.NameHit> hits = RequestHints.findNames(tokens, moduleNames);
         for (RequestHints.NameHit h : hits) {
             for (int k = h.start(); k < h.start() + h.length(); k++) {
@@ -635,8 +667,8 @@ public final class QuickOrders {
             }
         }
 
-        if (towerWords > 0 && hits.isEmpty() && floors != null) {
-            return tower(floors, size, material, maxExtent);
+        if ((towerWords > 0 || times) && hits.isEmpty() && floors != null) {
+            return towers(count, floors, size, material, maxExtent);
         }
         // Maschine: genau ein Bauteil, nichts weiter verlangt – mehrdeutig oder mit Material/Maß ist Sache des LLM.
         if (towerWords == 0 && hits.size() == 1 && floors == null && size == null && material == null) {
@@ -645,7 +677,11 @@ public final class QuickOrders {
         return Optional.empty();
     }
 
-    private static Optional<String> tower(int requested, int[] size, String material, int maxExtent) {
+    /**
+     * count Hochhäuser in einer Reihe nach rechts, je TOWER_GAP Abstand. Passt die Reihe nicht in bau.max-ausdehnung,
+     * werden es weniger – die Antwort nennt die gebaute Zahl, statt still eins zu bauen.
+     */
+    private static Optional<String> towers(int count, int requested, int[] size, String material, int maxExtent) {
         int maxFloors = Math.min(PlanParser.MAX_FLOORS, (maxExtent - HEADROOM) / PlanCompiler.FLOOR_HEIGHT);
         int maxSide = Math.min(MAX_SIDE, maxExtent);
         if (maxFloors < 1 || maxSide < MIN_SIDE) {
@@ -654,21 +690,43 @@ public final class QuickOrders {
         int floors = Math.clamp(requested, 1, maxFloors);
         int w = size == null ? Math.min(DEFAULT_SIDE, maxSide) : Math.clamp(size[0], MIN_SIDE, maxSide);
         int d = size == null ? Math.min(DEFAULT_SIDE, maxSide) : Math.clamp(size[1], MIN_SIDE, maxSide);
+        int fit = Math.max(1, (maxExtent + TOWER_GAP) / (w + TOWER_GAP));
+        int n = Math.min(count, fit);
         String facade = material != null && !RequestHints.isWindow(material) ? material : DEFAULT_FACADE;
         String window = material != null && RequestHints.isWindow(material) ? material : DEFAULT_WINDOW;
-        String reply = "Ein Hochhaus mit " + floors + " Stockwerken, " + w + "×" + d + " – ich fange sofort an!";
-        return Optional.of(skyscraperJson(w, d, floors, facade, window, reply));
+        if (n == 1) {
+            String reply = "Ein Hochhaus mit " + floors + " Stockwerken, " + w + "×" + d
+                    + (count > 1 ? " – mehr passen nicht nebeneinander" : "") + " – ich fange sofort an!";
+            return Optional.of(skyscraperJson(w, d, floors, facade, window, reply));
+        }
+        String reply = n + " Hochhäuser mit je " + floors + " Stockwerken, je " + w + "×" + d
+                + (n < count ? " – mehr als " + n + " passen nicht nebeneinander" : "") + " – ich fange sofort an!";
+        JsonArray steps = new JsonArray();
+        for (int i = 0; i < n; i++) {
+            steps.add(skyscraperStep(i * (w + TOWER_GAP), w, d, floors, facade, window));
+        }
+        JsonObject plan = new JsonObject();
+        plan.addProperty("design", n + " skyscrapers " + w + "x" + d + " in a row, " + floors + " floors each, facade "
+                + facade + ", windows " + window);
+        plan.addProperty("reply", reply);
+        plan.add("steps", steps);
+        return Optional.of(plan.toString());
     }
 
-    /** Ein einziger skyscraper-Schritt ab (0,0,0); verschoben wird wie bei jedem Plan erst im BuildService. */
-    static String skyscraperJson(int w, int d, int floors, String facade, String window, String reply) {
+    private static JsonObject skyscraperStep(int x0, int w, int d, int floors, String facade, String window) {
         JsonObject step = new JsonObject();
         step.addProperty("op", "skyscraper");
         step.addProperty("block", facade);
         step.addProperty("window_block", window);
-        step.add("from", vec(0, 0, 0));
-        step.add("to", vec(w - 1, 0, d - 1));
+        step.add("from", vec(x0, 0, 0));
+        step.add("to", vec(x0 + w - 1, 0, d - 1));
         step.addProperty("floors", floors);
+        return step;
+    }
+
+    /** Ein einziger skyscraper-Schritt ab (0,0,0); verschoben wird wie bei jedem Plan erst im BuildService. */
+    static String skyscraperJson(int w, int d, int floors, String facade, String window, String reply) {
+        JsonObject step = skyscraperStep(0, w, d, floors, facade, window);
         return plan("skyscraper " + w + "x" + d + ", " + floors + " floors, facade " + facade + ", windows " + window,
                 reply, step);
     }

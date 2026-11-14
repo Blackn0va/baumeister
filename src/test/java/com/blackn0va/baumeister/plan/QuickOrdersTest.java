@@ -92,6 +92,45 @@ class QuickOrdersTest {
     }
 
     @Test
+    void severalTowersKeepTheirFloorsAndStandInARow() throws Exception {
+        // Gedächtnis „Offen“ (2026-11-01): „3 mal 20 Stockwerke“ wurde zur Grundfläche 3×20, die Geschosszahl fiel weg,
+        // und der Auftrag ging ans LLM.
+        for (String prompt : new String[] {"3 mal 20 Stockwerke", "bau mir 3 Hochhäuser mit 20 Stockwerken",
+                "drei Wolkenkratzer mit zwanzig Etagen", "bitte 3 mal ein Hochhaus mit 20 Stockwerken"}) {
+            BuildPlan p = plan(prompt, 192);
+            assertEquals(3, p.steps().size(), prompt);
+            for (int i = 0; i < 3; i++) {
+                BuildPlan.Step s = p.steps().get(i);
+                assertEquals(Op.SKYSCRAPER, s.op(), prompt);
+                assertEquals(20, s.floors(), prompt);
+                assertEquals(new Pos(i * (16 + QuickOrders.TOWER_GAP), 0, 0), s.from(), prompt);
+                assertEquals(new Pos(i * (16 + QuickOrders.TOWER_GAP) + 15, 0, 15), s.to(), prompt);
+            }
+            assertTrue(p.reply().startsWith("3 Hochhäuser mit je 20 Stockwerken"), p.reply());
+        }
+        // Durch den echten Compiler, mit den Config-Grenzen: kein „Bauwerk zu groß“, Türme getrennt.
+        CompiledBuild b = new PlanCompiler(new TestCatalog(), "stone", DEFAULTS).compile(plan("3 mal 20 Stockwerke",
+                192));
+        assertTrue(b.max().x() - b.min().x() + 1 <= 192);
+        assertTrue(b.warnings().isEmpty(), () -> "Warnungen: " + b.warnings());
+        // Grundfläche bleibt lesbar: „20 mal 24“ ohne Geschosswort dahinter ist weiter ein Maß.
+        BuildPlan sized = plan("2 Hochhäuser 20 mal 24 mit 10 Etagen", 192);
+        assertEquals(2, sized.steps().size());
+        assertEquals(new Pos(19, 0, 23), sized.steps().getFirst().to());
+    }
+
+    @Test
+    void tooManyTowersShrinkToWhatFitsAndSaySo() throws Exception {
+        // max-ausdehnung 48: 16 + 4 + 16 = 36 passt, ein dritter Turm (56) nicht.
+        BuildPlan p = plan("3 mal 5 Stockwerke", 48);
+        assertEquals(2, p.steps().size());
+        assertTrue(p.reply().contains("mehr als 2 passen nicht"), p.reply());
+        // Mehr als MAX_TOWERS oder zwei Anzahlen: unklar, das LLM fragt bzw. plant.
+        assertEquals(Optional.empty(), QuickOrders.match("20 mal 5 Stockwerke", NAMES, 192));
+        assertEquals(Optional.empty(), QuickOrders.match("2 mal 3 Hochhäuser mit 5 Etagen", NAMES, 192));
+    }
+
+    @Test
     void machinesByFullModuleName() throws Exception {
         BuildPlan.Step xor = plan("XOR-Gatter", 48).steps().getFirst();
         assertEquals(Op.MODULE, xor.op());

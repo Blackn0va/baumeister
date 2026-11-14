@@ -54,8 +54,14 @@ public final class RequestHints {
                     .thenComparing(java.util.Comparator.naturalOrder())).toList()) + ") ?"
             + "(?:stockwerk(?:e|en)?|etage(?:n)?|geschoss(?:e|en)?|stoeckig(?:e|es|en|er)?)\\b"); // umlaut-ok
 
-    /** Grundfläche „20 mal 24“ auf normalisiertem Text, siehe {@link #sizes}. */
-    private static final Pattern SIZE_TIMES = Pattern.compile("\\b(\\d{1,3}) mal (\\d{1,3})\\b");
+    /**
+     * Grundfläche „20 mal 24“ auf normalisiertem Text, siehe {@link #sizes}. Nicht, wenn hinter der zweiten Zahl ein
+     * Geschoss- oder Turmwort steht: „3 mal 20 stockwerke“ sind drei Hochhäuser, keine Grundfläche 3×20. Vorher wurde daraus
+     * „3x20 stockwerke“, FLOORS fand keine Zahl mehr vor dem Geschosswort, und der Auftrag ging ohne Geschosszahl ans
+     * LLM (Gedächtnis „Offen“, 2026-11-01).
+     */
+    private static final Pattern SIZE_TIMES = Pattern.compile(
+            "\\b(\\d{1,3}) mal (\\d{1,3})\\b(?! ?(?:stockwerk|etage|geschoss|stoeckig|hochhaus|hochhaeuser|wolkenkratzer|tuerme))"); // umlaut-ok
 
     /** Wörter, die ausdrücklich ein Hochhaus meinen – auch in Zusammensetzungen („Bürohochhaus“). */
     private static final Pattern HIGH_RISE_WORD = Pattern.compile(
@@ -191,6 +197,15 @@ public final class RequestHints {
             }
         }
         return Map.copyOf(words);
+    }
+
+    /** Zahl aus einem normalisierten Wort: Ziffern (höchstens vier) oder Zahlwort ab „zwei“; sonst leer. */
+    static OptionalInt number(String token) {
+        Integer word = NUMBER_WORDS.get(token);
+        if (word != null) {
+            return OptionalInt.of(word);
+        }
+        return token.matches("\\d{1,4}") ? OptionalInt.of(Integer.parseInt(token)) : OptionalInt.empty();
     }
 
     /** Geschosszahl aus einem Treffer von {@link #FLOORS}: Ziffern oder Zahlwort. */

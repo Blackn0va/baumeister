@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Mehrere Hochhäuser ohne KI:** „3 mal 20 Stockwerke“ oder „drei Hochhäuser mit 20 Etagen“ baut die Türme sofort
+  nebeneinander (bis 8, so viele wie in `bau.max-ausdehnung` passen). Vorher wurde daraus eine Grundfläche 3×20, und
+  der Auftrag ging ohne Geschosszahl ans Modell.
 - **Lizenz und Mitmachen:** GPL-3.0-or-later (`LICENSE`, im Plugin-JAR und im Host-Setup), `CONTRIBUTING.md`, `SECURITY.md`, Vorlagen für Pull Requests und Issues; README mit Bildern von
   Stadtbau, Maschinen und Logik.
 - **Sprache vom Server:** Vera und der Baumeister sprechen im Voice Chat mit Piper auf dem Server, ohne App –
