@@ -40,6 +40,23 @@ class FileSchematicsTest {
     }
 
     @Test
+    void gameFolderListsOnlyFilesWithAnIndexLineAndReadsTheirDepth() throws Exception {
+        // Review 2026-11-15: Ein abgebrochener Lauf ließ eine Datei ohne Zeile liegen – sie stand als eigene Familie im
+        // Katalog. Die 6. Spalte sagt, wie tief die Vorlage unter die Oberfläche reicht.
+        Path s = Files.createDirectories(dir.resolve("spiel"));
+        Files.write(s.resolve("sp_wuestentempel_1.nbt"), NbtAccess.structureNbt(clock()));
+        Files.write(s.resolve("sp_wuestentempel_2.nbt"), NbtAccess.structureNbt(clock()));
+        Files.writeString(s.resolve("index.tsv"), GameStructures.indexLine("sp_wuestentempel_1.nbt",
+                "sp_wuestentempel_1", "Wüstentempel", 1, "Pyramide", 14), StandardCharsets.UTF_8);
+        FileSchematics f = new FileSchematics(dir, now::get);
+        assertEquals(1, f.catalog().size(), "ohne Zeile kein Eintrag");
+        assertEquals(14, f.groundOf("sp_wuestentempel_1"));
+        assertEquals(0, f.groundOf("sp_wuestentempel_2"));
+        assertTrue(GameStructures.preferred(f.catalog().match("bau mir einen Wüstentempel").orElseThrow()));
+        assertEquals(1, f.catalog().families("spiel").size(), "Stichwort „spiel“");
+    }
+
+    @Test
     void blockedNamesAreNeitherListedNorBuildableAndTheListReloads() throws Exception {
         // 2026-11-14: Dauerläufer aus der Leerlauf-Messung (LagWatch) kommen über gesperrt.txt aus dem Katalog.
         Path w = Files.createDirectories(dir.resolve("redstone"));

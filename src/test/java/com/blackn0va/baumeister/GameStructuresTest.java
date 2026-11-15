@@ -34,16 +34,18 @@ class GameStructuresTest {
         for (String stem : GameStructures.stems()) {
             assertTrue(SchematicCatalog.NAME.matcher(stem).matches(), stem);
         }
-        assertEquals("wuestentempel_3", GameStructures.fileStem("Wüstentempel", 3));
-        assertEquals("pluenderer_aussenposten_1", GameStructures.fileStem("Plünderer-Außenposten", 1)); // umlaut-ok
+        assertEquals("sp_wuestentempel_3", GameStructures.fileStem("Wüstentempel", 3));
+        assertEquals("sp_pluenderer_aussenposten_1", GameStructures.fileStem("Plünderer-Außenposten", 1)); // umlaut-ok
+        assertTrue(SchematicCatalog.NAME.matcher(GameStructures.fileStem("Gestrandetes Schiffswrack", 99)).matches());
     }
 
     @Test
     void indexLineFeedsTheCatalogWithFamilyAndVariant() {
-        String line = GameStructures.indexLine("hexenhuette_2.nbt", "hexenhuette_2", "Hexenhütte", 2,
-                "Hütte\tauf\nStelzen");
+        String line = GameStructures.indexLine("sp_hexenhuette_2.nbt", "sp_hexenhuette_2", "Hexenhütte", 2,
+                "Hütte\tauf\nStelzen", 3);
         String[] cols = line.strip().split("\t");
-        assertEquals(5, cols.length, line);
+        assertEquals(6, cols.length, line);
+        assertEquals("3", cols[5], "Lagen unter der Oberfläche");
         assertEquals("Hexenhütte, Variante 2", cols[2]);
         SchematicCatalog.Entry e = SchematicCatalog.entry(cols[1], cols[2], cols[3], cols[4]);
         assertEquals("Hexenhütte", e.display().replaceAll(",? *Variante.*", ""));
@@ -73,6 +75,24 @@ class GameStructuresTest {
                         String key = ((cx << 4) + (Integer) a[0]) + "," + y + "," + ((cz << 4) + (Integer) a[2]);
                         yield changed.getOrDefault(key, FLAT[y + 64]);
                     }
+                    case "getBlockData" -> {
+                        int y = (Integer) a[1];
+                        String key = ((cx << 4) + (Integer) a[0]) + "," + y + "," + ((cz << 4) + (Integer) a[2]);
+                        Material type = changed.getOrDefault(key, FLAT[y + 64]);
+                        String state = "minecraft:" + type.name().toLowerCase(java.util.Locale.ROOT)
+                                + (type == Material.SANDSTONE_STAIRS ? "[facing=north,half=bottom]" : "");
+                        yield blockData(state);
+                    }
+                    default -> throw new UnsupportedOperationException(m.getName());
+                });
+    }
+
+    /** BlockData nur mit getAsString – mehr liest writeTemplate nicht. */
+    private static org.bukkit.block.data.BlockData blockData(String state) {
+        return (org.bukkit.block.data.BlockData) Proxy.newProxyInstance(
+                org.bukkit.block.data.BlockData.class.getClassLoader(),
+                new Class<?>[] {org.bukkit.block.data.BlockData.class}, (proxy, m, a) -> switch (m.getName()) {
+                    case "getAsString" -> state;
                     default -> throw new UnsupportedOperationException(m.getName());
                 });
     }
@@ -99,7 +119,7 @@ class GameStructuresTest {
     }
 
     @Test
-    void maskKeepsChangedCellsAndAirButNotUntouchedGround() {
+    void maskKeepsChangedCellsAndDugOutAirButNoUntouchedGroundOrAir() {
         // Quader x 0..1, y -63..-60, z 0..0: Erde -63 unberührt, -62 zu Luft gegraben, Gras -61 zu Sandstein, Luft -60.
         Map<String, Material> changed = Map.of("1,-62,0", Material.AIR, "0,-61,0", Material.SANDSTONE);
         int[] b = {0, -63, 0, 1, -60, 0};
@@ -111,37 +131,63 @@ class GameStructuresTest {
         assertTrue(keep.get(GameStructures.cell(1, 1, 0, sx, sz)), "ausgegrabene Luft");
         assertTrue(keep.get(GameStructures.cell(0, 2, 0, sx, sz)), "Sandstein statt Gras");
         assertFalse(keep.get(GameStructures.cell(1, 2, 0, sx, sz)), "unberührtes Gras");
-        assertTrue(keep.get(GameStructures.cell(0, 3, 0, sx, sz)), "Luft bleibt, damit der Innenraum frei wird");
-        assertEquals(4, keep.cardinality());
+        // Vorher behalten (85 % der Dateien), beim Bau verwarf StructureFile sie ohnehin (Review 2026-11-15).
+        assertFalse(keep.get(GameStructures.cell(0, 3, 0, sx, sz)), "unberührte Luft über dem Boden");
+        assertEquals(2, keep.cardinality(), "nur die gegrabene Luft und der Sandstein");
     }
 
     @Test
-    void pruneDropsOnlyMaskedOutBlocksAndKeepsTheRest(@TempDir Path dir) throws Exception {
-        Map<String, Object> root = new LinkedHashMap<>();
-        root.put("DataVersion", 4671);
-        root.put("size", List.of(2, 1, 1));
-        root.put("palette", List.of(Map.of("Name", "minecraft:stone"), Map.of("Name", "minecraft:chest")));
-        Map<String, Object> chest = new LinkedHashMap<>();
-        chest.put("pos", List.of(1, 0, 0));
-        chest.put("state", 1);
-        chest.put("nbt", Map.of("LootTable", "minecraft:chests/desert_pyramid", "Seed", 7L, "f", 0.5f));
-        root.put("blocks", List.of(Map.of("pos", List.of(0, 0, 0), "state", 0), chest));
-        root.put("entities", List.of());
-        Path file = dir.resolve("t.nbt");
-        try (var out = Files.newOutputStream(file)) {
-            NbtOut.writeGzip(root, out);
+    void templateIsWrittenFromSnapshotsWithOnlyChangedCellsAndReadsBackWithDugOutAir(@TempDir Path dir)
+            throws Exception {
+        // Tempel im Kleinen über eine Chunkgrenze mit negativen x: Kammer (Luft, gegraben) unter der Oberfläche,
+        // Sandstein im Gras, Treppe darüber, Luft über dem Boden bleibt draußen.
+        Map<String, Material> changed = Map.of("-1,-63,0", Material.AIR, "-1,-61,0", Material.SANDSTONE,
+                "1,-60,0", Material.SANDSTONE_STAIRS);
+        List<ChunkSnapshot> snaps = List.of(chunk(-1, 0, changed), chunk(0, 0, changed));
+        int[] b = GameStructures.changedBounds(snaps, FLAT, -64);
+        assertArrayEquals(new int[] {-1, -63, 0, 1, -60, 0}, b);
+        GameStructures.Written w = GameStructures.writeTemplate(dir, "sp_tempel_1", snaps, FLAT, -64, b, 4671);
+        assertEquals(dir.resolve("sp_tempel_1.nbt.neu"), w.file(), "erst .neu – FileSchematics liest das nicht");
+        assertEquals(3, w.blocks());
+        Map<String, Object> root;
+        try (var in = Files.newInputStream(w.file())) {
+            root = Nbt.read(in);
         }
-        BitSet keep = new BitSet();
-        keep.set(GameStructures.cell(1, 0, 0, 2, 1));
-        assertEquals(1, GameStructures.prune(file, keep, 2, 1, 1));
-        Map<String, Object> back;
-        try (var in = Files.newInputStream(file)) {
-            back = Nbt.read(in);
-        }
-        assertEquals(List.of(chest), back.get("blocks"));
-        assertEquals(root.get("palette"), back.get("palette"));
-        assertEquals(List.of(), back.get("entities"));
-        assertFalse(Files.exists(dir.resolve("t.nbt.neu")));
+        assertEquals(List.of(3, 4, 1), root.get("size"));
+        assertEquals(4671, root.get("DataVersion"));
+        com.blackn0va.baumeister.structure.StructureFile.Structure s =
+                com.blackn0va.baumeister.structure.StructureFile.readKeepingAir(w.file());
+        assertEquals("air", s.cells().get(new com.blackn0va.baumeister.plan.Pos(0, 0, 0)).id(), "gegrabene Kammer");
+        assertEquals("sandstone", s.cells().get(new com.blackn0va.baumeister.plan.Pos(0, 2, 0)).id());
+        assertEquals("sandstone_stairs", s.cells().get(new com.blackn0va.baumeister.plan.Pos(2, 3, 0)).id());
+        assertEquals(3, s.cells().size(), "keine unberührte Luft, kein Gestein");
+        assertEquals(2, com.blackn0va.baumeister.structure.StructureFile.read(w.file()).cells().size(),
+                "ohne den Schalter verwirft der Leser Luft weiter (Technik-Wiki & Co.)");
+    }
+
+    @Test
+    void paletteEntriesCarryNameAndProperties() {
+        assertEquals(Map.of("Name", "minecraft:stone"), GameStructures.paletteEntry("minecraft:stone"));
+        assertEquals(Map.of("Name", "minecraft:oak_stairs", "Properties", Map.of("facing", "north", "half", "top")),
+                GameStructures.paletteEntry("minecraft:oak_stairs[facing=north,half=top]"));
+    }
+
+    @Test
+    void groundOffsetSinksSurfaceKindsButNotUndergroundOnes() {
+        assertEquals(14, GameStructures.groundOffset("desert_pyramid", 64, 50, 74), "Fallgrube 14 unter dem Boden");
+        assertEquals(1, GameStructures.groundOffset("village_plains", 64, 63, 75), "Wege in der Grasschicht");
+        assertEquals(0, GameStructures.groundOffset("ancient_city", -20, -40, 0), "steht wie ein Monument");
+        assertEquals(0, GameStructures.groundOffset("igloo", 64, 70, 75));
+        // Gemessen 2026-11-15: Portalruine ganz im Fels (Versatz 82), Monument mit Oberkante an der Oberfläche.
+        assertEquals(0, GameStructures.groundOffset("ruined_portal", 64, -18, 2), "ganz unter den Füßen");
+        assertEquals(0, GameStructures.groundOffset("monument", 64, 39, 63));
+        assertEquals(33, GameStructures.groundOffset("bastion_remnant", 64, 31, 95), "ragt wirklich in den Boden");
+    }
+
+    @Test
+    void summaryCountsSavedTemplatesNotAttempts() {
+        assertEquals("Keine Iglu-Vorlage gespeichert (3 versucht).", GameStructures.summary("Iglu", 0, 3));
+        assertTrue(GameStructures.summary("Iglu", 2, 3).startsWith("Fertig: 2 von 3 × Iglu."));
     }
 
     @Test
@@ -151,7 +197,8 @@ class GameStructuresTest {
 
     @Test
     void flatWorldHasItsSurfaceAt63WithStoneBelow() {
-        JsonObject o = JsonParser.parseString(GameStructures.FLAT_SETTINGS.formatted("minecraft:plains")).getAsJsonObject();
+        JsonObject o = JsonParser.parseString(GameStructures.FLAT_SETTINGS.formatted("minecraft:plains"))
+                .getAsJsonObject();
         int height = 0;
         for (var layer : o.getAsJsonArray("layers")) {
             height += layer.getAsJsonObject().get("height").getAsInt();
@@ -163,8 +210,8 @@ class GameStructuresTest {
 
     @Test
     void onlyGameStructuresGoBeforeTheTemplateCatalog() {
-        String[] game = GameStructures.indexLine("wiesendorf_1.nbt", "wiesendorf_1", "Wiesendorf", 1, "ganzes Dorf")
-                .strip().split("\t");
+        String[] game = GameStructures.indexLine("sp_wiesendorf_1.nbt", "sp_wiesendorf_1", "Wiesendorf", 1,
+                "ganzes Dorf", 1).strip().split("\t");
         SchematicCatalog.Entry village = SchematicCatalog.entry(game[1], game[2], game[3], game[4]);
         SchematicCatalog.Entry clock = SchematicCatalog.entry("taktgeber_1", "Taktgeber, Variante 1", "Uhr",
                 "Technik-Wiki");
@@ -187,10 +234,16 @@ class GameStructuresTest {
     }
 
     @Test
-    void numbersContinueAfterExistingFiles(@TempDir Path dir) throws Exception {
+    void numbersContinueAfterTheHighestFileLeftoverOrIndexLine(@TempDir Path dir) throws Exception {
         assertEquals(1, GameStructures.nextNumber(dir, "Iglu"));
-        Files.writeString(dir.resolve("iglu_1.nbt"), "x");
-        Files.writeString(dir.resolve("iglu_2.nbt"), "x");
-        assertEquals(3, GameStructures.nextNumber(dir, "Iglu"));
+        Files.writeString(dir.resolve("sp_iglu_1.nbt"), "x");
+        Files.writeString(dir.resolve("sp_iglu_3.nbt"), "x");
+        assertEquals(4, GameStructures.nextNumber(dir, "Iglu"), "nach der höchsten, nicht in die Lücke 2");
+        Files.writeString(dir.resolve("sp_iglu_4.nbt.neu"), "x");
+        assertEquals(5, GameStructures.nextNumber(dir, "Iglu"), "auch ein abgebrochener Rest zählt");
+        Files.writeString(dir.resolve("index.tsv"), "sp_iglu_7.nbt\tsp_iglu_7\tIglu, Variante 7\n");
+        assertEquals(8, GameStructures.nextNumber(dir, "Iglu"), "auch eine index-Zeile ohne Datei zählt");
+        Files.writeString(dir.resolve("sp_iglu_extra_9.nbt"), "x");
+        assertEquals(8, GameStructures.nextNumber(dir, "Iglu"), "andere Familie mit gleichem Anfang zählt nicht");
     }
 }

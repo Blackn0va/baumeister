@@ -474,6 +474,34 @@ class PlanCompilerTest {
         assertTrue(b.warnings().getFirst().contains("halbe"), b.warnings().toString());
     }
 
+    /** Spiel-Vorlagen („sp_…“) Zelle für Zelle statt ganz oder gar nicht (Review 2026-11-15, TNT im Wüstentempel). */
+    @Test
+    void gameTemplatesAreCheckedCellByCellMachinesStayWhole() throws Exception {
+        List<Change> cells = List.of(new Change(new Pos(0, 0, 0), BlockSpec.of("sandstone")),
+                new Change(new Pos(1, 0, 0), BlockSpec.of("tnt")));
+        ModuleLibrary.Module temple = new ModuleLibrary.Module("sp_wuestentempel_1", "", new Pos(2, 1, 1), cells);
+        ModuleLibrary.Module farm = new ModuleLibrary.Module("eisenfarm", "", new Pos(2, 1, 1), cells);
+        ModuleLibrary lib = new ModuleLibrary() {
+            @Override
+            public java.util.Optional<Module> find(String name) {
+                return name.equals(temple.name()) ? java.util.Optional.of(temple)
+                        : name.equals(farm.name()) ? java.util.Optional.of(farm) : java.util.Optional.empty();
+            }
+
+            @Override
+            public List<Module> all() {
+                return List.of(temple, farm);
+            }
+        };
+        PlanCompiler c = new PlanCompiler(id -> true, "stone", new PlanCompiler.Limits(6000, 48), lib);
+        for (String name : List.of("sp_wuestentempel_1", "eisenfarm")) {
+            CompiledBuild b = c.compile(PlanParser.parse(QuickOrders.moduleJson(name, "x", -1)));
+            int group = b.actions().getFirst().changes().getFirst().group();
+            assertEquals(name.startsWith("sp_") ? 0 : 1, group, name);
+            assertEquals(-1, b.min().y(), "Bodenversatz: unterste Lage einen Block unter den Füßen");
+        }
+    }
+
     /**
      * Bauteile ganz oder gar nicht (Plan B6): ihre Zellen tragen den Schritt als Gruppe. Platzhalter im Befehl drehen
      * und verschieben sich mit den Zellen – {1,0,0} zeigt danach weiter auf den Knopf.

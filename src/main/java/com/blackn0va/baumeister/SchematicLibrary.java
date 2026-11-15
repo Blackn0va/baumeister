@@ -91,10 +91,29 @@ final class SchematicLibrary implements ModuleLibrary {
     private final File dir;
     private final File index;
     private final Map<String, Module> modules = new LinkedHashMap<>();
+    /**
+     * Namen, die schon eine Bauwerk-Datei, eine Vorlage des Spiels oder eine eingebaute Maschine trägt (BaumeisterPlugin
+     * setzt das). Sicherheitsprüfung 2026-11-15 (OWASP A01, ASVS V4.1.3): Vorher konnte ein Spieler ohne Admin mit
+     * „merk dir das Bauwerk als iglu_1“ den Namen einer Spiel-Vorlage belegen; baute danach ein Admin „ein Iglu“, setzte
+     * der Baumeister das Spieler-Bauteil – mit den Rechten des Admins, Lava und TNT inklusive. Wer das entfernt, öffnet
+     * diesen Weg wieder.
+     */
+    private volatile java.util.function.Predicate<String> reserved = n -> false;
 
     SchematicLibrary(File dataFolder) {
         this.dir = new File(dataFolder, "bauteile");
         this.index = new File(dir, "bauteile.yml");
+    }
+
+    /** Namen reservieren, die andere Bibliotheken schon führen (siehe reserved). */
+    void reserveNames(java.util.function.Predicate<String> taken) {
+        reserved = taken == null ? n -> false : taken;
+    }
+
+    /** null = frei, sonst der Grund (deutsch). */
+    String reservedProblem(String name) {
+        return name != null && reserved.test(name.toLowerCase(java.util.Locale.ROOT))
+                ? "Den Namen „" + name + "“ trägt schon ein Bauwerk der Sammlung – nimm einen anderen." : null;
     }
 
     static boolean validName(String name) {
@@ -315,6 +334,10 @@ final class SchematicLibrary implements ModuleLibrary {
         if (!validName(name)) {
             return "Name nur aus a-z, 0-9 und _ (2–32 Zeichen).";
         }
+        String clash = reservedProblem(name);
+        if (clash != null) {
+            return clash;
+        }
         if (a.getWorld() == null || !a.getWorld().equals(b.getWorld())) {
             return "Beide Ecken müssen in derselben Welt liegen.";
         }
@@ -360,6 +383,10 @@ final class SchematicLibrary implements ModuleLibrary {
         BlockVector3 size = region.getMaximumPoint().subtract(region.getMinimumPoint()).add(1, 1, 1);
         if (size.x() > MAX_EDGE || size.y() > MAX_EDGE || size.z() > MAX_EDGE) {
             return "Auswahl zu groß – höchstens " + MAX_EDGE + " je Richtung.";
+        }
+        String clash = reservedProblem(name);
+        if (clash != null) {
+            return clash;
         }
         boolean admin = player.hasPermission("baumeister.admin");
         YamlConfiguration known = index.isFile() ? YamlConfiguration.loadConfiguration(index) : new YamlConfiguration();

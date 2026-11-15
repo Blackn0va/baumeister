@@ -71,6 +71,28 @@ class SchematicCatalogTest {
         assertFalse(c.families("tuer").isEmpty(), "Suche ohne Umlaut findet Tür"); // umlaut-ok
     }
 
+    /** Wie Spieler reden (Review 2026-11-15): Anrede, getrennte Komposita, gebeugte Namen, Zahlwörter. */
+    @Test
+    void naturalOrdersStillFindTheFamily() {
+        List<SchematicCatalog.Entry> entries = List.of(
+                SchematicCatalog.entry("sp_wuestentempel_1", "Wüstentempel, Variante 1", "", "Spiel"),
+                SchematicCatalog.entry("sp_wuestentempel_2", "Wüstentempel, Variante 2", "", "Spiel"),
+                SchematicCatalog.entry("sp_ozeanmonument_1", "Ozeanmonument, Variante 1", "", "Spiel"),
+                SchematicCatalog.entry("sp_roter_riesenpilz_1", "Roter Riesenpilz, Variante 1", "", "Spiel"),
+                SchematicCatalog.entry("sp_wiesendorf_1", "Wiesendorf, Variante 1", "", "Spiel"));
+        SchematicCatalog c = new SchematicCatalog(entries,
+                java.util.Map.of("Roter Riesenpilz", List.of("Roten Riesenpilz")));
+        assertEquals("sp_wuestentempel_1", c.match("Baumeister, kannst du mir einen Wüstentempel bauen?").orElseThrow()
+                .entry().name());
+        assertEquals("sp_wuestentempel_2", c.match("bau mir einen Wüsten-Tempel Variante zwei").orElseThrow()
+                .entry().name(), "getrennt geschrieben und als Zahlwort");
+        assertEquals("sp_ozeanmonument_1", c.match("bau mir ein Ozean Monument").orElseThrow().entry().name());
+        assertEquals("sp_roter_riesenpilz_1", c.match("bau mir einen roten Riesenpilz").orElseThrow().entry().name());
+        assertTrue(c.match("bau mir ein großes Wiesendorf").isEmpty(), "Größe bleibt ein Zusatz");
+        assertTrue(c.match("bau mir ein Wiesendorf mit 8 Häusern").isEmpty());
+        assertTrue(c.match("bau mir einen Ozean").isEmpty(), "ein halbes Kompositum trifft nichts");
+    }
+
     /** Stichwort (2026-11-15): trifft genau eine Herkunft, auch wenn das Wort in fremden Herkunftsspalten steckt. */
     @Test
     void tagListsExactlyOneSourceEvenIfTheWordAppearsElsewhere() {
@@ -84,7 +106,8 @@ class SchematicCatalogTest {
         assertEquals(List.of(java.util.Map.entry("Iglu", 1)), c.families("spiel"),
                 "Stichwort: nur die genaue Herkunft, nicht Glockenspiel");
         assertEquals(List.of(java.util.Map.entry("Iglu", 1)), c.families("Spiel"));
-        assertEquals(2, c.families("minecraft").size(), "freie Suche trifft auch die Technik-Wiki-Herkunft");
+        assertEquals(0, c.families("minecraft").size(), "keine freie Suche in der Herkunft – nur Stichwörter");
+        assertEquals(0, c.families("erz").size(), "„erz“ steckt in „erzeugt“, trifft aber nichts mehr");
         assertEquals(List.of(java.util.Map.entry("Glockenspiel", 1)), new SchematicCatalog(entries).families("spiel"),
                 "ohne Stichwort bleibt es eine Namenssuche");
     }
@@ -110,7 +133,8 @@ class SchematicCatalogTest {
         assertEquals(2, c.variants("Sumpfhütte").size());
         assertTrue(c.hint("ein Garten mit einer Sumpfhütte", 8).contains("hexenhuette_1"));
         assertEquals(2, c.families("").size(), "Zweitnamen zählen nicht als eigene Familie");
-        assertEquals(List.of(java.util.Map.entry("Hexenhütte", 2)), c.families("spiel"), "Suche nach Herkunft");
-        assertEquals(List.of(java.util.Map.entry("Taktgeber", 1)), c.families("wiki"));
+        // Herkunft nur über Stichwörter (Review 2026-11-15: „mine“ listete alle Familien, „erz“ alle Spiel-Bauwerke).
+        assertEquals(List.of(), c.families("spiel"), "ohne Stichwort keine Suche in der Herkunftsspalte");
+        assertEquals(List.of(), c.families("wiki"));
     }
 }

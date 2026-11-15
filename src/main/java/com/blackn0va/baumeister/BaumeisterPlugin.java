@@ -487,10 +487,14 @@ public final class BaumeisterPlugin extends JavaPlugin {
         SchematicLibrary lib = new SchematicLibrary(getDataFolder());
         lib.reload();
         schematics = lib;
-        // Vorlagen zuletzt: Ein eingebautes Bauteil oder Schematic gleichen Namens gewinnt.
-        // ModuleTransforms obendrauf: Name_gespiegelt / Name_doppelt (Vera „bau … gespiegelt“, 2026-11-05).
+        FileSchematics files = fileSchematics;
+        lib.reserveNames(n -> builtin.find(n).isPresent() || files.catalog().find(n).isPresent()
+                || templates.find(n).isPresent());
+        // Bauwerk-Dateien VOR der Bibliothek, in die Spieler schreiben (Vera „merk dir das Bauwerk“): Vorher stand sie
+        // davor, ein gemerktes Bauteil gleichen Namens ersetzte die Datei – auch im Auftrag eines Admins (Review
+        // 2026-11-15). Vorlagen zuletzt; ModuleTransforms obendrauf: Name_gespiegelt / Name_doppelt.
         return new com.blackn0va.baumeister.plan.ModuleTransforms(
-                new CombinedLibrary(List.of(builtin, lib, fileSchematics, templates)));
+                new CombinedLibrary(List.of(builtin, fileSchematics, lib, templates)));
     }
 
     /** Bauwerk-Dateien (immer da, ggf. leer). */

@@ -86,6 +86,22 @@ public final class StructureFile {
         }
     }
 
+    /**
+     * Strukturdatei des Spiels samt Luftzellen (2026-11-15). Für die Bauwerke aus /bm spielbauwerk: Ihre Luft ist nur
+     * noch ausgegrabene Luft unter der Oberfläche (Fallgrube, Keller, Gänge) – ohne sie stünden Schatzkammer und TNT
+     * nach dem Absenken in massivem Boden. read verwirft Luft weiter für alle anderen Quellen.
+     */
+    public static Structure readKeepingAir(Path file) throws IOException {
+        Map<String, Object> root;
+        try (InputStream in = Files.newInputStream(file)) {
+            root = Nbt.read(in);
+        }
+        if (!root.containsKey("palette") && !root.containsKey("palettes")) {
+            throw new IOException("Luft behalten geht nur für Strukturdateien des Spiels (palette/blocks)");
+        }
+        return structureNbt(root, true);
+    }
+
     public static Structure read(InputStream in) throws IOException {
         Map<String, Object> root = Nbt.read(in);
         // Manche Schreiber legen die Daten unter einem einzigen benannten Wurzeleintrag ab ("Schematic", "").
@@ -117,7 +133,7 @@ public final class StructureFile {
             return sponge(root, root, "schem-v" + intOf(root.getOrDefault("Version", 2)));
         }
         if (root.containsKey("palette") || root.containsKey("palettes")) {
-            return structureNbt(root);
+            return structureNbt(root, false);
         }
         throw new IOException("Unbekanntes Bauwerk-Format (Schlüssel: " + root.keySet() + ")");
     }
@@ -305,7 +321,7 @@ public final class StructureFile {
 
     // ---------------------------------------------------------------- Strukturdatei des Spiels
 
-    private static Structure structureNbt(Map<String, Object> root) throws IOException {
+    private static Structure structureNbt(Map<String, Object> root, boolean keepAir) throws IOException {
         List<Object> size = list(root.get("size"), "size");
         if (size.size() != 3) {
             throw new IOException("size braucht drei Werte");
@@ -317,7 +333,7 @@ public final class StructureFile {
         for (Object e : palette) {
             states.add(stateString(map(e, "Paletteneintrag")));
         }
-        Decoder dec = new Decoder();
+        Decoder dec = new Decoder(keepAir);
         Map<Pos, BlockSpec> cells = new LinkedHashMap<>();
         for (Object o : list(root.get("blocks"), "blocks")) {
             Map<String, Object> b = map(o, "Block");
@@ -374,6 +390,16 @@ public final class StructureFile {
     private static final class Decoder {
         final Map<String, BlockSpec> cache = new HashMap<>();
         final Map<String, Integer> unreadable = new TreeMap<>();
+        /** Luft behalten (readKeepingAir); sonst fällt sie weg wie bisher. */
+        final boolean keepAir;
+
+        Decoder() {
+            this(false);
+        }
+
+        Decoder(boolean keepAir) {
+            this.keepAir = keepAir;
+        }
 
         void put(Map<Pos, BlockSpec> cells, Pos p, String state) throws IOException {
             BlockSpec spec = cache.computeIfAbsent(state, s -> {
@@ -387,7 +413,7 @@ public final class StructureFile {
                 unreadable.merge(state, 1, Integer::sum);
                 return;
             }
-            if (spec.isAir()) {
+            if (spec.isAir() && !keepAir) {
                 return;
             }
             if (cells.size() >= MAX_CELLS) {

@@ -637,17 +637,23 @@ final class BuildService {
         if (owner != null) {
             npc.lookAt(BuilderNpc.eye(owner.getLocation()));
         }
+        // Bauwerk-Dateien (FileSchematics, 2026-11-08): „bau mir einen Taktgeber“ / „… Variante 3“ ohne LLM. Ein Bauwerk
+        // des Spiels (/bm spielbauwerk) geht dem Schnellweg und dem TemplateCatalog vor – Begründung bei
+        // GameStructures.preferred. Vor dem Schnellweg, weil QuickForms „Kirschbaum“ und „große Eiche“ sonst als
+        // Kunstbaum abfing (Review 2026-11-15).
+        Optional<com.blackn0va.baumeister.plan.SchematicCatalog.Match> file = fileSchematics == null
+                ? Optional.empty() : fileSchematics.catalog().match(prompt);
+        boolean gameFirst = file.isPresent() && GameStructures.preferred(file.get());
+        if (gameFirst && buildFileMatch(r, prompt, file.get())) {
+            return;
+        }
         // Schnellweg vor dem LLM: Hochhaus mit N Stockwerken und Maschinen per Name brauchen kein Modell. Nach dem
-        // Scan, damit der Überbau-Schutz auch hier greift.
+        // Scan, damit der Überbau-Schutz auch hier greift. Auch wenn ein Spiel-Bauwerk eben nicht passte (Platz,
+        // Grenzen): dann lieber der Kunstbaum als eine Minute LLM.
         Optional<String> quick = QuickOrders.match(prompt, modules, settings.maxExtent());
         if (quick.isPresent() && acceptPlan(r, prompt, quick.get())) {
             return;
         }
-        // Bauwerk-Dateien (FileSchematics, 2026-11-08): „bau mir einen Taktgeber“ / „… Variante 3“ ohne LLM. Ein Bauwerk
-        // des Spiels (/bm spielbauwerk) geht dem TemplateCatalog vor – Begründung bei GameStructures.preferred.
-        Optional<com.blackn0va.baumeister.plan.SchematicCatalog.Match> file = fileSchematics == null
-                ? Optional.empty() : fileSchematics.catalog().match(prompt);
-        boolean gameFirst = file.isPresent() && GameStructures.preferred(file.get());
         // Zwischenschicht (TemplateCatalog, Wunsch 2026-11-04): reine
         // Vorlagen-Aufträge („ein Iglu“, „ein Wüstendorf mit 8 Häusern“) ohne LLM, in Millisekunden.
         Optional<TemplateCatalog.Match> tpl = gameFirst ? Optional.empty() : TemplateCatalog.match(prompt, templates,
@@ -659,16 +665,8 @@ final class BuildService {
                 return;
             }
         }
-        if (file.isPresent()) {
-            com.blackn0va.baumeister.plan.SchematicCatalog.Match fm = file.get();
-            LOG.info(() -> "bau | schematic | weg=direkt name=" + fm.entry().name());
-            String details = schematicDetails(fm);
-            if (!details.isEmpty() && r.sender() != null) {
-                Texts.info(r.sender(), details);
-            }
-            if (acceptPlan(r, prompt, QuickOrders.moduleJson(fm.entry().name(), schematicReply(fm)))) {
-                return;
-            }
+        if (file.isPresent() && !gameFirst && buildFileMatch(r, prompt, file.get())) {
+            return;
         }
         Texts.say(npc.name(), m.getLocation(), r.sender(), survey.hasStructures()
                 ? "Hmm, ich schaue mir an, was hier schon steht, und überlege …"
@@ -780,6 +778,20 @@ final class BuildService {
     }
 
     /** Antwort beim Bau einer Bauwerk-Datei: was, woher, wie viele Varianten es gibt. */
+    /**
+     * Katalogtreffer bauen: Details in den Chat, der Modul-Schritt so tief, wie die Vorlage unter die Oberfläche reicht
+     * (FileSchematics.groundOf, 0 für alle außer Spiel-Vorlagen). false = abgelehnt (Platz, Grenzen, Rechte).
+     */
+    private boolean buildFileMatch(Request r, String prompt, com.blackn0va.baumeister.plan.SchematicCatalog.Match fm) {
+        int ground = fileSchematics.groundOf(fm.entry().name());
+        LOG.info(() -> "bau | schematic | weg=direkt name=" + fm.entry().name() + " boden=" + ground);
+        String details = schematicDetails(fm);
+        if (!details.isEmpty() && r.sender() != null) {
+            Texts.info(r.sender(), details);
+        }
+        return acceptPlan(r, prompt, QuickOrders.moduleJson(fm.entry().name(), schematicReply(fm), -ground));
+    }
+
     /**
      * Was der Baumeister bei einem Katalogbau laut sagt: kurz, wie ein Mensch („Wird gemacht: Wüstentempel.“), die
      * Variante nur, wenn es mehrere gibt. Vorher sprach er „Ich baue „Taktgeber, Variante 1“ aus der Schematic-Sammlung

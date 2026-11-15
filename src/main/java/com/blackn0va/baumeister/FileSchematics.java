@@ -54,7 +54,8 @@ final class FileSchematics implements ModuleLibrary {
     static final String BLOCKED = "gesperrt.txt";
 
     /** Eintrag samt Datei. */
-    record Item(SchematicCatalog.Entry entry, Path file) {
+    /** ground: Lagen unter der Oberfläche (6. Spalte der index.tsv, sonst 0); game: aus /bm spielbauwerk. */
+    record Item(SchematicCatalog.Entry entry, Path file, int ground, boolean game) {
     }
 
     private final Path folder;
@@ -99,7 +100,9 @@ final class FileSchematics implements ModuleLibrary {
             return Optional.of(cached);
         }
         try {
-            StructureFile.Structure s = StructureFile.read(item.file());
+            // Spiel-Vorlagen samt ausgegrabener Luft (Fallgrube, Keller); alle anderen wie bisher ohne Luft.
+            StructureFile.Structure s = item.game() ? StructureFile.readKeepingAir(item.file())
+                    : StructureFile.read(item.file());
             List<TemplateModules.RawCell> raw = new ArrayList<>(s.cells().size());
             for (Map.Entry<Pos, BlockSpec> e : s.cells().entrySet()) {
                 raw.add(new TemplateModules.RawCell(e.getKey().x(), e.getKey().y(), e.getKey().z(),
@@ -107,7 +110,7 @@ final class FileSchematics implements ModuleLibrary {
             }
             String desc = item.entry().description().isEmpty() ? item.entry().display()
                     : item.entry().description();
-            Module m = TemplateModules.build(n, desc, raw).module();
+            Module m = TemplateModules.build(n, desc, raw, item.game()).module();
             cache.put(n, m);
             if (!s.unreadable().isEmpty()) {
                 LOG.warning(() -> "schematics | bloecke_unbekannt | name=" + n + " " + s.unreadable());
@@ -120,6 +123,21 @@ final class FileSchematics implements ModuleLibrary {
             }
             return Optional.empty();
         }
+    }
+
+    /** Bodenversatz aus der 6. Spalte; 0 bei fehlender oder unlesbarer Zahl (Dateien von vor 2026-11-15). */
+    static int ground(String[] row) {
+        if (row == null || row.length < 6 || !row[5].strip().matches("\\d{1,3}")) {
+            return 0;
+        }
+        return Integer.parseInt(row[5].strip());
+    }
+
+    /** Wie tief eine Vorlage unter den Füßen beginnt (FileSchematics-Eintrag); 0, wenn unbekannt. */
+    public synchronized int groundOf(String name) {
+        refresh();
+        Item item = items.get(name.toLowerCase(Locale.ROOT));
+        return item == null ? 0 : item.ground();
     }
 
     /** Leer: Hunderte Namen gehören nicht in jeden LLM-Prompt (SchematicCatalog.hint statt dessen). */
@@ -170,11 +188,18 @@ final class FileSchematics implements ModuleLibrary {
             }
             SchematicCatalog.Entry e = SchematicCatalog.entry(name, row != null && row.length > 2 ? row[2] : null,
                     row != null && row.length > 3 ? row[3] : null, row != null && row.length > 4 ? row[4] : null);
-            next.put(name, new Item(e, f));
+            boolean game = GameStructures.SOURCE.equals(e.source());
+            if (row == null && f.getParent() != null && f.getParent().getFileName().toString().equals("spiel")) {
+                // In spiel/ zählt nur, was eine index-Zeile hat: Eine Datei ohne Zeile ist ein Rest eines abgebrochenen
+                // Laufs (Review 2026-11-15: ungestrichener Gesteinsklotz als eigene Familie im Katalog).
+                bad++;
+                continue;
+            }
+            next.put(name, new Item(e, f, ground(row), game));
         }
         items = Map.copyOf(next);
         catalog = new SchematicCatalog(next.values().stream().map(Item::entry).toList(), GameStructures.ALIASES,
-                Map.of(GameStructures.TAG, GameStructures.SOURCE));
+                Map.of(GameStructures.TAG, GameStructures.SOURCE, "technik", "Technik Wiki"));
         cache.clear();
         int skipped = bad;
         int locked = barred;

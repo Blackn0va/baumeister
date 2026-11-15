@@ -130,8 +130,10 @@ public final class PlanCompiler {
             Step s = plan.steps().get(i);
             stepNames.add(s.op().name().toLowerCase(Locale.ROOT) + " "
                     + (s.op() == Op.MODULE ? s.name() : s.block()));
-            // Bauteile (module, logic) ganz oder gar nicht: ihre Zellen tragen die Schrittnummer als Gruppe.
-            canvas.group = s.op() == Op.MODULE || s.op() == Op.LOGIC ? i + 1 : 0;
+            // Bauteile (module, logic) ganz oder gar nicht: ihre Zellen tragen die Schrittnummer als Gruppe – außer
+            // Bauwerken des Spiels, die Zelle für Zelle geprüft werden (ModuleLibrary.cellByCell).
+            canvas.group = s.op() == Op.LOGIC || s.op() == Op.MODULE && !ModuleLibrary.cellByCell(s.name()) ? i + 1
+                    : 0;
             emit(s, i + 1, canvas, warnings);
         }
         if (canvas.cells.isEmpty()) {

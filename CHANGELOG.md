@@ -182,6 +182,21 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **Spiel-Bauwerke stehen richtig im Boden:** Der Wüstentempel schwebte 14 Blöcke über seiner eigenen Schatzkammer,
+  Iglu-Keller und Dorfwege lagen zu hoch. Jetzt beginnt jede Vorlage so tief unter den Füßen, wie sie im Spiel in den
+  Boden reicht; Fallgrube, Keller und Gänge werden ausgehoben (live: 9 TNT und die Kammer unter der Oberfläche, nichts
+  schwebt). Bauwerke mit TNT, Lava oder Spawnern baut ein Spieler ohne Stufe „gefährlich“ jetzt ohne diese Blöcke statt
+  gar nicht. „Kannst du mir einen Wüstentempel bauen?“, „ein Ozean Monument“, „einen roten Riesenpilz“ und
+  „Variante zwei“ treffen die Vorlage; „Kirschbaum“ und „große Eiche“ fängt der Kunstbaum nicht mehr ab.
+- **Erzeugen ohne Stocken:** /bm spielbauwerk schreibt die Datei im Hintergrund direkt aus den Chunk-Aufnahmen statt den
+  Quader im Server-Tick zu erfassen; nur noch veränderte Zellen (antike Stadt rund 48 000 statt 1,2 Mio. Einträge, alle
+  Vorlagen zusammen 4,7 statt 20 MB). Abgebrochene Läufe hinterlassen nichts im Katalog, Plätze werden nie doppelt
+  vergeben.
+- **Sicherheit:** Ein Spieler konnte sich mit „merk dir das Bauwerk als iglu_1“ den Namen einer Vorlage sichern; baute
+  danach ein Admin „ein Iglu“, kam das Spieler-Bauteil mit Admin-Rechten. Namen aus der Sammlung sind jetzt gesperrt,
+  Dateien gehen gemerkten Bauteilen vor.
+- **Katalogsuche:** „/bm katalog mine“ listete alle Familien, „erz“ alle Spiel-Bauwerke; die Herkunft sucht jetzt nur
+  über die Stichwörter „spiel“ und „technik“.
 - Ein Auftrag an einer noch nie besuchten Stelle (`/bm bauenbei`, Warteschlange, Vera) hielt den Server bis zu 4,4 s an,
   weil der Bauplatz synchron erzeugt wurde. Jetzt lädt der Baumeister ihn vorher – auf Paper im Hintergrund, auf
   Spigot höchstens 2 Chunks je Tick („Ich lade erst den Bauplatz …“). Gemessen: 4,4 s → 0,08 s für den Befehl.

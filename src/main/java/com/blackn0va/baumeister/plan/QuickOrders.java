@@ -737,10 +737,18 @@ public final class QuickOrders {
 
     /** Ein module-Schritt ab (0,0,0); reply null = Farm-Antwort bzw. „Ich baue dir das Bauteil …“. */
     public static String moduleJson(String name, String reply) {
+        return moduleJson(name, reply, 0);
+    }
+
+    /**
+     * Wie moduleJson, aber die unterste Lage dy Blöcke unter den Füßen (dy ≤ 0): für Spiel-Vorlagen mit Teilen unter
+     * der Oberfläche (Fallgrube, Keller). Ab (0,0,0) schwebte der Wüstentempel 14 Blöcke über seiner Schatzkammer.
+     */
+    public static String moduleJson(String name, String reply, int dy) {
         JsonObject step = new JsonObject();
         step.addProperty("op", "module");
         step.addProperty("name", name);
-        step.add("pos", vec(0, 0, 0));
+        step.add("pos", vec(0, Math.min(0, dy), 0));
         step.addProperty("facing", "front");
         // Farmen (2026-11-08): deutscher Name und was bereitliegen soll, die Schritte sagt BuildService nach dem Bau.
         // Vorher „Ich baue dir das Bauteil 'eisenfarm'.“ – und kein Wort zu Betten, Bewohnern oder Zombie.

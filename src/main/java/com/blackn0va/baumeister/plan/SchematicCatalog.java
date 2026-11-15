@@ -38,8 +38,18 @@ public final class SchematicCatalog {
 
     public static final Pattern NAME = Pattern.compile("[a-z0-9_]{2,32}");
     private static final Pattern VARIANT = Pattern.compile("(.*?),?\\s*Variante\\s+(\\d+)\\s*$");
+    /**
+     * Wörter ohne Inhalt für den Auftrag. Seit 2026-11-15 auch Anrede und Verben wie im TemplateCatalog: Vorher fiel
+     * „kannst du mir einen Wüstentempel bauen?“ durch und baute das Tempelhaus aus dem Wüstendorf (Review). Bewusst
+     * nicht: Größe, Anzahl, Ort, Material („groß“, „mit“, „aus“) – das sind Zusätze, die woanders hingehören.
+     */
     private static final Set<String> FILLER = Set.of("bau", "baue", "bitte", "mir", "uns", "mal", "ein", "eine",
-            "einen", "das", "die", "der", "den", "hier", "hin", "variante", "nr", "nummer", "schematic", "baumeister");
+            "einen", "das", "die", "der", "den", "hier", "hin", "variante", "nr", "nummer", "schematic", "baumeister",
+            "bauen", "mach", "mache", "machen", "errichte", "stell", "stelle", "setz", "setze", "kannst",
+            "koenntest", "wuerdest", "du", "ich", "moechte", "will", "wir", "haette", // umlaut-ok: normalisierte Form
+            "gern", "gerne", "doch", "jetzt", "sofort",
+            "echt", "echtes", "echten", "echte", "original", "typisch", "typischen", "minecraft", "vanilla", "vera",
+            "und", "noch", "auch");
 
     private final Map<String, Entry> byName;
     /** Familie (normalisiert) → Einträge nach Variante. */
@@ -62,9 +72,9 @@ public final class SchematicCatalog {
     }
 
     /**
-     * Dazu Stichwörter für die Katalogsuche, die genau eine Herkunft treffen („spiel“ → Bauwerke des Spiels). Die freie
-     * Suche in der Herkunftsspalte reicht dafür nicht: „minecraft“ steckt auch in „Technik Wiki (de.minecraft.wiki)“
-     * und listete alle 804 Technik-Wiki-Schematics mit (gemessen 2026-11-15 an den index.tsv der Paper-Kopie).
+     * Dazu Stichwörter für die Katalogsuche, die genau eine Herkunft treffen: Wert = Anfang der Herkunftsspalte
+     * („spiel“ → „Minecraft, auf diesem Server erzeugt“, „technik“ → „Technik Wiki“). Eine freie Suche in der
+     * Herkunftsspalte reicht dafür nicht: „minecraft“ steckt auch in „Technik Wiki (de.minecraft.wiki)“.
      */
     public SchematicCatalog(List<Entry> entries, Map<String, List<String>> aliases, Map<String, String> tags) {
         tags.forEach((word, source) -> this.tags.put(RequestHints.normalize(word), source));
@@ -114,7 +124,7 @@ public final class SchematicCatalog {
         String tagged = tags.get(f);
         if (tagged != null) {
             families.forEach((key, l) -> {
-                if (tagged.equals(l.getFirst().source())) {
+                if (l.getFirst().source().startsWith(tagged)) {
                     hit.add(key);
                 }
             });
@@ -130,13 +140,8 @@ public final class SchematicCatalog {
                 hit.add(family);
             }
         });
-        // Auch nach Herkunft (2026-11-15): „technik“ listet die Technik-Wiki-Sammlung – vorher fand man eine Familie
-        // nur, wenn man ihren Namen schon kannte. Für die Bauwerke des Spiels gibt es das Stichwort (tags) „spiel“.
-        families.forEach((key, l) -> {
-            if (!f.isEmpty() && RequestHints.normalize(l.getFirst().source()).contains(f)) {
-                hit.add(key);
-            }
-        });
+        // Herkunft nur über Stichwörter (tags: „spiel“, „technik“). Die freie Teilwortsuche in der Herkunftsspalte
+        // listete bei „mine“ alle 234 Familien („Minecraft“) und bei „erz“ alle Spiel-Bauwerke („erzeugt“).
         for (String family : hit) {
             List<Entry> l = families.get(family);
             out.add(Map.entry(l.getFirst().family(), l.size()));
@@ -158,6 +163,7 @@ public final class SchematicCatalog {
         if (tokens.isEmpty()) {
             return Optional.empty();
         }
+        tokens = joinSplitCompounds(tokens);
         String bestKey = null;
         int bestStart = -1;
         int bestLen = 0;
@@ -189,11 +195,13 @@ public final class SchematicCatalog {
                 continue;
             }
             String t = tokens.get(i);
-            if (t.matches("\\d{1,3}")) {
+            java.util.OptionalInt num = t.matches("\\d{1,3}") ? java.util.OptionalInt.of(Integer.parseInt(t))
+                    : RequestHints.number(t);
+            if (num.isPresent() && !FILLER.contains(t)) {
                 if (number != null) {
                     return Optional.empty();
                 }
-                number = Integer.parseInt(t);
+                number = num.getAsInt();
             } else if (!FILLER.contains(t)) {
                 return Optional.empty();
             }
@@ -202,6 +210,25 @@ public final class SchematicCatalog {
         int want = number == null ? 1 : number;
         return family.stream().filter(e -> e.variant() == want).findFirst()
                 .map(e -> new Match(e, family.size()));
+    }
+
+    /**
+     * Zwei Nachbarwörter, die zusammen einen einteiligen Schlüssel ergeben, werden eins: „ozean monument“ →
+     * „ozeanmonument“, „wuesten tempel“ (aus „Wüsten-Tempel“) → „wuestentempel“. Spracheingabe trennt Komposita gern;
+     * vorher ging „bau mir ein Ozean Monument“ ans LLM, obwohl drei Monumente bereitlagen (Review 2026-11-15).
+     */
+    private List<String> joinSplitCompounds(List<String> tokens) {
+        List<String> out = new ArrayList<>(tokens.size());
+        for (int i = 0; i < tokens.size(); i++) {
+            if (i + 1 < tokens.size() && !keys.containsKey(tokens.get(i)) && !keys.containsKey(tokens.get(i + 1))
+                    && keys.containsKey(tokens.get(i) + tokens.get(i + 1))) {
+                out.add(tokens.get(i) + tokens.get(i + 1));
+                i++;
+            } else {
+                out.add(tokens.get(i));
+            }
+        }
+        return out;
     }
 
     /**

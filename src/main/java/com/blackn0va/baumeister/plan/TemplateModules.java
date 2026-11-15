@@ -43,6 +43,15 @@ public final class TemplateModules {
     }
 
     public static Template build(String name, String description, List<RawCell> raw) {
+        return build(name, description, raw, false);
+    }
+
+    /**
+     * keepAllAir: Luft auch unter der Bodenschicht übernehmen – für die Bauwerke aus /bm spielbauwerk, deren Luft nur
+     * noch ausgegrabene Luft ist (Fallgrube, Keller). Die Regel „Luft nur über dem Boden“ fände dort die unterste Tür
+     * im Keller und würfe die Kammer weg.
+     */
+    public static Template build(String name, String description, List<RawCell> raw, boolean keepAllAir) {
         Map<Long, String> byPos = new HashMap<>();
         for (RawCell c : raw) {
             byPos.put(key(c.x(), c.y(), c.z()), c.state());
@@ -88,7 +97,7 @@ public final class TemplateModules {
             boolean air = id.equals("minecraft:air") || id.equals("minecraft:cave_air");
             // Luft nur über der Bodenschicht: Sie räumt Gras und Büsche aus dem Haus; darunter grübe sie Löcher in die
             // Wiese, wo die Vorlage keinen Grundriss hat (Ecken eines L-förmigen Hauses).
-            if (air && c.y() <= ground) {
+            if (air && c.y() <= ground && !keepAllAir) {
                 continue;
             }
             BlockSpec spec;

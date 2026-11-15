@@ -1,11 +1,9 @@
 package com.blackn0va.baumeister;
 
 import com.blackn0va.baumeister.plan.SchematicCatalog;
-import com.blackn0va.baumeister.structure.Nbt;
 import com.blackn0va.baumeister.structure.NbtOut;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,7 +22,6 @@ import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChunkSnapshot;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -33,7 +30,7 @@ import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
 import org.bukkit.command.CommandSender;
 import org.bukkit.generator.structure.Structure;
-import org.bukkit.util.BlockVector;
+import org.bukkit.persistence.PersistentDataType;
 
 /**
  * Bauwerke des Spiels als Vorlagen für den Baumeister (Wunsch 2026-11-14: „Monumente, Gebäude … massenhaft“).
@@ -49,8 +46,15 @@ import org.bukkit.util.BlockVector;
  * greifen alle 38 Arten hier, je 3× erzeugt (114/114) – das Ozeanmonument nur in der Tiefsee-Welt (SEA_WORLD),
  * Wüstenbrunnen und Eisstachel nur auf ihrem Untergrund (GROUND).
  *
- * Threads: Server-Thread; Vorladen über ChunkPrefetch, nur der Blockvergleich läuft auf ChunkSnapshots außerhalb.
- * Fehler: Meldung an den Absender und ins Log, nichts halb Gespeichertes (erst .nbt, dann die index-Zeile).
+ * Ablauf (seit 2026-11-15 nachmittags, nach dem Review): place im Tick, 5 Ticks später ChunkSnapshots im Tick, alles
+ * Weitere außerhalb – Vergleich, Datei aus den Snapshots schreiben (writeTemplate), index-Zeile, Umbenennen. Vorher
+ * erfasste Structure#fill den ganzen Quader im Tick (antike Stadt ≥ 1,3 s am Laptop), prune las die Datei danach
+ * als Java-Maps wieder ein (~550 MB), und behaltene Luft über dem Boden machte 85 % der Datei aus – beim Bau kam sie
+ * nie an.
+ *
+ * Threads: Server-Thread; Vorladen über ChunkPrefetch, Vergleich und Schreiben auf ChunkSnapshots außerhalb.
+ * Fehler: Meldung an den Absender und ins Log; nichts halb Gespeichertes (erst .nbt.neu, dann die index-Zeile, dann
+ * atomar umbenennen – FileSchematics liest .neu nicht).
  */
 final class GameStructures {
 
@@ -68,12 +72,17 @@ final class GameStructures {
     static final String SOURCE = "Minecraft, auf diesem Server erzeugt";
     /** Stichwort der Katalogsuche für genau diese Herkunft: /bm katalog spiel. */
     static final String TAG = "spiel";
-    /**
-     * Obergrenze des erfassten Quaders. Vorher 1 Mio. – die antike Stadt (184×31×213 = 1,21 Mio., gemessen 2026-11-15)
-     * fiel heraus, obwohl der Großteil Luft ist. Ob der Baumeister sie baut, entscheidet beim Bau schematics.max-blöcke
-     * (zählt Blöcke, höchstens 4 Mio.); hier nur die Speichergrenze für Structure#fill.
-     */
+    /** Obergrenze des Quaders (nur noch fürs BitSet der Maske; der vorgeladene Bereich ist ohnehin kleiner). */
     static final long MAX_VOLUME = 4_000_000;
+    /**
+     * Höchstens so viele Blöcke je Vorlage. Gemessen 2026-11-15 nach dem Streichen: antike Stadt rund 54 000,
+     * Netherfestung rund 32 000 – das Zehnfache reicht, ohne dev01 eine Datei zuzumuten, die das Lesen sprengt.
+     */
+    static final int MAX_KEPT = 600_000;
+    /** Präfix der Dateinamen: Ohne ihn überdeckten „schiffswrack_N“ die gleichnamigen Vorlagen des TemplateCatalog. */
+    static final String STEM_PREFIX = "sp_";
+    /** Plätze je Art in der Vorlagenwelt (Zähler im PersistentDataContainer der Welt, nie wiederverwendet). */
+    static final int SLOTS_PER_KIND = 63;
     /**
      * Flachwelt wie das echte Gelände: Grundgestein, 123 Lagen Stein, Erde, Gras – Oberfläche y=63.
      * Vorher die Standard-Flachwelt mit Gras auf y=-61 direkt über dem Grundgestein: Die Fallgrube des Wüstentempels
@@ -168,7 +177,12 @@ final class GameStructures {
             "Hexenhütte", List.of("Sumpfhütte"),
             "Endstadt", List.of("Endsiedlung"),
             "Antike Stadt", List.of("Antike Stätte"),
-            "Prüfungskammern", List.of("Prüfungskammer"));
+            "Prüfungskammern", List.of("Prüfungskammer"),
+            // Gebeugt („bau mir einen roten Riesenpilz“) – vorher ans LLM (Review 2026-11-15).
+            "Roter Riesenpilz", List.of("Roten Riesenpilz"),
+            "Brauner Riesenpilz", List.of("Braunen Riesenpilz"),
+            "Gestrandetes Schiffswrack", List.of("Gestrandeten Schiffswrack"),
+            "Große Eiche", List.of("Großen Eiche"));
 
     private static void put(String id, String family, String description) {
         KINDS.put(id, new String[] {family, description});
@@ -181,30 +195,73 @@ final class GameStructures {
         this.plugin = plugin;
     }
 
-    /** Dateiname ohne Endung: family in ASCII (ä → ae …), klein, Unterstrich, plus Nummer. */
+    /** Dateiname ohne Endung: Präfix, family in ASCII (ä → ae …), klein, Unterstrich, plus Nummer. */
     static String fileStem(String family, int n) {
         String s = family.toLowerCase(Locale.ROOT).replace("ä", "ae").replace("ö", "oe").replace("ü", "ue") // umlaut-ok
                 .replace("ß", "ss").replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", ""); // umlaut-ok
-        return s + "_" + n;
+        return STEM_PREFIX + s + "_" + n;
     }
 
-    /** Zeile für index.tsv (datei, name, anzeige, beschreibung, quelle) – Tabs und Zeilenumbrüche entfernt. */
-    static String indexLine(String file, String name, String family, int n, String description) {
+    /**
+     * Zeile für index.tsv (datei, name, anzeige, beschreibung, quelle, boden) – Tabs und Zeilenumbrüche entfernt.
+     * boden = so viele Lagen liegen unter der Oberfläche; beim Bau beginnt die Vorlage so tief unter den Füßen
+     * (FileSchematics.ground). Vorher stand Schicht 0 immer auf Fußhöhe: Der Wüstentempel schwebte 14 Blöcke über
+     * seiner eigenen Schatzkammer.
+     */
+    static String indexLine(String file, String name, String family, int n, String description, int ground) {
         List<String> cols = new ArrayList<>();
-        for (String c : List.of(file, name, family + ", Variante " + n, description, SOURCE)) {
+        for (String c : List.of(file, name, family + ", Variante " + n, description, SOURCE,
+                Integer.toString(ground))) {
             // Je Feld: Ein Tab in einem Feld verschöbe sonst alle Spalten dahinter (GameStructuresTest).
             cols.add(c.replaceAll("[\\t\\r\\n]+", " "));
         }
         return String.join("\t", cols) + "\n";
     }
 
-    /** Nächste freie Nummer für eine Familie im Ordner. */
-    static int nextNumber(Path dir, String family) {
-        int n = 1;
-        while (Files.exists(dir.resolve(fileStem(family, n) + ".nbt"))) {
-            n++;
+    /**
+     * Nächste Nummer einer Familie: höchste vorhandene + 1, gezählt über .nbt, .nbt.neu und die index.tsv. Vorher die
+     * erste Lücke – nach dem Löschen einer Datei bekam das neue Exemplar ihre Nummer (und früher ihren Platz).
+     */
+    static int nextNumber(Path dir, String family) throws IOException {
+        String base = fileStem(family, 0);
+        String prefix = base.substring(0, base.length() - 1);
+        int max = 0;
+        if (Files.isDirectory(dir)) {
+            try (var files = Files.list(dir)) {
+                for (Path f : files.toList()) {
+                    max = Math.max(max, numberOf(f.getFileName().toString(), prefix));
+                }
+            }
+            Path idx = dir.resolve("index.tsv");
+            if (Files.exists(idx)) {
+                for (String line : Files.readAllLines(idx, StandardCharsets.UTF_8)) {
+                    max = Math.max(max, numberOf(line.split("\t", 2)[0], prefix));
+                }
+            }
         }
-        return n;
+        return max + 1;
+    }
+
+    private static int numberOf(String fileName, String prefix) {
+        String f = fileName.endsWith(".neu") ? fileName.substring(0, fileName.length() - 4) : fileName;
+        if (!f.startsWith(prefix) || !f.endsWith(".nbt")) {
+            return 0;
+        }
+        String num = f.substring(prefix.length(), f.length() - 4);
+        return num.matches("\\d{1,4}") ? Integer.parseInt(num) : 0;
+    }
+
+    /**
+     * Wie viele Lagen unter der Oberfläche liegen. 0 für unterirdische Arten und für alles, was ganz unter den Füßen
+     * endet: Das Spiel setzt manche Portalruinen selbst tief in den Fels (Versatz 82 und 93 bei 16–21 Blöcken Höhe,
+     * gemessen 2026-11-15) und das Ozeanmonument mit der Oberkante an die Oberfläche – abgesenkt läge beides
+     * vollständig vergraben. Solche stehen dann wie ein Monument auf dem Boden.
+     */
+    static int groundOffset(String id, int placedY, int minY, int maxY) {
+        if (UNDERGROUND.contains(id) || maxY < placedY) {
+            return 0;
+        }
+        return Math.max(0, placedY - minY);
     }
 
     void command(CommandSender sender, String[] args) {
@@ -245,15 +302,44 @@ final class GameStructures {
         }
         busy = true;
         Path dir = plugin.getDataFolder().toPath().resolve("schematics").resolve("spiel");
-        next(sender, w, structure, id, kind, dir, count, 0);
+        cleanLeftovers(dir);
+        next(sender, w, structure, id, kind, dir, count, 0, 0);
+    }
+
+    /** Reste eines abgebrochenen Laufs (.neu) löschen – sie stehen in keinem Katalog, aber im Weg. */
+    private static void cleanLeftovers(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        try (var files = Files.list(dir)) {
+            for (Path f : files.filter(x -> x.getFileName().toString().endsWith(".neu")).toList()) {
+                deleteQuietly(f);
+                LOG.info(() -> "spielbauwerk | rest_gelöscht | datei=" + f.getFileName());
+            }
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "spielbauwerk | aufräumen | ordner=" + dir.getFileName(), e);
+        }
+    }
+
+    /** Nächster freier Platz der Art in dieser Welt; -1, wenn alle SLOTS_PER_KIND vergeben sind. */
+    private int takeSlot(World w, String id) {
+        NamespacedKey key = new NamespacedKey(plugin, "platz_" + id);
+        Integer used = w.getPersistentDataContainer().get(key, PersistentDataType.INTEGER);
+        int next = used == null ? 1 : used + 1;
+        if (next > SLOTS_PER_KIND) {
+            return -1;
+        }
+        w.getPersistentDataContainer().set(key, PersistentDataType.INTEGER, next);
+        return next;
     }
 
     private void next(CommandSender sender, World w, Structure structure, String id, String[] kind, Path dir,
-            int count, int done) {
+            int count, int done, int saved) {
         if (done >= count) {
             busy = false;
-            Texts.info(sender, "Fertig: " + done + " × " + kind[0] + ". Im Katalog nach spätestens 30 s: /bm katalog "
-                    + kind[0]);
+            String summary = summary(kind[0], saved, count);
+            LOG.info(() -> "spielbauwerk | fertig | art=" + id + " gespeichert=" + saved + " versucht=" + count);
+            Texts.info(sender, summary);
             return;
         }
         int n;
@@ -266,17 +352,29 @@ final class GameStructures {
             Texts.info(sender, "Ordner nicht anlegbar: " + e.getMessage());
             return;
         }
-        int slot = (List.copyOf(KINDS.keySet()).indexOf(id) + 1) * 64 + n;
+        // Platz aus einem Zähler je Art und Welt, nie aus der Dateinummer: Vorher setzte ein neues Exemplar nach dem
+        // Löschen einer Datei (oder ab Nr. 65 in der Nachbarart) auf ein altes – gespeichert wurde der Doppelbau.
+        int slotNo = takeSlot(w, id);
+        if (slotNo < 0) {
+            busy = false;
+            Texts.info(sender, "Alle " + SLOTS_PER_KIND + " Plätze für " + kind[0] + " in " + w.getName()
+                    + " sind belegt – Welt löschen, dann geht es von vorn los.");
+            return;
+        }
+        int slot = (List.copyOf(KINDS.keySet()).indexOf(id) + 1) * 64 + slotNo;
         int x = slot * SPACING;
         int z = 0;
         int cx = x >> 4;
-        long[] keys = new long[(2 * RADIUS_CHUNKS + 1) * (2 * RADIUS_CHUNKS + 1)];
+        int refCx = (x + SPACING / 2) >> 4;
+        long[] keys = new long[(2 * RADIUS_CHUNKS + 1) * (2 * RADIUS_CHUNKS + 1) + 1];
         int k = 0;
         for (int dx = -RADIUS_CHUNKS; dx <= RADIUS_CHUNKS; dx++) {
             for (int dz = -RADIUS_CHUNKS; dz <= RADIUS_CHUNKS; dz++) {
                 keys[k++] = ChunkPrefetch.key(cx + dx, dz);
             }
         }
+        // Bezugschunk mit vorladen: vorher erzeugte ihn der Snapshot-Tick synchron.
+        keys[k] = ChunkPrefetch.key(refCx, 0);
         ChunkPrefetch.ensure(ChunkPrefetch.of(plugin, w), keys, 8, p -> {
             int y = UNDERGROUND.contains(id) ? UNDERGROUND_Y : w.getHighestBlockYAt(x, z) + 1;
             Material ground = GROUND.get(id);
@@ -295,68 +393,78 @@ final class GameStructures {
                     }
                 }
                 // Bezug: die unberührte flache Welt zwischen zwei Plätzen (dort wird nie etwas erzeugt).
-                ChunkSnapshot ref = w.getChunkAt((x + SPACING / 2) >> 4, 0).getChunkSnapshot(false, false, false);
+                ChunkSnapshot ref = w.getChunkAt(refCx, 0).getChunkSnapshot(false, false, false);
                 int minY = w.getMinHeight();
                 Material[] reference = new Material[w.getMaxHeight() - minY];
                 for (int i = 0; i < reference.length; i++) {
                     reference[i] = ref.getBlockType(0, minY + i, 0);
                 }
+                @SuppressWarnings("deprecation")
+                int dataVersion = Bukkit.getUnsafe().getDataVersion();
+                if (p != null) {
+                    p.release();
+                }
+                String stem = fileStem(kind[0], n);
                 Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                    int[] b = changedBounds(snaps, reference, minY);
-                    BitSet keep = b == null ? null : keepMask(snaps, reference, minY, b);
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        Saved saved;
-                        try {
-                            saved = save(w, id, kind, dir, n, b, placed, cx);
-                        } catch (IOException | RuntimeException e) {
-                            // Werkzeug-Grenze: eine missglückte Vorlage beendet die Reihe, nicht den Server.
-                            LOG.log(Level.WARNING, "spielbauwerk | fehlgeschlagen | art=" + id, e);
-                            saved = Saved.failed("Das ging nicht: " + e.getMessage());
-                        } finally {
-                            if (p != null) {
-                                p.release();
-                            }
+                    String text;
+                    boolean ok = false;
+                    try {
+                        int[] b = changedBounds(snaps, reference, minY);
+                        if (b == null) {
+                            text = placed ? "Das Spiel hat " + kind[0] + " nicht gesetzt (kein Block weicht von der "
+                                    + "flachen Welt ab)." : "place " + id + " ist gescheitert – siehe Serverlog.";
+                        } else {
+                            Written wr = writeTemplate(dir, stem, snaps, reference, minY, b, dataVersion);
+                            int depth = groundOffset(id, y, b[1], b[4]);
+                            Files.writeString(dir.resolve("index.tsv"),
+                                    indexLine(stem + ".nbt", stem, kind[0], n, kind[1], depth),
+                                    StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                            Files.move(wr.file(), dir.resolve(stem + ".nbt"), StandardCopyOption.REPLACE_EXISTING,
+                                    StandardCopyOption.ATOMIC_MOVE);
+                            boolean cut = touchesEdge(b, cx);
+                            LOG.info(() -> String.format(Locale.ROOT, "spielbauwerk | gespeichert | art=%s datei=%s "
+                                    + "größe=%dx%dx%d blöcke=%d boden=%d abgeschnitten=%s", id, stem, wr.sx(), wr.sy(),
+                                    wr.sz(), wr.blocks(), depth, cut));
+                            text = kind[0] + " " + n + " gespeichert (" + wr.sx() + "×" + wr.sy() + "×" + wr.sz()
+                                    + ", " + wr.blocks() + " Blöcke)." + (cut ? " Achtung: reicht bis an den Rand des "
+                                    + "Suchbereichs, ein Stück fehlt vielleicht." : "");
+                            ok = true;
                         }
-                        if (saved.file() == null) {
-                            finish(sender, w, structure, id, kind, dir, count, done, saved.message());
-                            return;
-                        }
-                        Saved s = saved;
-                        // Datei lesen, filtern und schreiben braucht bei der antiken Stadt Hunderte ms – nicht im Tick.
-                        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                            String msg;
-                            try {
-                                int dropped = prune(s.file(), keep, s.sx(), s.sy(), s.sz());
-                                Files.writeString(dir.resolve("index.tsv"),
-                                        indexLine(s.stem() + ".nbt", s.stem(), kind[0], n, kind[1]),
-                                        StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                                LOG.info(() -> String.format(Locale.ROOT, "spielbauwerk | gespeichert | art=%s "
-                                        + "datei=%s größe=%dx%dx%d untergrund_entfernt=%d abgeschnitten=%s", id,
-                                        s.stem(), s.sx(), s.sy(), s.sz(), dropped, s.cut()));
-                                msg = s.message();
-                            } catch (IOException | RuntimeException e) {
-                                // Ohne index-Zeile kommt die Datei nicht in den Katalog – lieber ganz weg als halb.
-                                LOG.log(Level.WARNING, "spielbauwerk | fehlgeschlagen | art=" + id, e);
-                                deleteQuietly(s.file());
-                                msg = "Das ging nicht: " + e.getMessage();
-                            }
-                            String text = msg;
-                            Bukkit.getScheduler().runTask(plugin,
-                                    () -> finish(sender, w, structure, id, kind, dir, count, done, text));
-                        });
-                    });
+                    } catch (Throwable e) {
+                        // Werkzeug-Grenze (auch OutOfMemoryError): eine missglückte Vorlage beendet die Reihe, nicht
+                        // den Server – und busy darf nie hängen bleiben (vorher: bis zum Neustart „schon dabei“).
+                        LOG.log(Level.WARNING, "spielbauwerk | fehlgeschlagen | art=" + id, e);
+                        deleteQuietly(dir.resolve(stem + ".nbt.neu"));
+                        text = "Das ging nicht: " + e.getMessage();
+                    }
+                    String msg = text;
+                    int nowSaved = saved + (ok ? 1 : 0);
+                    if (!plugin.isEnabled()) {
+                        LOG.info(() -> "spielbauwerk | abgebrochen | art=" + id + " nummer=" + n + " " + msg);
+                        return;
+                    }
+                    Bukkit.getScheduler().runTask(plugin,
+                            () -> finish(sender, w, structure, id, kind, dir, count, done, nowSaved, msg));
                 });
             }, 5L);
         });
     }
 
+    /** Schlusszeile: zählt gespeicherte Vorlagen, nicht Versuche (vorher „Fertig: 3 ד nach drei Fehlschlägen). */
+    static String summary(String family, int saved, int tried) {
+        if (saved == 0) {
+            return "Keine " + family + "-Vorlage gespeichert (" + tried + " versucht).";
+        }
+        return "Fertig: " + saved + " von " + tried + " × " + family + ". Im Katalog: /bm katalog spiel";
+    }
+
     private void finish(CommandSender sender, World w, Structure structure, String id, String[] kind, Path dir,
-            int count, int done, String text) {
+            int count, int done, int saved, String text) {
         // Vorher ging das Ergebnis nur an den Absender – beim RCON-Aufruf war es nach dem Trennen weg, und im Log
         // stand nichts (Probe 2026-11-15, 7 Arten ohne jede Zeile). Jetzt immer ins Log.
         LOG.info(() -> "spielbauwerk | ergebnis | art=" + id + " " + text);
         Texts.info(sender, text);
-        next(sender, w, structure, id, kind, dir, count, done + 1);
+        next(sender, w, structure, id, kind, dir, count, done + 1, saved);
     }
 
     private static void deleteQuietly(Path file) {
@@ -367,12 +475,16 @@ final class GameStructures {
         }
     }
 
-    /** Ergebnis des Speicherns im Server-Thread; file null heißt: nichts gespeichert, message sagt warum. */
-    record Saved(Path file, String stem, int sx, int sy, int sz, boolean cut, String message) {
+    /** Reicht der Umriss bis an den Rand der vorgeladenen Chunks? Dann fehlt vermutlich ein Stück. */
+    static boolean touchesEdge(int[] b, int cx) {
+        int lo = (cx - RADIUS_CHUNKS) << 4;
+        int hi = ((cx + RADIUS_CHUNKS) << 4) + 15;
+        int r = RADIUS_CHUNKS << 4;
+        return b[0] <= lo || b[3] >= hi || b[2] <= -r || b[5] >= r + 15;
+    }
 
-        static Saved failed(String message) {
-            return new Saved(null, null, 0, 0, 0, false, message);
-        }
+    /** Was writeTemplate geschrieben hat: die .neu-Datei, Maße, Zahl der Blockeinträge. */
+    record Written(Path file, int sx, int sy, int sz, int blocks) {
     }
 
     /**
@@ -426,50 +538,21 @@ final class GameStructures {
         return b;
     }
 
-    private Saved save(World w, String id, String[] kind, Path dir, int n, int[] b, boolean placed, int cx)
-            throws IOException {
-        if (b == null) {
-            return Saved.failed(placed
-                    ? "Das Spiel hat " + kind[0] + " nicht gesetzt (kein Block weicht von der flachen Welt ab)."
-                    : "place structure ist gescheitert – siehe Serverlog.");
-        }
-        int sx = b[3] - b[0] + 1;
-        int sy = b[4] - b[1] + 1;
-        int sz = b[5] - b[2] + 1;
-        long volume = (long) sx * sy * sz;
-        if (volume > MAX_VOLUME) {
-            return Saved.failed(kind[0] + " ist zu groß für eine Vorlage (" + sx + "×" + sy + "×" + sz + " = " + volume
-                    + " Blöcke, höchstens " + MAX_VOLUME + ").");
-        }
-        // Reicht der Umriss bis an den Rand der vorgeladenen Chunks, fehlt vermutlich ein Stück – ehrlich melden.
-        int lo = (cx - RADIUS_CHUNKS) << 4;
-        int hi = ((cx + RADIUS_CHUNKS) << 4) + 15;
-        int r = RADIUS_CHUNKS << 4;
-        boolean cut = b[0] <= lo || b[3] >= hi || b[2] <= -r || b[5] >= r + 15;
-        Location corner = new Location(w, b[0], b[1], b[2]);
-        org.bukkit.structure.Structure s = Bukkit.getStructureManager().createStructure();
-        s.fill(corner, new BlockVector(sx, sy, sz), false);
-        String stem = fileStem(kind[0], n);
-        Path file = dir.resolve(stem + ".nbt");
-        Bukkit.getStructureManager().saveStructure(file.toFile(), s);
-        return new Saved(file, stem, sx, sy, sz, cut, kind[0] + " " + n + " gespeichert (" + sx + "×" + sy + "×" + sz
-                + ")." + (cut ? " Achtung: reicht bis an den Rand des Suchbereichs, ein Stück fehlt vielleicht." : ""));
-    }
-
     /** Ohne Material#isAir: das fragt die Registry, die es nur im laufenden Server gibt (Unit-Test). */
     static boolean isAir(Material m) {
         return m == Material.AIR || m == Material.CAVE_AIR || m == Material.VOID_AIR;
     }
 
-    /** Index einer Zelle im Quader, wie keepMask und prune ihn teilen. */
+    /** Index einer Zelle im Quader, wie keepMask und writeTemplate ihn teilen. */
     static int cell(int x, int y, int z, int sx, int sz) {
         return (y * sz + z) * sx + x;
     }
 
     /**
-     * Welche Zellen des Quaders in die Vorlage gehören: alles, was das Bauwerk verändert hat, und Luft (damit der
-     * Baumeister den Innenraum freiräumt). Unberührter Untergrund – Gestein, Erde, Gras – gehört nicht dazu: Ohne
-     * diese Maske käme der ganze Quader mit, um jede Fallgrube ein Klotz aus Stein. Läuft außerhalb des Hauptthreads.
+     * Welche Zellen des Quaders in die Vorlage gehören: genau die, die das Bauwerk verändert hat – auch
+     * ausgegrabene Luft unter der Oberfläche (Fallgrube, Keller, Gänge). Unberührtes bleibt draußen: Gestein, Erde,
+     * Gras und die Luft über dem Boden. Vorher behielt die Maske jede Luftzelle (85 % der Datei, Netherfestung
+     * 735 000 von 767 000); beim Bau verwarf StructureFile sie ohnehin. Läuft außerhalb des Hauptthreads.
      */
     static BitSet keepMask(List<ChunkSnapshot> snaps, Material[] reference, int minY, int[] b) {
         int sx = b[3] - b[0] + 1;
@@ -487,10 +570,9 @@ final class GameStructures {
             }
             for (int y = b[1]; y <= b[4]; y++) {
                 Material ref = reference[y - minY];
-                boolean refAir = isAir(ref);
                 for (int x = x0; x <= x1; x++) {
                     for (int z = z0; z <= z1; z++) {
-                        if (refAir || c.getBlockType(x - ox, y, z - oz) != ref) {
+                        if (c.getBlockType(x - ox, y, z - oz) != ref) {
                             keep.set(cell(x - b[0], y - b[1], z - b[2], sx, sz));
                         }
                     }
@@ -501,40 +583,97 @@ final class GameStructures {
     }
 
     /**
-     * Streicht aus einer gespeicherten Strukturdatei jeden Blockeintrag, den keep nicht enthält, und schreibt sie über
-     * eine Nachbardatei atomar zurück. Liefert die Zahl der gestrichenen Einträge.
+     * Schreibt die Vorlage direkt aus den Snapshots als Strukturdatei des Spiels nach stem.nbt.neu (NbtOut): size,
+     * palette (Name + Properties aus BlockData#getAsString), blocks (nur keepMask), keine entities, DataVersion des
+     * Servers. Blockdaten (Kisteninhalte, Beutetabellen, Spawner) fehlen bewusst: StructureFile liest sie nicht, und
+     * Beutetabellen gehören nicht in Vorlagen für Spieler. Läuft außerhalb des Hauptthreads.
      */
-    @SuppressWarnings("unchecked")
-    static int prune(Path file, BitSet keep, int sx, int sy, int sz) throws IOException {
-        Map<String, Object> root;
-        try (InputStream in = Files.newInputStream(file)) {
-            root = Nbt.read(in);
+    static Written writeTemplate(Path dir, String stem, List<ChunkSnapshot> snaps, Material[] reference, int minY,
+            int[] b, int dataVersion) throws IOException {
+        int sx = b[3] - b[0] + 1;
+        int sy = b[4] - b[1] + 1;
+        int sz = b[5] - b[2] + 1;
+        long volume = (long) sx * sy * sz;
+        if (volume > MAX_VOLUME) {
+            throw new IOException("Quader zu groß (" + sx + "×" + sy + "×" + sz + " = " + volume + ", höchstens "
+                    + MAX_VOLUME + ")");
         }
-        if (!(root.get("blocks") instanceof List<?> blocks)) {
-            throw new IOException("Strukturdatei ohne blocks: " + file.getFileName());
+        BitSet keep = keepMask(snaps, reference, minY, b);
+        if (keep.cardinality() > MAX_KEPT) {
+            throw new IOException("zu viele Blöcke für eine Vorlage (" + keep.cardinality() + ", höchstens " + MAX_KEPT
+                    + ")");
         }
-        List<Object> kept = new ArrayList<>(blocks.size());
-        for (Object o : blocks) {
-            if (!(o instanceof Map<?, ?> m) || !(m.get("pos") instanceof List<?> pos) || pos.size() != 3) {
-                throw new IOException("Blockeintrag ohne pos in " + file.getFileName());
+        Map<String, Integer> paletteIndex = new LinkedHashMap<>();
+        List<Object> palette = new ArrayList<>();
+        List<Object> blocks = new ArrayList<>(keep.cardinality());
+        for (ChunkSnapshot c : snaps) {
+            int ox = c.getX() << 4;
+            int oz = c.getZ() << 4;
+            int x0 = Math.max(ox, b[0]);
+            int x1 = Math.min(ox + 15, b[3]);
+            int z0 = Math.max(oz, b[2]);
+            int z1 = Math.min(oz + 15, b[5]);
+            if (x0 > x1 || z0 > z1) {
+                continue;
             }
-            int x = ((Number) pos.get(0)).intValue();
-            int y = ((Number) pos.get(1)).intValue();
-            int z = ((Number) pos.get(2)).intValue();
-            boolean inside = x >= 0 && y >= 0 && z >= 0 && x < sx && y < sy && z < sz;
-            // Außerhalb des Quaders kann nichts stehen; käme es doch, bleibt es lieber drin als still zu fehlen.
-            if (!inside || keep.get(cell(x, y, z, sx, sz))) {
-                kept.add(o);
+            for (int y = b[1]; y <= b[4]; y++) {
+                for (int x = x0; x <= x1; x++) {
+                    for (int z = z0; z <= z1; z++) {
+                        int rx = x - b[0];
+                        int ry = y - b[1];
+                        int rz = z - b[2];
+                        if (!keep.get(cell(rx, ry, rz, sx, sz))) {
+                            continue;
+                        }
+                        String state = c.getBlockData(x - ox, y, z - oz).getAsString();
+                        Integer idx = paletteIndex.get(state);
+                        if (idx == null) {
+                            idx = palette.size();
+                            paletteIndex.put(state, idx);
+                            palette.add(paletteEntry(state));
+                        }
+                        Map<String, Object> blk = new LinkedHashMap<>();
+                        blk.put("pos", List.of(rx, ry, rz));
+                        blk.put("state", idx);
+                        blocks.add(blk);
+                    }
+                }
             }
         }
-        Map<String, Object> out = new LinkedHashMap<>(root);
-        out.put("blocks", kept);
-        Path tmp = file.resolveSibling(file.getFileName() + ".neu");
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("DataVersion", dataVersion);
+        root.put("size", List.of(sx, sy, sz));
+        root.put("palette", palette);
+        root.put("blocks", blocks);
+        root.put("entities", List.of());
+        Path tmp = dir.resolve(stem + ".nbt.neu");
         try (OutputStream o = Files.newOutputStream(tmp)) {
-            NbtOut.writeGzip(out, o);
+            NbtOut.writeGzip(root, o);
+        } catch (IOException | RuntimeException e) {
+            deleteQuietly(tmp);
+            throw e;
         }
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        return blocks.size() - kept.size();
+        return new Written(tmp, sx, sy, sz, blocks.size());
+    }
+
+    /** „minecraft:oak_stairs[facing=north,half=bottom]“ → {Name, Properties} wie in Strukturdateien des Spiels. */
+    static Map<String, Object> paletteEntry(String state) {
+        Map<String, Object> e = new LinkedHashMap<>();
+        int open = state.indexOf('[');
+        e.put("Name", open < 0 ? state : state.substring(0, open));
+        if (open >= 0 && state.endsWith("]") && open + 1 < state.length() - 1) {
+            Map<String, Object> props = new LinkedHashMap<>();
+            for (String kv : state.substring(open + 1, state.length() - 1).split(",")) {
+                int eq = kv.indexOf('=');
+                if (eq > 0) {
+                    props.put(kv.substring(0, eq), kv.substring(eq + 1));
+                }
+            }
+            if (!props.isEmpty()) {
+                e.put("Properties", props);
+            }
+        }
+        return e;
     }
 
     /** Flache Vorlagenwelt ohne eigene Bauwerke und ohne Monster; null, wenn sie sich nicht anlegen lässt. */
