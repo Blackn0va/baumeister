@@ -92,6 +92,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             new Sub("bauenbei", true, List.of()),
             // Portale (2026-11-15): entzündet einen leeren Obsidianrahmen und führt zu Warp, Welt oder Spawn.
             new Sub("portal", true, List.of()),
+            // Frischen Server einrichten (2026-11-15): Lobby, Weltspawn, Portale, Burgen per Klick.
+            new Sub("einrichten", true, List.of("setup")),
             new Sub("maschine", true, List.of()),
             // Befehlsblock zeigen/setzen (2026-11-08): braucht baumeister.admin.befehlsblock, ein Kind von
             // baumeister.admin – in der Vervollständigung deshalb wie ein Admin-Befehl. Die Grenze prüft
@@ -276,6 +278,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "portal" -> {
                 if (requireAdmin(sender) && plugin.portals() != null) {
                     plugin.portals().command(sender, label, args);
+                }
+            }
+            case "einrichten", "setup" -> {
+                if (requireAdmin(sender)) {
+                    SetupGuide.run(plugin, sender, label, args);
                 }
             }
             case "maschine" -> buildModuleAt(sender, label, args);
@@ -493,6 +500,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             Texts.info(s, "/" + label + " spawn [skin-spieler] · entfernen · neuladen · bauenbei <welt> <x> <y> <z> <n|o|s|w> <auftrag>");
             Texts.info(s, "/" + label + " portal <warp|welt|spawn> [Anzeige] – leeren Obsidianrahmen entzünden und "
                     + "verbinden (in ihm stehen oder hindurchschauen) · portal entfernen · portal liste");
+            Texts.info(s, "/" + label + " einrichten – frischen Server Schritt für Schritt: Lobby, Weltspawn, Portale, "
+                    + "Burgen · einrichten spawn – Weltspawn genau hierher");
             Texts.info(s, "/" + label + " leistung – TPS, Tick-Zeiten, Heap, Chunks und Aufträge der letzten Minute · "
                     + "neuladen erzwingen – Bau-Einstellungen auch mit vollem Rückgängig-Stapel übernehmen");
             Texts.info(s, "/" + label + " maschine <name> [<welt> <x> <y> <z> <n|o|s|w>] – Bauteil direkt bauen, ohne LLM");
@@ -1247,6 +1256,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "bauteil" -> args.length == 3 ? DIRECTIONS : List.of();
             case "spawn" -> args.length == 2 ? players : List.of();
             case "bauenbei" -> args.length == 2 ? worlds : args.length == 6 ? DIRECTIONS : List.of();
+            case "einrichten", "setup" -> args.length == 2 ? List.of("spawn") : List.of();
             case "maschine" -> args.length == 2 ? modules : args.length == 7 ? DIRECTIONS : List.of();
             case "reise" -> args.length == 2 ? PLACE_EXAMPLES : List.of();
             case "stadt" -> {

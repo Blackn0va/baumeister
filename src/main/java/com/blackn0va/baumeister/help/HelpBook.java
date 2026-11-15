@@ -481,6 +481,20 @@ public final class HelpBook {
                 Part.text("Liste dazu.\n"))));
 
         if (c.can().test("baumeister.admin")) {
+            // Frischer Server (2026-11-15, SetupGuide): eigenes Kapitel, weil die Admin-Seite mit 13 Zeilen voll ist –
+            // mit drei Knöpfen mehr rutschte die Fußzeile auf Zeile 15 (HelpBookTest.footerIsAlwaysOnTheSameLine).
+            chapters.add(new Chapter("Einrichten", List.of(
+                    Part.title("Einrichten\n"),
+                    Part.text("Frischer Server:\n"),
+                    Part.run("Alle Schritte", "/bm einrichten"),
+                    Part.run("Lobby", "/bm bau eine Lobby"),
+                    Part.run("Riesige Lobby", "/bm bau eine riesige Lobby"),
+                    Part.run("Portalhalle", "/bm bau eine Portalhalle"),
+                    Part.run("Weltspawn hier", "/bm einrichten spawn"),
+                    Part.text("\n"),
+                    Part.text("Im leeren Rahmen:\n"),
+                    Part.type("Portal …", "/bm portal "),
+                    Part.run("Portale", "/bm portal liste"))));
             chapters.add(new Chapter("Admin", List.of(
                     Part.title("Admin\n"),
                     Part.text("\n"),
@@ -492,10 +506,7 @@ public final class HelpBook {
                     Part.run("Stopp", "/bm stop"),
                     Part.run("Rückgängig", "/bm rückgängig"),
                     Part.run("Weltbau", "/bm weltbau status"),
-                    Part.run("Neu laden", "/bm neuladen"),
-                    // Portale (2026-11-15): in einem leeren Obsidianrahmen stehen oder hindurchschauen.
-                    Part.type("Portal …", "/bm portal "),
-                    Part.run("Portale", "/bm portal liste"))));
+                    Part.run("Neu laden", "/bm neuladen"))));
             if (!c.rights().isEmpty()) {
                 // Je Fähigkeit: „Name: Stufe“ und darunter drei Knöpfe. Die Teile einer Fähigkeit enden erst mit dem
                 // letzten Knopf auf „\n“ – paginate hält sie dadurch auf einer Seite zusammen.
@@ -731,7 +742,7 @@ public final class HelpBook {
             case "Bauen", "Schnellbau", "Sammlung" -> "Bauen";
             case "Fragen", "Suchen", "Abenteuer" -> companion;
             case "Zusammen", "Rucksack", "Teamkisten", "Warps", "Aufgaben" -> "Gemeinsam";
-            case "Mods", "Admin", RIGHTS_CHAPTER -> "Server";
+            case "Mods", "Einrichten", "Admin", RIGHTS_CHAPTER -> "Server";
             default -> "Mehr";
         };
     }

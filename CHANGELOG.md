@@ -21,6 +21,11 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   und Portalhalle mit Feuer selbst, mit derselben Achse wie `/bm portal`; die Portale überstehen einen Neustart, und ein
   herausgebrochener Rahmenblock löscht das Portal wie im Spiel. Der Sprung mit einem echten Spieler ist noch nicht
   im Spiel geprüft.
+- **Frischen Server einrichten:** `/bm einrichten` führt in vier Schritten mit Knöpfen im Chat durch: Lobby bauen
+  (vier Größen), Weltspawn auf den Platz in der Mitte setzen, Portale verbinden, Portalhalle und Burgen dazu.
+  `/bm einrichten spawn` setzt den Weltspawn genau auf deinen Stand und `respawn_radius` auf 0 – sonst landen neue
+  Spieler im Überleben bis zu 10 Blöcke daneben, auf dem Dach oder neben der Lobby. Im Hilfebuch als eigenes Kapitel
+  „Einrichten“ für Admins.
 - **Keine Lag-Maschinen:** Nach jedem Bau misst der Baumeister 10 s lang, was dort ohne Eingabe von selbst schaltet.
   Liegt das über `bau.lag-grenze-je-sekunde` (50), sagt er es und baut den Bau wieder ab – egal ob der Plan von der
   KI, aus dem Katalog oder aus einer Vorlage kommt. `/bm lagprobe` misst einen Bereich von Hand. Schematics lassen sich

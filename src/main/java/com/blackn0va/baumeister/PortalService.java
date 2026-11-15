@@ -533,6 +533,11 @@ final class PortalService implements Listener {
         return false;
     }
 
+    /** Zahl der verbundenen Portale (für /bm einrichten). */
+    int count() {
+        return book.size();
+    }
+
     /** Für die Vervollständigung: Ziele, die es gerade gibt. */
     List<String> targets() {
         List<String> out = new ArrayList<>(List.of("spawn", "entfernen", "liste"));
