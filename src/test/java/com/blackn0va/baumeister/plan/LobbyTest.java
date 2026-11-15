@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.blackn0va.baumeister.plan.PlanLinter.Issue;
+import com.blackn0va.baumeister.portal.PortalFrame;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -83,8 +84,10 @@ class LobbyTest {
     void tooManyPortalsAreCappedAndSaid() throws Exception {
         BuildPlan p = plan("bau eine kleine Lobby mit 11 Portalen");
         assertEquals(5, portalsOf(p), "klein: 2 je Seite und die Rückwand");
-        assertTrue(p.reply().contains("mehr Portale passen"), p.reply());
+        assertTrue(p.reply().contains("mehr passen nicht"), p.reply());
+        assertTrue(p.reply().contains("/bm portal"), "sagt, wie die Rahmen entzündet werden: " + p.reply());
         assertTrue(p.reply().length() <= 200, p.reply());
+        assertTrue(!plan("bau eine Lobby ohne Portale").reply().contains("/bm portal"), "ohne Rahmen kein Hinweis");
     }
 
     @Test
@@ -129,6 +132,38 @@ class LobbyTest {
                     assertEquals("obsidian", c.get(b.add(0, height, 0)), prompt + ": Sturz fehlt über " + b);
                 }
             }
+        }
+    }
+
+    /**
+     * Jeder Rahmen erfüllt die Regeln von Minecraft (PortalFrame wie PortalShape) – sonst ließe /bm portal ihn nicht
+     * entzünden, oder das Portal zerfiele beim ersten Update daneben.
+     */
+    @Test
+    void everyFrameIsAValidNetherPortalShape() throws Exception {
+        for (String prompt : VARIANTS) {
+            BuildPlan p = plan(prompt);
+            Map<Pos, String> c = cells(COMPILER.compile(p));
+            PortalFrame.Blocks view = new PortalFrame.Blocks() {
+                @Override
+                public boolean frame(int x, int y, int z) {
+                    return "obsidian".equals(c.get(new Pos(x, y, z)));
+                }
+
+                @Override
+                public boolean open(int x, int y, int z) {
+                    return "air".equals(c.get(new Pos(x, y, z)));
+                }
+            };
+            Set<PortalFrame.Opening> openings = new HashSet<>();
+            c.forEach((pos, id) -> {
+                if (pos.y() == 0 && id.equals("air") && "obsidian".equals(c.get(pos.add(0, -1, 0)))) {
+                    PortalFrame.Result r = PortalFrame.at(view, pos.x(), pos.y(), pos.z());
+                    assertTrue(r.found(), prompt + " bei " + pos + ": " + r.reason());
+                    openings.add(r.opening());
+                }
+            });
+            assertEquals(portalsOf(p), openings.size(), prompt);
         }
     }
 

@@ -106,6 +106,8 @@ public final class Lobby {
     private static final String ROOF = "smooth_stone_slab";
     private static final String LIGHT = "sea_lantern";
     private static final String FRAME = "obsidian";
+    /** Wer baut, ist nicht immer Admin – der Hinweis sagt deshalb, wer entzünden darf (PortalService). */
+    private static final String LIGHT_HINT = " Entzünden und verbinden: /bm portal (Admin).";
 
     private Lobby() {
     }
@@ -286,8 +288,8 @@ public final class Lobby {
         String design = "Spawn lobby " + w + "x" + d + ", " + (h + 2) + " high, glass dome over the central plaza, "
                 + portals + " unlit obsidian portal frame(s), entrance front";
         String reply = "Spawn-Lobby " + w + " × " + d + " mit Glaskuppel über dem Platz in der Mitte"
-                + (portals > 0 ? " und " + portals + " Portalrahmen aus Obsidian (noch nicht entzündet)" : "")
-                + (capped ? ", mehr Portale passen bei dieser Größe nicht" : "") + ".";
+                + (portals > 0 ? " und " + portals + " Portalrahmen aus Obsidian" : "")
+                + (capped ? " (mehr passen nicht)" : "") + "." + LIGHT_HINT.repeat(portals > 0 ? 1 : 0);
         return Optional.of(plan(design, reply, s));
     }
 
@@ -376,8 +378,8 @@ public final class Lobby {
         String design = "Portal hall " + w + "x" + d + ", " + (h + 2) + " high, red carpet aisle, skylight, "
                 + portals + " unlit obsidian portal frame(s), entrance front";
         String reply = "Portalhalle " + w + " × " + d + " mit rotem Teppich und Oberlicht"
-                + (portals > 0 ? ", " + portals + " Portalrahmen aus Obsidian (noch nicht entzündet)" : "")
-                + (capped ? ", mehr Portale passen bei dieser Größe nicht" : "") + ".";
+                + (portals > 0 ? ", " + portals + " Portalrahmen aus Obsidian" : "")
+                + (capped ? " (mehr passen nicht)" : "") + "." + LIGHT_HINT.repeat(portals > 0 ? 1 : 0);
         return Optional.of(plan(design, reply, s));
     }
 

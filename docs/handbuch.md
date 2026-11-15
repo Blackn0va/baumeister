@@ -98,6 +98,7 @@ Ein Plan braucht 1–3 Minuten (gemessen: 42–102 s), das Bauen danach ~7 Blöc
 | `/bm lagprobe <welt> <x1> <y1> <z1> <x2> <y2> <z2> [s]` | `baumeister.admin` | zählt, was im Bereich ohne Eingabe von selbst schaltet (Redstone, Kolben, Werfer, Trichter, neue Objekte), je Sekunde – dieselbe Messung, mit der der Lag-Wächter nach jedem Bau Dauerläufer über `bau.lag-grenze-je-sekunde` (50) wieder abbaut |
 | `/bm spielbauwerk <art> [1-5]` · `/bm spielbauwerk liste` | `baumeister.admin` | lässt das Spiel Bauwerke (Wüstentempel, Dörfer, Bastion, Prüfungskammern, antike Stadt, Ozeanmonument, Waldanwesen …) und Naturgebilde (Riesenbäume, Riesenpilze, Geoden …) in der Flachwelt `baumeister_vorlagen` erzeugen und speichert sie als Vorlagen unter `schematics/spiel/` – danach baut der Baumeister sie wie jede Schematic, nach spätestens 30 s im Katalog |
 | `/bm bauenbei <welt> <x> <y> <z> <n\|o\|s\|w> <auftrag>` | `baumeister.admin` | Konsole/RCON, ohne Spieler-Rechteprüfung |
+| `/bm portal <warp\|welt\|spawn> [Anzeige]` · `portal entfernen` · `portal liste` | `baumeister.admin` | leeren Obsidianrahmen entzünden (darin stehen oder hindurchschauen) und mit einem Ziel verbinden; wer hineingeht, landet sofort dort, ohne Nether und nur auf sicherem Boden. Konsole: `portal <welt> <x> <y> <z> <ziel> [Anzeige]` |
 | `/bm maschine <name> [<welt> <x> <y> <z> <n\|o\|s\|w>]` | `baumeister.admin` | eingebaute Maschine direkt bauen, ohne LLM (ohne Koordinaten: 2 Blöcke vor dir) |
 | `/bm befehlsblock [befehl]` | `baumeister.admin.befehlsblock` | Befehlsblock, auf den du schaust: zeigen (Befehl zum Anklicken) bzw. setzen – in jedem Spielmodus, mit Baurecht an der Stelle |
 | `/bm befehle ja\|ohne\|nein <code>` · Knöpfe unter der Liste | Auftraggeber | Befehle aus einem Bauplan bestätigen, ohne sie bauen oder verwerfen (10 Minuten gültig) |
@@ -175,9 +176,9 @@ nicht passt, geht zur Nachbesserung oder wird mit Maßen abgesagt; fremde Plots 
 (1–3 Ebenen unter einem getarnten Eingang), „bau mir eine (kleine/große/riesige) Lobby“ (Spawn-Lobby 33 × 33 bis
 81 × 81 oder „Lobby 60x60“: Glaskuppel über dem Platz in der Mitte, Lichtringe im Boden, Portalrahmen aus Obsidian
 an Seiten- und Rückwand, „ohne Portale“ oder „mit 7 Portalen“ geht auch), „bau eine Portalhalle mit 6 Portalen“
-(lange Halle mit rotem Teppich und Oberlicht; die Rahmen sind nicht entzündet, ein Feuerzeug macht ein
-Netherportal daraus), „bau einen (kleinen/großen) Pool“ (Becken 5×7 bis 11×17, Wasser auf
-Bodenhöhe, Terrasse, Leiter, Licht im Boden), „bau einen Taschenrechner“ (2-Bit-Addierer)
+(lange Halle mit rotem Teppich und Oberlicht; die Rahmen bleiben leer, ein Feuerzeug macht ein
+Netherportal daraus, `/bm portal` verbindet sie mit Warp, Welt oder Spawn), „bau einen (kleinen/großen) Pool“
+(Becken 5×7 bis 11×17, Wasser auf Bodenhöhe, Terrasse, Leiter, Licht im Boden), „bau einen Taschenrechner“ (2-Bit-Addierer)
 (Maschinenhalle mit bis zu 6 Anlagen, Testserver: 1 726 Blöcke in 91 s), „bau mir einen Prozessor aus Redstone“
 (Prozessor-Werkstatt: Takt, Zähler, 4-Bit-Register, D-Speicher, ALU-Scheibe, Addierer, Vergleicher – jeder Baustein
 im Spiel geprüft) oder eine Bauform baut sofort, auch wenn das

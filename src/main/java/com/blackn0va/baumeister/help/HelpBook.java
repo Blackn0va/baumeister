@@ -492,7 +492,10 @@ public final class HelpBook {
                     Part.run("Stopp", "/bm stop"),
                     Part.run("Rückgängig", "/bm rückgängig"),
                     Part.run("Weltbau", "/bm weltbau status"),
-                    Part.run("Neu laden", "/bm neuladen"))));
+                    Part.run("Neu laden", "/bm neuladen"),
+                    // Portale (2026-11-15): in einem leeren Obsidianrahmen stehen oder hindurchschauen.
+                    Part.type("Portal …", "/bm portal "),
+                    Part.run("Portale", "/bm portal liste"))));
             if (!c.rights().isEmpty()) {
                 // Je Fähigkeit: „Name: Stufe“ und darunter drei Knöpfe. Die Teile einer Fähigkeit enden erst mit dem
                 // letzten Knopf auf „\n“ – paginate hält sie dadurch auf einer Seite zusammen.

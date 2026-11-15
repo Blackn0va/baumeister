@@ -90,6 +90,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             new Sub("spawn", true, List.of()),
             new Sub("entfernen", true, List.of("remove")),
             new Sub("bauenbei", true, List.of()),
+            // Portale (2026-11-15): entzündet einen leeren Obsidianrahmen und führt zu Warp, Welt oder Spawn.
+            new Sub("portal", true, List.of()),
             new Sub("maschine", true, List.of()),
             // Befehlsblock zeigen/setzen (2026-11-08): braucht baumeister.admin.befehlsblock, ein Kind von
             // baumeister.admin – in der Vervollständigung deshalb wie ein Admin-Befehl. Die Grenze prüft
@@ -271,6 +273,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "bauenbei" -> buildAt(sender, label, args);
+            case "portal" -> {
+                if (requireAdmin(sender) && plugin.portals() != null) {
+                    plugin.portals().command(sender, label, args);
+                }
+            }
             case "maschine" -> buildModuleAt(sender, label, args);
             case "befehlsblock", "commandblock" -> CommandBlockEditor.run(sender, args);
             case "befehle", "commands" -> plugin.service().answerCommands(sender, args);
@@ -484,6 +491,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         if (s.hasPermission("baumeister.admin")) {
             Texts.info(s, "/" + label + " bauteil <name> <vorne n|o|s|w> <beschreibung> – WorldEdit-Auswahl als Bauteil");
             Texts.info(s, "/" + label + " spawn [skin-spieler] · entfernen · neuladen · bauenbei <welt> <x> <y> <z> <n|o|s|w> <auftrag>");
+            Texts.info(s, "/" + label + " portal <warp|welt|spawn> [Anzeige] – leeren Obsidianrahmen entzünden und "
+                    + "verbinden (in ihm stehen oder hindurchschauen) · portal entfernen · portal liste");
             Texts.info(s, "/" + label + " leistung – TPS, Tick-Zeiten, Heap, Chunks und Aufträge der letzten Minute · "
                     + "neuladen erzwingen – Bau-Einstellungen auch mit vollem Rückgängig-Stapel übernehmen");
             Texts.info(s, "/" + label + " maschine <name> [<welt> <x> <y> <z> <n|o|s|w>] – Bauteil direkt bauen, ohne LLM");
@@ -1162,6 +1171,13 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        // Portalziele (Warps, Welten, spawn) kennt nur der laufende Dienst – deshalb hier statt in complete().
+        if (args.length == 2 && args[0].equalsIgnoreCase("portal") && sender.hasPermission("baumeister.admin")
+                && plugin.portals() != null) {
+            String typed = args[1].toLowerCase(Locale.ROOT);
+            return plugin.portals().targets().stream().filter(t -> t.toLowerCase(Locale.ROOT).startsWith(typed))
+                    .toList();
+        }
         List<String> modules = plugin.service().modules().all().stream().map(ModuleLibrary.Module::name).toList();
         List<String> worlds = Bukkit.getWorlds().stream().map(World::getName).toList();
         List<String> players = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();

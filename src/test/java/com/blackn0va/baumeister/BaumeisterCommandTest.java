@@ -53,7 +53,8 @@ class BaumeisterCommandTest {
     @Test
     void adminsSeeEveryMainName() {
         List<String> all = admin("");
-        assertEquals(43, all.size(), all.toString());  // 43 seit spielbauwerk (2026-11-15)
+        assertEquals(44, all.size(), all.toString());  // 44 seit portal (2026-11-15)
+        assertTrue(all.contains("portal"));
         assertTrue(all.containsAll(List.of("befehle", "befehlsblock", "selbsttest")));
         assertTrue(all.containsAll(List.of("bauteil", "spawn", "stadt", "stadtwelt", "tempo", "helfer", "logik", "logikbei",
                 "erde", "reise", "wo", "weltbau", "orte", "ort", "karte", "kartenbild")));

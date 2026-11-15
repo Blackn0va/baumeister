@@ -47,6 +47,7 @@ public final class BaumeisterPlugin extends JavaPlugin {
     private CompanionService companion;
     private RucksackService rucksack;
     private WarpService warps;
+    private PortalService portals;
     private QuestService quests;
     /** Modpaket vom Server (mods.download.*), null = aus. */
     private ModDownloads modDownloads;
@@ -169,6 +170,10 @@ public final class BaumeisterPlugin extends JavaPlugin {
         // Warps (ersetzt GWarp, 2026-11-05): übernimmt plugins/GWarp/Warps.data beim ersten Start.
         warps = new WarpService(this, WarpService.Settings.from(getConfig()));
         warps.start();
+        // Portale (2026-11-15): nach den Warps, weil ein Portal zu einem Warp führen kann.
+        portals = new PortalService(this);
+        getServer().getPluginManager().registerEvents(portals, this);
+        portals.start();
         quests = new QuestService(this, QuestService.Settings.from(getConfig()));
         getServer().getPluginManager().registerEvents(quests, this);
         quests.start();
@@ -590,6 +595,11 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** null, solange onEnable nicht durch ist. */
     WarpService warps() {
         return warps;
+    }
+
+    /** null, solange onEnable nicht durch ist. */
+    PortalService portals() {
+        return portals;
     }
 
     /** null, solange onEnable nicht durch ist. */

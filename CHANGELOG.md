@@ -8,11 +8,19 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 - **Lobby und Portalhalle für einen frischen Server:** „bau mir eine riesige Lobby“ baut ohne KI eine Spawn-Lobby
   (33 × 33 bis 81 × 81, oder „Lobby 60x60“) mit Glaskuppel über einem runden Platz in der Mitte, Säulen, Fensterband,
   Lichtringen im Boden und Portalrahmen aus Obsidian an den Seitenwänden und an der Rückwand. „bau eine Portalhalle mit
-  6 Portalen“ baut eine lange Halle mit rotem Teppich, Oberlicht und Portalrahmen links und rechts. Die Rahmen sind
-  noch nicht entzündet; ein Feuerzeug macht daraus ein gewöhnliches Netherportal. Nachts spawnt drinnen nichts:
+  6 Portalen“ baut eine lange Halle mit rotem Teppich, Oberlicht und Portalrahmen links und rechts. Die Rahmen
+  bleiben beim Bau leer, entzündet werden sie mit `/bm portal` (siehe unten). Nachts spawnt drinnen nichts:
   gemessen auf einem frischen Paper 26.2 an der größten Lobby, 5 447 begehbare Stellen, keine davon dunkel
   (niedrigstes Blocklicht 4). Die größte Lobby stand in 28,5 s, ohne einen Tick über 50 ms. Im Hilfebuch unter
   Schnellbau.
+- **Portale, die wirklich wohin führen:** Ein Admin stellt sich in einen leeren Obsidianrahmen oder schaut hindurch und
+  sagt `/bm portal <Warp|Welt|spawn> [Anzeige]`. Das Portal brennt dann, ein Schild darüber nennt das Ziel, und wer
+  hineingeht, landet sofort dort, ohne Umweg über den Nether und ohne Zombifizierte Piglins in der Lobby. Ohne sicheren
+  Platz am Ziel (zwei freie Blöcke über festem Boden) springt niemand. `/bm portal liste` zeigt alle, auch erloschene,
+  `/bm portal entfernen` löscht eins. Geprüft auf einem frischen Paper 26.2: Minecraft entzündet die Rahmen von Lobby
+  und Portalhalle mit Feuer selbst, mit derselben Achse wie `/bm portal`; die Portale überstehen einen Neustart, und ein
+  herausgebrochener Rahmenblock löscht das Portal wie im Spiel. Der Sprung mit einem echten Spieler ist noch nicht
+  im Spiel geprüft.
 - **Keine Lag-Maschinen:** Nach jedem Bau misst der Baumeister 10 s lang, was dort ohne Eingabe von selbst schaltet.
   Liegt das über `bau.lag-grenze-je-sekunde` (50), sagt er es und baut den Bau wieder ab – egal ob der Plan von der
   KI, aus dem Katalog oder aus einer Vorlage kommt. `/bm lagprobe` misst einen Bereich von Hand. Schematics lassen sich
