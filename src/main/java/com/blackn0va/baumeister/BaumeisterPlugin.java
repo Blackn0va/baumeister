@@ -64,6 +64,7 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** Keine fallenden Gegenstände im Baubereich während eines Baus (Plan B3), null ohne onEnable. */
     private BuildDropGuard dropGuard;
     private LagWatch lagWatch;
+    private GameStructures gameStructures;
     // Als Object gehalten, damit ohne WorldEdit keine WorldEdit-Klasse geladen werden muss.
     private Object schematics;
     /** Bauvorlagen von Minecraft (Zwischenschicht, TemplateCatalog); einmal je Serverlauf, sie ändern sich nicht. */
@@ -133,6 +134,7 @@ public final class BaumeisterPlugin extends JavaPlugin {
         dropGuard = new BuildDropGuard();
         getServer().getPluginManager().registerEvents(dropGuard, this);
         lagWatch = new LagWatch(this);
+        gameStructures = new GameStructures(this);
         getServer().getPluginManager().registerEvents(lagWatch, this);
         chunkGuard = new ChunkLoadGuard(r -> Bukkit.getScheduler().runTask(this, r));
         getServer().getPluginManager().registerEvents(chunkGuard, this);
@@ -598,6 +600,11 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** Keine fallenden Gegenstände im Baubereich (BuildJob); null, bevor onEnable lief. */
     BuildDropGuard dropGuard() {
         return dropGuard;
+    }
+
+    /** Bauwerke des Spiels als Vorlagen (/bm spielbauwerk); null vor onEnable. */
+    GameStructures gameStructures() {
+        return gameStructures;
     }
 
     /** Lag-Wächter (Leerlauf-Messung gebauter Bereiche); null vor onEnable. */

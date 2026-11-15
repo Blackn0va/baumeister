@@ -106,6 +106,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             new Sub("leistung", true, List.of("perf", "tps")),
             // Lag-Wächter (2026-11-14): Leerlauf-Aktivität eines Bereichs messen – nur Admins und Konsole.
             new Sub("lagprobe", true, List.of()),
+            // Bauwerke des Spiels als Vorlagen erzeugen (2026-11-15) – nur Admins und Konsole.
+            new Sub("spielbauwerk", true, List.of()),
             new Sub("stadt", true, List.of("dorf", "city")),
             new Sub("stadtwelt", true, List.of()),
             new Sub("gelaende", true, List.of("gelände", "terrain")),
@@ -278,6 +280,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "neuladen", "reload" -> {
                 if (requireAdmin(sender)) {
                     plugin.configReload().run(sender, args);
+                }
+            }
+            case "spielbauwerk" -> {
+                if (requireAdmin(sender)) {
+                    plugin.gameStructures().command(sender, args);
                 }
             }
             case "lagprobe" -> {
