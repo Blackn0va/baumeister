@@ -58,6 +58,35 @@ class HelpBookTest {
         }
     }
 
+    /** Ordnung nach Themen (2026-11-15: „ordne das Menü komplett“): Bauen vor dem Begleiter, mit Überschriften. */
+    @Test
+    void contentsAreGroupedBuildingFirstWithHeadingsThatNeverHangAlone() {
+        List<HelpBook.Page> pages = HelpBook.pages(ctx("Vera", ALL, 30, 30));
+        List<String> toc = new java.util.ArrayList<>();
+        for (HelpBook.Page p : pages) {
+            if (!p.chapter().equals("Inhalt")) {
+                break;
+            }
+            java.util.Set<String> footer = java.util.Set.of(HelpBook.FOOTER_BACK, HelpBook.FOOTER_HOME,
+                    HelpBook.FOOTER_NEXT);
+            List<HelpBook.Part> parts = p.parts().stream().filter(x -> !x.text().isBlank()
+                    && !footer.contains(x.text())).toList();
+            HelpBook.Part lastOnPage = parts.getLast();
+            assertTrue(lastOnPage.text().startsWith("» "), "Überschrift allein am Seitenende: " + lastOnPage.text());
+            parts.stream().skip(1).forEach(x -> toc.add(x.text().strip()));
+        }
+        int start = toc.indexOf("» Los geht's");
+        int bauen = toc.indexOf("Bauen");
+        int vera = toc.indexOf("Vera");
+        int gemeinsam = toc.indexOf("Gemeinsam");
+        int server = toc.indexOf("Server");
+        assertTrue(start == 0, toc.toString());
+        assertTrue(start < bauen && bauen < vera && vera < gemeinsam && gemeinsam < server, toc.toString());
+        assertEquals("» Bauen", toc.get(bauen + 1), toc.toString());
+        assertTrue(toc.indexOf("» Sammlung") < vera && toc.indexOf("» Admin") > server, toc.toString());
+        assertTrue(toc.indexOf("» Warps") > gemeinsam && toc.indexOf("» Warps") < server, toc.toString());
+    }
+
     @Test
     void everyPageHasBackContentsAndForward() {
         List<HelpBook.Page> pages = HelpBook.pages(ctx("Vera", ALL, 3, 3));

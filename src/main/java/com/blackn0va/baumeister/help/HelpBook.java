@@ -556,11 +556,38 @@ public final class HelpBook {
             }
         }
 
+        // Ordnung nach Themen (Wunsch 2026-11-15: „ordne das Menü für den Baumeister komplett“). Vorher standen die
+        // Kapitel in der Reihenfolge, in der sie im Code entstehen: sechs Kapitel über den Begleiter vorn, „Bauen“ – die
+        // Hauptsache des Plugins – erst an zwölfter Stelle, Server-Dinge dazwischen. Jetzt: Los geht's, Bauen,
+        // Begleiter, Gemeinsam, Server; im Inhaltsverzeichnis mit Überschriften. Die Kapitel selbst bleiben, wie sie
+        // sind; sortiert wird stabil, innerhalb einer Gruppe gilt die Reihenfolge von oben.
+        List<String> order = List.of("", "Bauen", v, "Gemeinsam", "Server", "Mehr");
+        chapters.sort(java.util.Comparator.comparingInt(ch -> order.indexOf(section(ch.name(), v))));
+
         // Seiten bauen: erst alle Kapitel, dann das Inhaltsverzeichnis mit den echten Seitenzahlen davor. Es geht über
-        // so viele Seiten wie nötig: Vorher stand es auf genau einer – mit Sammlung, Schnellbau, Suchen, Mods und
-        // Stimme (2026-11-08) sind es für Admins bis zu 18 Kapitel, eine Seite fasst 12.
+        // so viele Seiten wie nötig (bis zu 18 Kapitel für Admins plus Überschriften). Eine Überschrift steht nie allein
+        // am Seitenende: sie wandert mit ihrem ersten Kapitel auf die nächste Seite.
         int perToc = CONTENT_LINES - 1;
-        int tocPages = Math.max(1, (chapters.size() + perToc - 1) / perToc);
+        List<List<Integer>> tocLayout = new ArrayList<>();
+        List<Integer> page = new ArrayList<>();
+        String lastSection = null;
+        for (int i = 0; i < chapters.size(); i++) {
+            String sec = section(chapters.get(i).name(), v);
+            boolean header = !sec.isEmpty() && !sec.equals(lastSection);
+            int need = header ? 2 : 1;
+            if (page.size() + need > perToc) {
+                tocLayout.add(page);
+                page = new ArrayList<>();
+                header = !sec.isEmpty();
+            }
+            if (header) {
+                page.add(-1 - order.indexOf(sec));
+            }
+            page.add(i);
+            lastSection = sec;
+        }
+        tocLayout.add(page);
+        int tocPages = tocLayout.size();
         List<Page> body = new ArrayList<>();
         List<Integer> firstPage = new ArrayList<>();
         for (Chapter ch : chapters) {
@@ -568,15 +595,20 @@ public final class HelpBook {
             body.addAll(paginate(ch));
         }
         List<Page> out = new ArrayList<>();
-        for (int t = 0; t < tocPages; t++) {
+        for (int tp = 0; tp < tocPages; tp++) {
             List<Part> toc = new ArrayList<>();
-            toc.add(Part.title(t == 0 ? "Hilfe\n" : "Hilfe (weiter)\n"));
-            for (int i = t * perToc; i < Math.min(chapters.size(), (t + 1) * perToc); i++) {
+            toc.add(Part.title(tp == 0 ? "Hilfe\n" : "Hilfe (weiter)\n"));
+            for (int entry : tocLayout.get(tp)) {
+                if (entry < 0) {
+                    String sec = order.get(-1 - entry);
+                    toc.add(Part.title((sec.length() > LINE - 1 ? sec.substring(0, LINE - 1) : sec) + "\n"));
+                    continue;
+                }
                 // Sprung per Befehl, nicht per change_page: Wunsch 2026-11-05, obwohl change_page laut Messprobe
                 // korrekt im Buch stand (Log dev01 20:18). Der Befehl
                 // schlägt das Buch auf der Zielseite neu auf (rotate) – das hängt an keinem Verhalten des Clients.
-                toc.add(new Part("» " + chapters.get(i).name() + "\n", PAGE_COMMAND + firstPage.get(i),
-                        firstPage.get(i), false));
+                toc.add(new Part("» " + chapters.get(entry).name() + "\n", PAGE_COMMAND + firstPage.get(entry),
+                        firstPage.get(entry), false));
             }
             out.add(new Page("Inhalt", List.copyOf(toc)));
         }
@@ -676,6 +708,26 @@ public final class HelpBook {
         }
         pages.add(new Page(ch.name(), List.copyOf(current)));
         return pages;
+    }
+
+    /**
+     * Gruppe eines Kapitels im Inhaltsverzeichnis; "" = ohne Überschrift (nur „Los geht's“). Unbekannte Kapitel
+     * landen unter „Mehr“, damit ein neues Kapitel nie unsichtbar wird.
+     */
+    static String section(String chapter, String companion) {
+        if (chapter.equals("Los geht's")) {
+            return "";
+        }
+        if (chapter.equals(companion) || chapter.equals(CHARACTER_CHAPTER) || chapter.equals(VOICE_CHAPTER)) {
+            return companion;
+        }
+        return switch (chapter) {
+            case "Bauen", "Schnellbau", "Sammlung" -> "Bauen";
+            case "Fragen", "Suchen", "Abenteuer" -> companion;
+            case "Zusammen", "Rucksack", "Teamkisten", "Warps", "Aufgaben" -> "Gemeinsam";
+            case "Mods", "Admin", RIGHTS_CHAPTER -> "Server";
+            default -> "Mehr";
+        };
     }
 
     /** Passt die Seite ins Buch? */
