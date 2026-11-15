@@ -455,7 +455,11 @@ public final class HelpBook {
                         Part.run("Liste im Chat", "/bm schematics"),
                         Part.text("\n"),
                         Part.text("Klick im Katalog\n"),
-                        Part.text("baut vor dir.\n"))));
+                        Part.text("baut vor dir.\n"),
+                        // Lag-Wächter (2026-11-14): Wer erlebt, dass ein Bau gleich wieder verschwindet, findet hier
+                        // den Grund – die Chatzeile allein liest man leicht über.
+                        Part.text("Lag-Maschinen\n"),
+                        Part.text("baue ich nicht.\n"))));
             }
         }
 
