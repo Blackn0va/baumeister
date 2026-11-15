@@ -46,6 +46,16 @@ final class Texts {
         if (s != null) {
             s.said(npcName, where, text);
         }
+        chat(npcName, where, extra, text);
+    }
+
+    /**
+     * Wie say, aber nur in den Chat, nicht vorlesen (2026-11-15). Für Zeilen, die man lesen, aber nicht hören will:
+     * Technik („Schnellgang, 440 Blöcke/s“, „2 Helfer“), Quellen, Hinweise auf Varianten. Vorher sprach der Baumeister
+     * bei jedem Katalogbau „Quelle: Technik Wiki (de.minecraft.wiki), Redstone-Welt 1.21a, CC BY-NC-SA 3.0“ – der
+     * Nutzer: „spricht Dinge aus, die wirklich nervig sind und unnötig“.
+     */
+    static void chat(String npcName, Location where, CommandSender extra, String text) {
         String line = ChatColor.GOLD + "[" + npcName + "] " + ChatColor.WHITE + text;
         Set<CommandSender> receivers = new HashSet<>();
         if (where != null && where.getWorld() != null) {

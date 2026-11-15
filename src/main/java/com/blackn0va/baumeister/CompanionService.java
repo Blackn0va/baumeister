@@ -604,9 +604,16 @@ final class CompanionService {
             summon(p, false);
             Buddy b = buddies.get(p.getUniqueId());
             if (b != null) {
-                LOG.info(() -> "begleiter | zurück | spieler=" + p.getName() + " abenteuer=" + adventure.running(p));
-                say(b, p, adventure.running(p) ? "Da bin ich wieder! Weiter geht's mit unserem Abenteuer."
-                        : "Da bin ich wieder!");
+                Long gone = quitAt.remove(p.getUniqueId());
+                boolean quick = gone != null && System.currentTimeMillis() - gone < REJOIN_QUIET_MS;
+                LOG.info(() -> "begleiter | zurück | spieler=" + p.getName() + " abenteuer=" + adventure.running(p)
+                        + " still=" + quick);
+                // Neu verbunden (Absturz, Wechsel des Rechners): kein Satz. Vorher kam bei jeder Verbindung „Da bin ich
+                // wieder!“ – am 2026-11-15 nach Anmeldeproblemen ein Dutzend Mal.
+                if (!quick) {
+                    say(b, p, adventure.running(p) ? "Da bin ich wieder! Weiter geht's mit unserem Abenteuer."
+                            : "Da bin ich wieder!");
+                }
             }
         }, 40L);
     }
@@ -663,6 +670,11 @@ final class CompanionService {
         if (told || entity(b) == null) {
             return;
         }
+        // Beim Testen wechselt man ständig den Modus; vorher kam jedes Mal ein Satz (2026-11-15: „nervig“).
+        if (!chatter.allow(p.getUniqueId(), com.blackn0va.baumeister.companion.ChatterBudget.Kind.NORMAL,
+                System.currentTimeMillis())) {
+            return;
+        }
         say(b, p, switch (gm) {
             case CREATIVE -> "Kreativmodus! Jetzt darf ich dir alles geben, was du brauchst.";
             case SURVIVAL -> give ? "Überlebensmodus. Geben darf ich dir trotzdem – du hast das Recht dazu."
@@ -677,6 +689,8 @@ final class CompanionService {
         adventure.quit(p);
         Buddy b = buddies.remove(p.getUniqueId());
         forgetOwner(p.getUniqueId());
+        quitAt.put(p.getUniqueId(), System.currentTimeMillis());
+        chatter.forget(p.getUniqueId());
         if (b != null) {
             Mannequin m = entity(b);
             if (m != null) {
@@ -2984,6 +2998,7 @@ final class CompanionService {
     private void say(Buddy b, Player p, String text) {
         b.lastReplyNanos = System.nanoTime();
         b.partner = p.getUniqueId();
+        chatter.spoke(p.getUniqueId(), System.currentTimeMillis());
         Mannequin m = entity(b);
         String clean = Texts.clean(text, CompanionReply.MAX_SAY);
         Texts.say(settings.name(), m != null ? m.getLocation() : p.getLocation(), p, clean);
@@ -3208,6 +3223,13 @@ final class CompanionService {
             new java.util.concurrent.ConcurrentHashMap<>();
     /** Letzter Spruch je Spieler und Anlass (banter). */
     private final Map<String, Long> banterAt = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Gemeinsames Maß für alles, was Vera ungefragt sagt (ChatterBudget, 2026-11-15). */
+    private final com.blackn0va.baumeister.companion.ChatterBudget chatter =
+            new com.blackn0va.baumeister.companion.ChatterBudget();
+    /** Wann ein Spieler zuletzt gegangen ist – wer gleich wiederkommt, bekommt kein „Da bin ich wieder!“. */
+    private final Map<java.util.UUID, Long> quitAt = new java.util.concurrent.ConcurrentHashMap<>();
+    /** So lange nach dem Gehen gilt Wiederkommen als Neuverbindung, nicht als Rückkehr. */
+    static final long REJOIN_QUIET_MS = 10 * 60_000L;
     private boolean charactersLoaded;
 
     private java.nio.file.Path characterFile() {
@@ -3320,6 +3342,12 @@ final class CompanionService {
         long now = System.currentTimeMillis();
         Long last = banterAt.get(key);
         if (last != null && now - last < cooldownMs) {
+            return;
+        }
+        boolean urgent = l == com.blackn0va.baumeister.companion.CompanionCharacter.Line.DEATH
+                || l == com.blackn0va.baumeister.companion.CompanionCharacter.Line.LOW_HEALTH;
+        if (!chatter.allow(p.getUniqueId(), urgent ? com.blackn0va.baumeister.companion.ChatterBudget.Kind.URGENT
+                : com.blackn0va.baumeister.companion.ChatterBudget.Kind.NORMAL, now)) {
             return;
         }
         banterAt.put(key, now);
@@ -3522,11 +3550,13 @@ final class CompanionService {
         if (b.idleTicks == 1800) {
             banter(p, com.blackn0va.baumeister.companion.CompanionCharacter.Line.IDLE, 4 * 60_000L);
         }
-        if (b.idleTicks < 400 || listenerTicks < b.nextCuriosity || b.thinking || b.lab
+        // Neugier (Tür auf und zu, Glocke, Notenblock) erst nach 60 s Stillstand und dann alle 5–10 min. Vorher nach 20 s
+        // und alle 1–2 min: Beim Bauen klapperte neben dem Spieler dauernd eine Falltür (dev01 2026-11-15 11:53).
+        if (b.idleTicks < 1200 || listenerTicks < b.nextCuriosity || b.thinking || b.lab
                 || !rights.allowed(p, Ability.AUSPROBIEREN)) {
             return;
         }
-        b.nextCuriosity = listenerTicks + 1200 + java.util.concurrent.ThreadLocalRandom.current().nextInt(1200);
+        b.nextCuriosity = listenerTicks + 6000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(6000);
         List<org.bukkit.block.Block> found = new ArrayList<>();
         org.bukkit.block.Block base = m.getLocation().getBlock();
         for (int dx = -5; dx <= 5; dx++) {

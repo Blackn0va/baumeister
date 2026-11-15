@@ -110,6 +110,21 @@ class LocalVoiceTest {
         v.stop();
     }
 
+    /** Gemessen 2026-11-15 auf dev01 (piper --debug): so las Piper es vorher, so klingt es jetzt. */
+    @Test
+    void unitsRatiosBracketsAndGameWordsAreSpokenLikeSpeech() {
+        assertEquals("440 Blöcke pro Sekunde.", LocalVoice.speakable("440 Blöcke/s.", 400), "vorher „Blöcke Es“");
+        assertEquals("Ich baue ihn 1 zu 1.", LocalVoice.speakable("Ich baue ihn 1:1.", 400), "vorher „eins eins“");
+        assertEquals("1 zu 1", LocalVoice.speakable("1:1", 400));
+        assertEquals("6 Uhr", LocalVoice.speakable("6:00", 400), "Uhrzeit bleibt Uhrzeit");
+        assertEquals("Rechnung, Quelle: Wiki, fertig.", LocalVoice.speakable("Rechnung (Quelle: Wiki) fertig.", 400),
+                "Klammern als Pause");
+        assertEquals("Hinweis, gleich geht es los.", LocalVoice.speakable("(Hinweis) gleich geht es los.", 400));
+        assertEquals("Viele Mobbs und Läg im Lager.", LocalVoice.speakable("Viele Mobs und Lag im Lager.", 400),
+                "Lager bleibt Lager");
+        assertEquals("Stein und Holz, 3 plus 4", LocalVoice.speakable("Stein & Holz, 3 + 4", 400));
+    }
+
     @Test
     void spokenTextHasNoColorCodesCommandsOrLinks() {
         assertEquals("Klar! Tippe dann und los geht's.", LocalVoice.speakable(

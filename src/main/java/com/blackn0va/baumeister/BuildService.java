@@ -662,6 +662,10 @@ final class BuildService {
         if (file.isPresent()) {
             com.blackn0va.baumeister.plan.SchematicCatalog.Match fm = file.get();
             LOG.info(() -> "bau | schematic | weg=direkt name=" + fm.entry().name());
+            String details = schematicDetails(fm);
+            if (!details.isEmpty() && r.sender() != null) {
+                Texts.info(r.sender(), details);
+            }
             if (acceptPlan(r, prompt, QuickOrders.moduleJson(fm.entry().name(), schematicReply(fm)))) {
                 return;
             }
@@ -776,12 +780,26 @@ final class BuildService {
     }
 
     /** Antwort beim Bau einer Bauwerk-Datei: was, woher, wie viele Varianten es gibt. */
+    /**
+     * Was der Baumeister bei einem Katalogbau laut sagt: kurz, wie ein Mensch („Wird gemacht: Wüstentempel.“), die
+     * Variante nur, wenn es mehrere gibt. Vorher sprach er „Ich baue „Taktgeber, Variante 1“ aus der Schematic-Sammlung
+     * (Quelle: Technik Wiki (de.minecraft.wiki), Redstone-Welt 1.21a, CC BY-NC-SA 3.0). Es gibt 21 Varianten – sag z. B.
+     * „Taktgeber Variante 2“.“ – bei jedem Bau (Rückmeldung 2026-11-15: „nervig und unnötig“). Quelle und Varianten
+     * stehen jetzt in schematicDetails, nur im Chat des Auftraggebers.
+     */
     static String schematicReply(com.blackn0va.baumeister.plan.SchematicCatalog.Match m) {
         com.blackn0va.baumeister.plan.SchematicCatalog.Entry e = m.entry();
-        String more = m.variants() > 1 ? " Es gibt " + m.variants() + " Varianten – sag z. B. „" + e.family()
-                + " Variante 2“." : "";
-        String from = e.source().isEmpty() ? "" : " (Quelle: " + e.source() + ")";
-        return Texts.clean("Ich baue „" + e.display() + "“ aus der Schematic-Sammlung" + from + "." + more, 200);
+        String what = m.variants() > 1 ? e.family() + ", Variante " + e.variant() : e.family();
+        return Texts.clean("Wird gemacht: " + what + ".", 120);
+    }
+
+    /** Nur zum Lesen: Herkunft und wie man die nächste Variante bekommt; leer, wenn es nichts zu sagen gibt. */
+    static String schematicDetails(com.blackn0va.baumeister.plan.SchematicCatalog.Match m) {
+        com.blackn0va.baumeister.plan.SchematicCatalog.Entry e = m.entry();
+        String more = m.variants() > 1 ? m.variants() + " Varianten – „" + e.family() + " Variante "
+                + (e.variant() % m.variants() + 1) + "“ baut die nächste." : "";
+        String from = e.source().isEmpty() ? "" : "Quelle: " + e.source() + ".";
+        return Texts.clean((more + " " + from).strip(), 240);
     }
 
     private Set<String> moduleNames() {

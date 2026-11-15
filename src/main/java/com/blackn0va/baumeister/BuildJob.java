@@ -514,8 +514,13 @@ final class BuildJob {
         }
         if (helperCount > 0) {
             String who = helperCount == 1 ? "einen Helfer" : helperCount + " Helfer";
-            Texts.say(npc.name(), base, replyTo, helpersWished ? "Ich hole mir " + who + " dazu!"
-                    : "Das ist ein großer Bau – ich hole mir " + who + " dazu!");
+            // Nur gewünschte Helfer laut bestätigen; sonst nur in den Chat (Texts.chat): Vorher sprach er bei jedem
+            // größeren Bau „Das ist ein großer Bau – ich hole mir 2 Helfer dazu!“ – bei zehn Bauten zehnmal.
+            if (helpersWished) {
+                Texts.say(npc.name(), base, replyTo, "Ich hole mir " + who + " dazu!");
+            } else {
+                Texts.chat(npc.name(), base, replyTo, "Großer Bau – ich hole mir " + who + " dazu.");
+            }
         }
         // Block für Block mit Laufen dauert ticksPerBlock je Aktion und Arbeiter. Ein Hochhaus mit 16 810 Blöcken
         // bräuchte so 14 min; über der Zieldauer wird im Schnellbau gesetzt (mehrere Blöcke je Tick, Arbeiter
@@ -525,8 +530,8 @@ final class BuildJob {
             fastPerTick = (int) Math.min(5000, Math.ceilDiv(actions.size(), targetTicks));
             fastBase = fastPerTick;
             fastWorkers = workers.size();
-            Texts.say(npc.name(), base, replyTo, "Großes Ding – ich baue im Schnellgang (" + fastPerTick * 20
-                    + " Blöcke/s).");
+            // Nur im Chat: „vierhundertvierzig Blöcke Schrägstrich s“ wollte niemand hören.
+            Texts.chat(npc.name(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
         }
         LOG.info(() -> String.format("bau | los | besitzer=%s aktionen=%d schritte=%d helfer=%d schnell=%d prüfung_ms=%d "
                 + "prüf_ticks=%d", ownerName, actions.size(), stepNames.size(), helperCount, fastPerTick, meter.checkMillis(),

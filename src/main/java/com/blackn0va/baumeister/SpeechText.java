@@ -42,6 +42,20 @@ final class SpeechText {
             new Spelling("nether", "Näther", true), new Spelling("hardcore", "Haadkohr", true),
             new Spelling("enderauge", "Ender-Auge", true));
 
+    /**
+     * Nur auf dem Server (LocalVoice), im Host (speech_text.cpp) noch nicht: gemessen 2026-11-15 auf dev01 mit
+     * aussprache_dev01.py (piper --debug, espeak-ng deutsch). „Mobs“ wurde „moːps“ (langes o), „Lag“ wie das deutsche
+     * „lag“ (lɑːk). Getrennt von SPELLINGS, damit die Tabelle dort weiter genau der des Hosts entspricht.
+     */
+    private static final List<Spelling> SERVER_SPELLINGS = List.of(
+            new Spelling("mobs", "Mobbs", false), new Spelling("mob", "Mobb", false),
+            new Spelling("lags", "Lägs", false), new Spelling("lag", "Läg", false));
+
+    /** Einheit hinter Schrägstrich („440 Blöcke/s“ wurde „Blöcke Es“, gemessen 2026-11-15). */
+    private static final Pattern PER_UNIT = Pattern.compile("(?<=\\p{L})/(s|sek|min|h|std|tag)\\b");
+    /** Verhältnis „1:1“, „2:3“ (keine Uhrzeit: CLOCK verlangt zweistellige Minuten). Vorher „eins eins“. */
+    private static final Pattern RATIO = Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d)(?!\\d)");
+
     /** Abkürzungen mit Punkt: Piper teilt Sätze am Punkt („ca. 20“ wurde „ca“ und Pause, gemessen im Host). */
     private static final String[][] ABBREVIATIONS = {
         {"z. B.", "zum Beispiel"}, {"z.B.", "zum Beispiel"}, {"d. h.", "das heißt"}, {"d.h.", "das heißt"},
@@ -72,6 +86,13 @@ final class SpeechText {
         }
         s = s.replaceAll("(?i)\\bcrafting[ _]table\\b", "Werkbank");
         s = clock(s);
+        s = RATIO.matcher(s).replaceAll("$1 zu $2");
+        s = PER_UNIT.matcher(s).replaceAll(m -> switch (m.group(1)) {
+            case "s", "sek" -> " pro Sekunde";
+            case "min" -> " pro Minute";
+            case "h", "std" -> " pro Stunde";
+            default -> " pro Tag";
+        });
         s = TIMES.matcher(s).replaceAll("$1 mal $2");
         s = COUNT_X.matcher(s).replaceAll("$1");
         s = THOUSANDS.matcher(s).replaceAll("$1$2");
@@ -81,6 +102,9 @@ final class SpeechText {
                 // „10-15“ und „10–15“ sind Bereiche, „5 - 3“ mit Leerzeichen eine Rechnung (wie im Host).
                 .replaceAll("(\\d) - (\\d)", "$1 minus $2").replaceAll("(\\d)\\s*[–-]\\s*(\\d)", "$1 bis $2");
         // Satzzeichen, die espeak als Namen liest oder über die es stolpert: als Pause bzw. weg.
+        // Klammern liest espeak gar nicht und macht keine Pause: „Rechnung (Quelle: Wiki) fertig“ lief in einem Zug
+        // durch (gemessen 2026-11-15). Als Komma klingt es wie gesprochen.
+        s = s.replace("(", ", ").replace(")", ", ").replace("&", " und ").replace("+", " plus ");
         s = s.replace("→", ", ").replace("·", ", ").replace("–", ", ").replace("—", ", ").replace("…", "...")
                 .replace("×", " mal ").replace("=", " ist ").replace("_", " ").replace("„", "").replace("“", "")
                 .replace("\"", "").replace("*", "").replace("#", "").replace("`", "").replace("~", "");
@@ -93,7 +117,8 @@ final class SpeechText {
             default -> "t";
         });
         s = spellings(s);
-        return s.replaceAll("\\s+([,.!?])", "$1").replaceAll(",\\s*,", ",").replaceAll("\\s+", " ").strip();
+        return s.replaceAll("\\s+([,.!?])", "$1").replaceAll(",\\s*,", ",").replaceAll(",\\s*([.!?])", "$1")
+                .replaceAll("^[,\\s]+", "").replaceAll("\\s+", " ").strip();
     }
 
     /** „6:00“ → „6 Uhr“, „14:30 Uhr“ → „14 Uhr 30“. */
@@ -117,19 +142,26 @@ final class SpeechText {
             String word = m.group();
             String low = word.toLowerCase(Locale.ROOT);
             String repl = word;
-            for (Spelling sp : SPELLINGS) {
-                if (low.startsWith(sp.key())) {
-                    String rest = word.substring(sp.key().length());
-                    if (rest.isEmpty() || sp.prefix() || rest.equals("s") || rest.equals("S")) {
-                        repl = sp.say() + rest;
-                        break;
-                    }
-                }
+            repl = spell(word, low, SPELLINGS);
+            if (repl.equals(word)) {
+                repl = spell(word, low, SERVER_SPELLINGS);
             }
             m.appendReplacement(out, Matcher.quoteReplacement(repl));
         }
         m.appendTail(out);
         return out.toString();
+    }
+
+    private static String spell(String word, String low, List<Spelling> table) {
+        for (Spelling sp : table) {
+            if (low.startsWith(sp.key())) {
+                String rest = word.substring(sp.key().length());
+                if (rest.isEmpty() || sp.prefix() || rest.equals("s") || rest.equals("S")) {
+                    return sp.say() + rest;
+                }
+            }
+        }
+        return word;
     }
 
     /** Emojis, Bildsymbole, Kästchen und Pfeile fallen weg: espeak liest sonst ihren Unicode-Namen vor. */
