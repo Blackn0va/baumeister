@@ -203,6 +203,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **Große Bauten frieren den Server beim Planen nicht mehr ein:** Bei „bau eine riesige Lobby“ stand dev01 zweimal
+  über 10 s, bevor der erste Block kam. Die Reihenfolge innerhalb einer Schicht suchte für jeden Block alle übrigen
+  ab. Jetzt sucht sie nur in der Nähe, mit Block für Block derselben Reihenfolge wie vorher. Gemessen an der größten
+  Lobby: 1 130 ms → 38 ms je Planung.
 - **Vera steht nicht mehr im Weg:** Kommt jemand auf sie zu, tritt sie zur Seite (zu seiner Linken) und schaut ihn
   dabei an; in Türen, auf Treppen, Leitern und Baustellen bleibt sie nicht stehen, aus dem Zielstrahl beim Bauen und
   Abbauen geht sie heraus, im engen Gang ohne Nische lässt sie ihn vorbei. Ein Rechtsklick mit Block oder Werkzeug auf

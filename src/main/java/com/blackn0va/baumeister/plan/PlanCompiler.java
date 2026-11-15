@@ -9,6 +9,7 @@ import com.blackn0va.baumeister.plan.CompiledBuild.Change;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -1040,8 +1041,94 @@ public final class PlanCompiler {
         return cursor;
     }
 
-    /** Gierig zum nächsten Block – der NPC läuft so an der Wand entlang statt kreuz und quer. */
-    private static Pos nearestNeighbour(List<Action> layer, Pos cursor, List<Action> out) {
+    /** Ab so vielen Blöcken je Schicht sucht ein Raster; darunter ist die einfache Suche schneller. */
+    static final int GRID_FROM = 256;
+
+    /**
+     * Gierig zum nächsten Block – der NPC läuft so an der Wand entlang statt kreuz und quer.
+     *
+     * Vorher suchte jeder Schritt alle übrigen Blöcke der Schicht ab, quadratisch in der Schichtgröße. Die riesige
+     * Lobby hat Schichten mit 6 241 Zellen: 1,1 s je Übersetzung auf dem PC, und auf dev01 stand der Server dafür
+     * zweimal über 10 s (Paper-Watchdog 2026-11-15 20:10 und 20:14, Stack hier; nach dem Verschieben übersetzt
+     * acceptPlan ein zweites Mal). Jetzt sucht ein Raster Ring um Ring um die letzte Stelle, bis kein näherer Block mehr
+     * möglich ist. Die Reihenfolge bleibt Block für Block dieselbe (kleinster Abstand, dann kleineres x, dann z),
+     * PlanCompilerOrderTest vergleicht mit der alten Suche. Wer das zurückdreht, friert den Server bei großen Bauten
+     * wieder ein.
+     */
+    static Pos nearestNeighbour(List<Action> layer, Pos cursor, List<Action> out) {
+        if (layer.size() < GRID_FROM) {
+            return nearestNeighbourLinear(layer, cursor, out);
+        }
+        Map<Long, Action> grid = new HashMap<>(layer.size() * 2);
+        for (Action a : layer) {
+            if (grid.put(flatKey(a.anchor().x(), a.anchor().z()), a) != null) {
+                // Zwei Aktionen auf einer Stelle liefert der Compiler nicht; falls doch, die alte Suche statt Verlust.
+                return nearestNeighbourLinear(layer, cursor, out);
+            }
+        }
+        Pos current = cursor;
+        while (!grid.isEmpty()) {
+            Action next = nearestInGrid(grid, current);
+            grid.remove(flatKey(next.anchor().x(), next.anchor().z()));
+            out.add(next);
+            current = next.anchor();
+        }
+        return current;
+    }
+
+    /**
+     * Ring um Ring um from; fertig, sobald jeder weitere Ring weiter weg läge als der beste Fund (nach Ring r liegt
+     * alles Übrige mindestens r + 1 weit). Wird die abgesuchte Fläche größer als die Zahl der übrigen Blöcke, zählt
+     * sie diese direkt durch – dann ist das billiger, und ein Sprung zur nächsten Gruppe kostet nie mehr als vorher.
+     */
+    private static Action nearestInGrid(Map<Long, Action> grid, Pos from) {
+        Action best = null;
+        long bestDist = Long.MAX_VALUE;
+        int cx = from.x();
+        int cz = from.z();
+        for (int r = 0; ; r++) {
+            if ((long) (2 * r + 1) * (2 * r + 1) > grid.size()) {
+                for (Action a : grid.values()) {
+                    long d = flatDistance(a.anchor(), from);
+                    if (best == null || d < bestDist || d == bestDist && tieBreak(a.anchor(), best.anchor()) < 0) {
+                        best = a;
+                        bestDist = d;
+                    }
+                }
+                return best;
+            }
+            for (int dx = -r; dx <= r; dx++) {
+                boolean edge = dx == -r || dx == r;
+                for (int dz = -r; dz <= r; dz += edge || r == 0 ? 1 : 2 * r) {
+                    Action a = grid.get(flatKey(cx + dx, cz + dz));
+                    if (a == null) {
+                        continue;
+                    }
+                    long d = flatDistance(a.anchor(), from);
+                    if (best == null || d < bestDist || d == bestDist && tieBreak(a.anchor(), best.anchor()) < 0) {
+                        best = a;
+                        bestDist = d;
+                    }
+                }
+            }
+            if (best != null && bestDist < (long) (r + 1) * (r + 1)) {
+                return best;
+            }
+        }
+    }
+
+    /**
+     * Eindeutig für jedes (x, z) und gut gestreut. Vorher nur „x << 32 | z“: Long.hashCode macht daraus x ^ z, auf einem
+     * 81 × 81-Feld gut 100 verschiedene Werte – die HashMap kippte in Baumknoten (Flight Recorder 2026-11-15: die
+     * meisten Proben in HashMap.getNode und TreeNode). Mal einer ungeraden Zahl ist modulo 2^64 umkehrbar, also
+     * bleibt jeder Schlüssel eindeutig.
+     */
+    private static long flatKey(int x, int z) {
+        return ((long) x << 32 | z & 0xFFFFFFFFL) * 0x9E3779B97F4A7C15L;
+    }
+
+    /** Die einfache Suche: jeder Schritt über alle übrigen Blöcke. Für kleine Schichten und als Vergleich im Test. */
+    static Pos nearestNeighbourLinear(List<Action> layer, Pos cursor, List<Action> out) {
         Pos current = cursor;
         while (!layer.isEmpty()) {
             int best = 0;
