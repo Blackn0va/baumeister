@@ -46,6 +46,31 @@ Spuren laufen gleichzeitig in eigenen Chunks: Ohne Spieler tickt eine Welt Entit
 Rohdaten: `ergebnis-2026-11-06.txt` (Attribute, Endlagen). Nicht gemessen: Spigot statt Paper, wie der Client das
 Laufen zeigt (Beinbewegung), Spieler in der Nähe.
 
+## Im Weg (2026-11-15, Paper 26.2)
+
+Rückmeldung des Nutzers: „manchmal steht der vera im weg rum und checkt das nicht, er soll sich mehr wie ein mensch
+verhalten“. `WegProbe.java`: Ein Geist-Spieler läuft auf Vera zu oder an ihr vorbei, je Lage zwei Veras nebeneinander –
+„jetzt“ (Steuerung bis 2026-11-15: nah genug → stehen bleiben) und „neu“ (`CompanionYield.decide` vor dem Folgen, wie
+`CompanionService.yieldStep`). Gesteuert alle 2 Ticks wie im Dienst. Gezählt: Aufrufe mit Überlappung (berührt) und mit
+Vera bis 2,5 Blöcke voraus in seiner Bahn (im Weg).
+
+| Lage | berührt jetzt → neu | im Weg jetzt → neu | Verwendet in |
+|---|---|---|---|
+| frontal, freies Feld | 3 → 0 | 5 → 1 | `CompanionYield` (Bahn) |
+| frontal, 3 breiter Gang | 3 → 0 | 5 → 4 | `CompanionYield` (Bahn) |
+| Vera in der einzigen Tür | 4 → 0 | 6 → 0 | `CompanionYield` (Platz) |
+| 1 breiter Gang, er kehrt um | 4 → 0 | 6 → 4 (1 Platztausch) | `CompanionYield.lead` ohne Nische → tauschen |
+| normales Folgen (Vergleich) | 0 → 0 | 0 → 0, Abstand 3,6/5,7 gleich | – |
+
+Gegenprobe zur Tauschregel: Lief Vera ohne Nische weiter vor ihm her, waren es im engen Gang 10 Berührungen und 22
+Aufrufe im Weg. Nicht gemessen: echter Spieler (Schieben durch den Client, Klicks), Zielstrahl beim Bauen, mehrere
+Spieler, Wasser, Nether, Leitern.
+
+Übersetzen wie oben, zusätzlich mit `src/main/java/com/blackn0va/baumeister/companion/CompanionYield.java`;
+`plugin.yml` mit `main: WegProbe`. Server: frisches Paper 26.2, `online-mode=false`, flache Welt mit Lagen
+(`generator-settings`), Aktivierungsbereich 0, nur `WegProbe.jar` in `plugins/`. Ergebnis in
+`plugins/WegProbe/weg.txt`.
+
 ## Wiederholen
 
 1. Paper-Jar samt `libraries/`, `versions/`, `cache/` in einen leeren Ordner (von dev01, kein Netz nötig).

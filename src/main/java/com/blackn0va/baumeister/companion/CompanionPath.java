@@ -47,6 +47,16 @@ public final class CompanionPath {
         default boolean climbable(int x, int y, int z) {
             return false;
         }
+
+        /** Tür, Falltür oder Tor (offen oder zu): dort bleibt Vera nicht stehen (CompanionYield). */
+        default boolean doorway(int x, int y, int z) {
+            return false;
+        }
+
+        /** Treppenstufe: dort bleibt Vera nicht stehen (CompanionYield). */
+        default boolean stairs(int x, int y, int z) {
+            return false;
+        }
     }
 
     public record Node(int x, int y, int z) {

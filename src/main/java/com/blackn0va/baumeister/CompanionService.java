@@ -6,6 +6,7 @@ import com.blackn0va.baumeister.companion.CompanionRules;
 import com.blackn0va.baumeister.companion.VeraRights.Ability;
 import com.blackn0va.baumeister.companion.CompanionPath;
 import com.blackn0va.baumeister.companion.CompanionWalk;
+import com.blackn0va.baumeister.companion.CompanionYield;
 import com.blackn0va.baumeister.companion.MathExpr;
 import com.blackn0va.baumeister.companion.RecipeText;
 import com.blackn0va.baumeister.companion.Songs;
@@ -134,6 +135,10 @@ final class CompanionService {
         /** Standpunkte des Besitzers (CompanionFollow) und ihre Welt – in Höhlen läuft sie dessen Weg nach. */
         final com.blackn0va.baumeister.companion.CompanionFollow.Trail trail =
                 new com.blackn0va.baumeister.companion.CompanionFollow.Trail();
+        /** Platz machen wie ein Mensch (CompanionYield, 2026-11-15): Gedächtnis, eigene Bewegung, letzter Grund. */
+        final CompanionYield.State manners = new CompanionYield.State();
+        final CompanionYield.Motion selfMotion = new CompanionYield.Motion();
+        CompanionYield.Reason lastYield = CompanionYield.Reason.NONE;
         UUID trailWorld;
         /** Ort des Besitzers im letzten Takt (airStep: Fluggeschwindigkeit). */
         Location lastOwnerPos;
@@ -691,6 +696,8 @@ final class CompanionService {
         forgetOwner(p.getUniqueId());
         quitAt.put(p.getUniqueId(), System.currentTimeMillis());
         chatter.forget(p.getUniqueId());
+        motions.remove(p.getUniqueId());
+        workedAt.remove(p.getUniqueId());
         if (b != null) {
             Mannequin m = entity(b);
             if (m != null) {
@@ -2406,11 +2413,16 @@ final class CompanionService {
             if (rideAlong(b, m, p)) {
                 continue;
             }
+            int yielded = yieldStep(b, m, p);
+            if (yielded == YIELD_HANDLED) {
+                continue;
+            }
             Location goal = follow(b, p, m);
             boolean sameWorld = m.getWorld().equals(p.getWorld());
             double lag = sameWorld ? m.getLocation().distance(p.getLocation()) : Double.MAX_VALUE;
-            b.following = !sameWorld
-                    || com.blackn0va.baumeister.companion.CompanionFollow.shouldWalk(b.following, lag, settings.distance());
+            // Kommt er auf sie zu oder läuft ein Platzwechsel, läuft sie ihm nicht entgegen (YIELD_HOLD).
+            b.following = !sameWorld || yielded != YIELD_HOLD && com.blackn0va.baumeister.companion.CompanionFollow
+                    .shouldWalk(b.following, lag, settings.distance());
             if (b.following) {
                 double away = sameWorld ? m.getLocation().distance(goal) : 0;
                 move(b, m, p, goal, p.getEyeLocation(), CompanionWalk.speedFor(away));
@@ -2463,6 +2475,137 @@ final class CompanionService {
      * sonst wie früher schwebend in Teleport-Schritten: Fliegt der Spieler (Kreativ, Elytra) oder steht das Ziel über
      * Luft, käme sie laufend nie an und fiele nur hinterher. Andere Welt und weit weg: direkt teleportieren.
      */
+    /**
+     * Platz machen (CompanionYield, Rückmeldung 2026-11-15: „manchmal steht der vera im weg rum und checkt das nicht,
+     * er soll sich mehr wie ein mensch verhalten“): Bahn, Zielstrahl, Nähe, Platz (Tür, Leiter, Treppe, Baustelle)
+     * und Blickmitte aller Spieler im Umkreis von 10 Blöcken. Vorher blieb Vera stehen, wo sie bei 3 Blöcken ankam;
+     * in der WegProbe (probes/mannequin) lief ein Geist-Spieler in Tür, Gang und auf freiem Feld durch sie hindurch –
+     * 10–11 Ticks im Weg, 6–7 Ticks Berührung. Rückgabe: YIELD_HANDLED = sie bewegt sich oder tauscht den Platz,
+     * YIELD_HOLD = nicht hinterherlaufen, YIELD_NONE = das Folgen entscheidet wie bisher.
+     */
+    private int yieldStep(Buddy b, Mannequin m, Player p) {
+        Location cur = m.getLocation();
+        if (!cur.getWorld().equals(p.getWorld()) || !walkMode(m, p, cur)) {
+            b.selfMotion.reset();
+            return YIELD_NONE;
+        }
+        b.selfMotion.update(cur.getX(), cur.getZ());
+        updateMotions();
+        List<CompanionYield.Person> people = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (Player o : cur.getWorld().getPlayers()) {
+            if (o.getGameMode() == GameMode.SPECTATOR || o.getLocation().distanceSquared(cur) > 100) {
+                continue;
+            }
+            Location l = o.getLocation();
+            Location eye = o.getEyeLocation();
+            Vector look = eye.getDirection();
+            CompanionYield.Motion mo = motions.get(o.getUniqueId());
+            boolean working = now - workedAt.getOrDefault(o.getUniqueId(), 0L) < 3000;
+            double ray = REACH_BLOCKS;
+            if (working) {
+                // Nur für Arbeitende: Wohin zielt er? Ein rayTrace je Takt und Spieler im Umkreis (Kosten klein).
+                org.bukkit.block.Block t = o.getTargetBlockExact((int) Math.ceil(REACH_BLOCKS));
+                if (t != null) {
+                    ray = eye.distance(t.getLocation().add(0.5, 0.5, 0.5));
+                }
+            }
+            boolean talking = o.getUniqueId().equals(b.partner)
+                    && System.nanoTime() - b.lastReplyNanos < 8_000_000_000L;
+            people.add(new CompanionYield.Person(l.getX(), l.getY(), l.getZ(), mo == null ? 0 : mo.vx(),
+                    mo == null ? 0 : mo.vz(), eye.getY(), look.getX(), look.getY(), look.getZ(), ray, working,
+                    o.getUniqueId().equals(b.owner), talking));
+        }
+        UUID world = cur.getWorld().getUID();
+        BuildDropGuard guard = plugin.dropGuard();
+        CompanionYield.Zones zones = guard == null ? CompanionYield.Zones.NONE
+                : (x, y, z) -> guard.covers(world, x, y, z);
+        CompanionYield.Decision d = CompanionYield.decide(b.manners, pathBlocks(cur.getWorld()), zones,
+                cur.getX(), cur.getY(), cur.getZ(), b.selfMotion.vx(), b.selfMotion.vz(), people);
+        if (d.reason() != b.lastYield) {
+            b.planner.reset();
+            if (d.reason() != CompanionYield.Reason.NONE) {
+                LOG.info(() -> "begleiter | platz | grund=" + d.reason().name().toLowerCase(Locale.ROOT)
+                        + " spieler=" + p.getName());
+            }
+            b.lastYield = d.reason();
+        }
+        if (d.reason() == CompanionYield.Reason.SWAP) {
+            // Kein Platz im Gang: erst tauschen, wenn er herankommt (wie Vorbeilassen), bis dahin stehen bleiben.
+            Location pl = p.getLocation();
+            if (pl.distanceSquared(cur) > SWAP_NEAR * SWAP_NEAR) {
+                return YIELD_HOLD;
+            }
+            com.blackn0va.baumeister.companion.CompanionFollow.Trail fresh = b.trail.ifFresh(pl.getX(), pl.getY(),
+                    pl.getZ());
+            double[] t = fresh == null ? null : fresh.behind(1.5);
+            if (t != null) {
+                b.walk.reset();
+                m.setVelocity(new Vector());
+                m.teleport(BuilderNpc.facing(new Location(cur.getWorld(), t[0], t[1], t[2]), p.getEyeLocation()));
+                b.manners.reset();
+                return YIELD_HANDLED;
+            }
+            return YIELD_HOLD;
+        }
+        if (d.moving()) {
+            Vector v = m.getVelocity();
+            CompanionWalk.Step step = CompanionWalk.next(b.walk, new CompanionWalk.Body(cur.getX(), cur.getY(),
+                    cur.getZ(), v.getY(), m.isOnGround(), m.isInWater(),
+                    org.bukkit.Tag.CLIMBABLE.isTagged(cur.getBlock().getType())), d.x(), d.y(), d.z(), d.speed());
+            if (step.teleport()) {
+                // Kommt sie nicht hin, lieber stehen bleiben als springen – Ausweichen rechtfertigt keinen Teleport.
+                b.walk.reset();
+                m.setVelocity(new Vector());
+                b.manners.reset();
+                return YIELD_HOLD;
+            }
+            m.setVelocity(new Vector(step.vx(), step.vy(), step.vz()));
+            if (d.faceOwner()) {
+                // Seitlich austreten und ihn dabei ansehen, wie ein Mensch, der Platz macht.
+                BuilderNpc.lookAt(m, p.getEyeLocation());
+            } else if (step.moving()) {
+                Location dir = cur.clone();
+                dir.setDirection(new Vector(step.vx(), 0, step.vz()));
+                m.setRotation(dir.getYaw(), 0);
+            }
+            b.idleTicks = 0;
+            return YIELD_HANDLED;
+        }
+        return d.holdFollow() ? YIELD_HOLD : YIELD_NONE;
+    }
+
+    /** Bewegung aller Spieler einmal je Takt (mehrere Begleiter teilen sie, sonst zählte ein Takt doppelt). */
+    private void updateMotions() {
+        if (motionTick == listenerTicks) {
+            return;
+        }
+        motionTick = listenerTicks;
+        for (Player o : Bukkit.getOnlinePlayers()) {
+            Location l = o.getLocation();
+            motions.computeIfAbsent(o.getUniqueId(), k -> new CompanionYield.Motion()).update(l.getX(), l.getZ());
+        }
+    }
+
+    /** Gebaut, abgebaut (BaumeisterListener): sein Zielstrahl zählt die nächsten 3 s. */
+    void worked(Player p) {
+        workedAt.put(p.getUniqueId(), System.currentTimeMillis());
+    }
+
+    /**
+     * Ein Spieler klickt Vera mit Block oder Werkzeug an: Sie steht in seinem Zielstrahl – sofort weichen. Vorher kam
+     * „Sprich mich im Chat an …“, und der Block wurde nicht gesetzt (Review Vera 2026-11-15).
+     */
+    void bumped(Player p, org.bukkit.entity.Entity clicked) {
+        worked(p);
+        for (Buddy b : buddies.values()) {
+            if (clicked.getUniqueId().equals(b.entity)) {
+                b.manners.bumped();
+                return;
+            }
+        }
+    }
+
     private void move(Buddy b, Mannequin m, Player p, Location goal, Location look, double speed) {
         Location cur = m.getLocation();
         if (!cur.getWorld().equals(goal.getWorld())) {
@@ -2659,6 +2802,18 @@ final class CompanionService {
             @Override
             public boolean climbable(int x, int y, int z) {
                 return org.bukkit.Tag.CLIMBABLE.isTagged(type(x, y, z));
+            }
+
+            @Override
+            public boolean doorway(int x, int y, int z) {
+                Material t = type(x, y, z);
+                return org.bukkit.Tag.DOORS.isTagged(t) || org.bukkit.Tag.TRAPDOORS.isTagged(t)
+                        || org.bukkit.Tag.FENCE_GATES.isTagged(t);
+            }
+
+            @Override
+            public boolean stairs(int x, int y, int z) {
+                return org.bukkit.Tag.STAIRS.isTagged(type(x, y, z));
             }
         };
     }
@@ -3223,6 +3378,18 @@ final class CompanionService {
             new java.util.concurrent.ConcurrentHashMap<>();
     /** Letzter Spruch je Spieler und Anlass (banter). */
     private final Map<String, Long> banterAt = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Bewegung jedes Spielers (CompanionYield.Motion), einmal je Takt aktualisiert (updateMotions). */
+    private final Map<UUID, CompanionYield.Motion> motions = new java.util.HashMap<>();
+    /** Wann ein Spieler zuletzt gebaut, abgebaut oder Vera angeklickt hat – dann zählt sein Zielstrahl. */
+    private final Map<UUID, Long> workedAt = new java.util.concurrent.ConcurrentHashMap<>();
+    private int motionTick = -1;
+    /** Reichweite für Blöcke (Vanilla 4,5) – so weit reicht der Zielstrahl eines Spielers. */
+    private static final double REACH_BLOCKS = 4.5;
+    private static final int YIELD_NONE = 0;
+    private static final int YIELD_HANDLED = 1;
+    private static final int YIELD_HOLD = 2;
+    /** Platztausch im engen Gang erst ab so viel Nähe (Blöcke, Füße zu Füßen). */
+    private static final double SWAP_NEAR = 1.5;
     /** Gemeinsames Maß für alles, was Vera ungefragt sagt (ChatterBudget, 2026-11-15). */
     private final com.blackn0va.baumeister.companion.ChatterBudget chatter =
             new com.blackn0va.baumeister.companion.ChatterBudget();

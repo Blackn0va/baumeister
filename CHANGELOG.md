@@ -182,6 +182,11 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **Vera steht nicht mehr im Weg:** Kommt jemand auf sie zu, tritt sie zur Seite (zu seiner Linken) und schaut ihn
+  dabei an; in Türen, auf Treppen, Leitern und Baustellen bleibt sie nicht stehen, aus dem Zielstrahl beim Bauen und
+  Abbauen geht sie heraus, im engen Gang ohne Nische lässt sie ihn vorbei. Ein Rechtsklick mit Block oder Werkzeug auf
+  sie zählt als „du stehst im Weg“ statt als Ansprechen. Gemessen mit einem Geist-Spieler (WegProbe): Berührungen in
+  Tür, Gang und auf freiem Feld von 3–4 auf 0.
 - **Spiel-Bauwerke stehen richtig im Boden:** Der Wüstentempel schwebte 14 Blöcke über seiner eigenen Schatzkammer,
   Iglu-Keller und Dorfwege lagen zu hoch. Jetzt beginnt jede Vorlage so tief unter den Füßen, wie sie im Spiel in den
   Boden reicht; Fallgrube, Keller und Gänge werden ausgehoben (live: 9 TNT und die Kammer unter der Oberfläche, nichts

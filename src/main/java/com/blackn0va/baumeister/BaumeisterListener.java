@@ -198,6 +198,22 @@ final class BaumeisterListener implements Listener {
     public void onMined(org.bukkit.event.block.BlockBreakEvent event) {
         if (plugin.companion() != null) {
             plugin.companion().mined(event.getPlayer(), event.getBlock().getType());
+            plugin.companion().worked(event.getPlayer());
+        }
+    }
+
+    /** Gesetzt oder angeschlagen: Vera hält sich aus dem Zielstrahl (CompanionService.yieldStep). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlaced(org.bukkit.event.block.BlockPlaceEvent event) {
+        if (plugin.companion() != null) {
+            plugin.companion().worked(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onHit(org.bukkit.event.block.BlockDamageEvent event) {
+        if (plugin.companion() != null) {
+            plugin.companion().worked(event.getPlayer());
         }
     }
 
@@ -229,6 +245,12 @@ final class BaumeisterListener implements Listener {
     public void onInteract(PlayerInteractEntityEvent event) {
         if (plugin.companion() != null && plugin.companion().isCompanion(event.getRightClicked())) {
             event.setCancelled(true);
+            // Mit Block oder Werkzeug in der Hand wollte er dort bauen – Vera stand im Weg und tritt beiseite. Nur mit
+            // leerer Hand ist es ein Ansprechen (vorher kam der Hinweis immer, und der Block blieb in der Hand).
+            if (!event.getPlayer().getInventory().getItemInMainHand().getType().isAir()) {
+                plugin.companion().bumped(event.getPlayer(), event.getRightClicked());
+                return;
+            }
             Texts.info(event.getPlayer(), "Sprich mich im Chat an: " + plugin.companion().name()
                     + ", was kann ich für dich tun?");
             return;
