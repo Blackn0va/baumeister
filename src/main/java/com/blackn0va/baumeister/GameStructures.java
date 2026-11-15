@@ -128,6 +128,18 @@ final class GameStructures {
         put("shipwreck_beached", "Gestrandetes Schiffswrack", "Wrack am Strand");
     }
 
+    /**
+     * Zweitnamen für den Katalog. Die offiziellen deutschen Namen weichen ab (de.minecraft.wiki/w/Bauwerk, gelesen
+     * 2026-11-15): Sumpfhütte, Endsiedlung, Antike Stätte; „Prüfungskammern“ heißt offiziell so, gesagt wird oft die
+     * Einzahl. Ohne Zweitnamen ging „bau mir eine Sumpfhütte“ ans LLM, obwohl drei echte im Katalog liegen. Die
+     * eigenen Namen bleiben, damit Dateien und index.tsv auf dev01 gültig bleiben.
+     */
+    static final Map<String, List<String>> ALIASES = Map.of(
+            "Hexenhütte", List.of("Sumpfhütte"),
+            "Endstadt", List.of("Endsiedlung"),
+            "Antike Stadt", List.of("Antike Stätte"),
+            "Prüfungskammern", List.of("Prüfungskammer"));
+
     private static void put(String id, String family, String description) {
         KINDS.put(id, new String[] {family, description});
     }

@@ -70,4 +70,27 @@ class SchematicCatalogTest {
         assertEquals(4, c.families("").size());
         assertFalse(c.families("tuer").isEmpty(), "Suche ohne Umlaut findet Tür"); // umlaut-ok
     }
+
+    /** Zweitnamen (2026-11-15): offizielle Namen und Einzahl treffen die Familie, der eigene Name geht vor. */
+    @Test
+    void aliasesFindTheFamilyButNeverShadowARealOne() {
+        List<SchematicCatalog.Entry> entries = List.of(
+                SchematicCatalog.entry("hexenhuette_1", "Hexenhütte, Variante 1", "", "Spiel"),
+                SchematicCatalog.entry("hexenhuette_2", "Hexenhütte, Variante 2", "", "Spiel"),
+                SchematicCatalog.entry("taktgeber_1", "Taktgeber, Variante 1", "", "Wiki"));
+        SchematicCatalog c = new SchematicCatalog(entries, java.util.Map.of(
+                "Hexenhütte", List.of("Sumpfhütte"),
+                "Unbekannt", List.of("Geist"),
+                "Taktgeber", List.of("Hexenhütte")));
+        assertEquals("hexenhuette_1", c.match("bau mir eine Sumpfhütte").orElseThrow().entry().name());
+        assertEquals("hexenhuette_2", c.match("bau mir eine Sumpfhütte Variante 2").orElseThrow().entry().name());
+        assertEquals(2, c.match("bau mir eine Sumpfhütte").orElseThrow().variants());
+        assertEquals("hexenhuette_1", c.match("bau mir eine Hexenhütte").orElseThrow().entry().name(),
+                "ein Zweitname, der selbst eine Familie ist, zählt nicht");
+        assertTrue(c.match("bau mir einen Geist").isEmpty(), "Zweitname ohne Familie");
+        assertEquals(List.of(java.util.Map.entry("Hexenhütte", 2)), c.families("sumpf"));
+        assertEquals(2, c.variants("Sumpfhütte").size());
+        assertTrue(c.hint("ein Garten mit einer Sumpfhütte", 8).contains("hexenhuette_1"));
+        assertEquals(2, c.families("").size(), "Zweitnamen zählen nicht als eigene Familie");
+    }
 }

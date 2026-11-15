@@ -44,8 +44,18 @@ public final class SchematicCatalog {
     private final Map<String, Entry> byName;
     /** Familie (normalisiert) → Einträge nach Variante. */
     private final Map<String, List<Entry>> families = new LinkedHashMap<>();
+    /** Wörter, die eine Familie treffen: der eigene Name und Zweitnamen (normalisiert) → Familie (normalisiert). */
+    private final Map<String, String> keys = new LinkedHashMap<>();
 
     public SchematicCatalog(List<Entry> entries) {
+        this(entries, Map.of());
+    }
+
+    /**
+     * Mit Zweitnamen je Familie (Anzeigename → weitere Namen), etwa „Hexenhütte“ → „Sumpfhütte“. Ein Zweitname, der
+     * selbst eine Familie ist oder schon einer anderen gehört, zählt nicht – der eigene Name geht immer vor.
+     */
+    public SchematicCatalog(List<Entry> entries, Map<String, List<String>> aliases) {
         Map<String, Entry> m = new LinkedHashMap<>();
         for (Entry e : entries) {
             m.putIfAbsent(e.name(), e);
@@ -55,6 +65,15 @@ public final class SchematicCatalog {
             families.computeIfAbsent(RequestHints.normalize(e.family()), k -> new ArrayList<>()).add(e);
         }
         families.values().forEach(l -> l.sort(Comparator.comparingInt(Entry::variant)));
+        families.keySet().forEach(k -> keys.put(k, k));
+        aliases.forEach((family, names) -> {
+            String target = RequestHints.normalize(family);
+            if (families.containsKey(target)) {
+                for (String n : names) {
+                    keys.putIfAbsent(RequestHints.normalize(n), target);
+                }
+            }
+        });
     }
 
     /** Eintrag aus einer index.tsv-Zeile bzw. einem Dateinamen; display „X, Variante 3“ → family X, variant 3. */
@@ -79,11 +98,15 @@ public final class SchematicCatalog {
     public List<Map.Entry<String, Integer>> families(String filter) {
         String f = RequestHints.normalize(filter == null ? "" : filter);
         List<Map.Entry<String, Integer>> out = new ArrayList<>();
-        for (List<Entry> l : families.values()) {
-            String fam = l.getFirst().family();
-            if (f.isEmpty() || RequestHints.normalize(fam).contains(f)) {
-                out.add(Map.entry(fam, l.size()));
+        java.util.Set<String> hit = new java.util.LinkedHashSet<>();
+        keys.forEach((key, family) -> {
+            if (f.isEmpty() || key.contains(f)) {
+                hit.add(family);
             }
+        });
+        for (String family : hit) {
+            List<Entry> l = families.get(family);
+            out.add(Map.entry(l.getFirst().family(), l.size()));
         }
         out.sort(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER));
         return out;
@@ -91,7 +114,8 @@ public final class SchematicCatalog {
 
     /** Alle Varianten einer Familie (Name wie in families), nach Nummer; leer bei unbekannter Familie. */
     public List<Entry> variants(String family) {
-        List<Entry> l = families.get(RequestHints.normalize(family == null ? "" : family));
+        String key = keys.get(RequestHints.normalize(family == null ? "" : family));
+        List<Entry> l = key == null ? null : families.get(key);
         return l == null ? List.of() : List.copyOf(l);
     }
 
@@ -104,7 +128,7 @@ public final class SchematicCatalog {
         String bestKey = null;
         int bestStart = -1;
         int bestLen = 0;
-        for (String key : families.keySet()) {
+        for (String key : keys.keySet()) {
             String[] parts = key.split(" ");
             for (int i = 0; i + parts.length <= tokens.size(); i++) {
                 if (parts.length > bestLen && List.of(parts).equals(tokens.subList(i, i + parts.length))) {
@@ -141,7 +165,7 @@ public final class SchematicCatalog {
                 return Optional.empty();
             }
         }
-        List<Entry> family = families.get(bestKey);
+        List<Entry> family = families.get(keys.get(bestKey));
         int want = number == null ? 1 : number;
         return family.stream().filter(e -> e.variant() == want).findFirst()
                 .map(e -> new Match(e, family.size()));
@@ -154,11 +178,13 @@ public final class SchematicCatalog {
     public String hint(String prompt, int max) {
         String text = " " + RequestHints.normalize(prompt) + " ";
         List<String> lines = new ArrayList<>();
-        for (Map.Entry<String, List<Entry>> f : families.entrySet()) {
-            if (!text.contains(" " + f.getKey() + " ")) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Map.Entry<String, String> k : keys.entrySet()) {
+            if (!text.contains(" " + k.getKey() + " ") || !seen.add(k.getValue())) {
                 continue;
             }
-            for (Entry e : f.getValue().subList(0, Math.min(3, f.getValue().size()))) {
+            List<Entry> fam = families.get(k.getValue());
+            for (Entry e : fam.subList(0, Math.min(3, fam.size()))) {
                 if (lines.size() < max) {
                     lines.add("- " + e.name() + ": " + e.display());
                 }
