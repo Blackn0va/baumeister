@@ -176,6 +176,17 @@ class GameStructuresTest {
     }
 
     @Test
+    void everyFeatureAndSpecialPlaceIsAKnownKind() {
+        assertTrue(GameStructures.KINDS.keySet().containsAll(GameStructures.FEATURES));
+        assertTrue(GameStructures.KINDS.keySet().containsAll(GameStructures.UNDERGROUND));
+        assertTrue(GameStructures.KINDS.keySet().containsAll(GameStructures.SEA));
+        assertTrue(GameStructures.FEATURES.containsAll(GameStructures.GROUND.keySet()));
+        for (String family : GameStructures.ALIASES.keySet()) {
+            assertTrue(GameStructures.KINDS.values().stream().anyMatch(k -> k[0].equals(family)), family);
+        }
+    }
+
+    @Test
     void numbersContinueAfterExistingFiles(@TempDir Path dir) throws Exception {
         assertEquals(1, GameStructures.nextNumber(dir, "Iglu"));
         Files.writeString(dir.resolve("iglu_1.nbt"), "x");

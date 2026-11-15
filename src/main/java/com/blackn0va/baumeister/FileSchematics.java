@@ -173,7 +173,8 @@ final class FileSchematics implements ModuleLibrary {
             next.put(name, new Item(e, f));
         }
         items = Map.copyOf(next);
-        catalog = new SchematicCatalog(next.values().stream().map(Item::entry).toList(), GameStructures.ALIASES);
+        catalog = new SchematicCatalog(next.values().stream().map(Item::entry).toList(), GameStructures.ALIASES,
+                Map.of(GameStructures.TAG, GameStructures.SOURCE));
         cache.clear();
         int skipped = bad;
         int locked = barred;

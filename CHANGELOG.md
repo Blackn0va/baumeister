@@ -14,7 +14,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   speichert sie als Schematic – danach baut der Baumeister sie Block für Block wie jede Vorlage („bau mir einen
   Wüstentempel“). Dazu Ozeanmonument, Waldanwesen, Endportal-Festung, verlassene Mine, warme Ozeanruine und
   gestrandetes Schiffswrack – 25 Arten. Die offiziellen Namen gehen auch: „Sumpfhütte“, „Endsiedlung“, „Antike
-  Stätte“, „eine Prüfungskammer“. Die Dateien entstehen auf dem Server und liegen nicht im Repo. Solche Bauwerke gehen den
+  Stätte“, „eine Prüfungskammer“. Dazu 13 Naturgebilde des Spiels: Wüstenbrunnen, Amethystgeode, Eisstachel,
+  Riesenfichte, Riesentropenbaum, Schwarzeiche, Kirschbaum, Mangrove, Blasseiche, Azaleenbaum, große Eiche und rote
+  und braune Riesenpilze. Die Dateien entstehen auf dem Server und liegen nicht im Repo. Solche Bauwerke gehen den
   zusammengesetzten Vorlagen vor: „ein Wiesendorf“ ist jetzt das echte Dorf, „ein Wüstentempel“ die Pyramide (vorher
   das Straßendorf bzw. das Tempelhaus aus dem Wüstendorf); „ein Wüstendorf mit 8 Häusern“ bleibt das Straßendorf.
 - **Mehr Bauten aus dem Spiel ohne KI:** 6 Schiffswracks, 2 Segelschiffe, 8 Fossilien, 14 Netherfossilien („bau mir

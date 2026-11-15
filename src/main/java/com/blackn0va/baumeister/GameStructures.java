@@ -46,7 +46,8 @@ import org.bukkit.util.BlockVector;
  * mit Rückgängig, Rechteprüfung und Lag-Wächter. Die Dateien entstehen auf dem Server und kommen nie ins Repo.
  *
  * Gemessen 2026-11-15: Auf Spigot 1.21.11 scheiterte mansion („Failed to place structure“), auf Paper 26.2 (dev01)
- * greifen alle 25 Arten hier, je 3× erzeugt (75/75) – das Ozeanmonument nur in der Tiefsee-Welt (SEA_WORLD).
+ * greifen alle 38 Arten hier, je 3× erzeugt (114/114) – das Ozeanmonument nur in der Tiefsee-Welt (SEA_WORLD),
+ * Wüstenbrunnen und Eisstachel nur auf ihrem Untergrund (GROUND).
  *
  * Threads: Server-Thread; Vorladen über ChunkPrefetch, nur der Blockvergleich läuft auf ChunkSnapshots außerhalb.
  * Fehler: Meldung an den Absender und ins Log, nichts halb Gespeichertes (erst .nbt, dann die index-Zeile).
@@ -65,6 +66,8 @@ final class GameStructures {
     static final Set<String> SEA = Set.of("monument");
     /** Quellenspalte der index.tsv; daran erkennt der Auftragsweg ein Bauwerk des Spiels (preferred). */
     static final String SOURCE = "Minecraft, auf diesem Server erzeugt";
+    /** Stichwort der Katalogsuche für genau diese Herkunft: /bm katalog spiel. */
+    static final String TAG = "spiel";
     /**
      * Obergrenze des erfassten Quaders. Vorher 1 Mio. – die antike Stadt (184×31×213 = 1,21 Mio., gemessen 2026-11-15)
      * fiel heraus, obwohl der Großteil Luft ist. Ob der Baumeister sie baut, entscheidet beim Bau schematics.max-blöcke
@@ -86,7 +89,19 @@ final class GameStructures {
      * Arten, die im Spiel tief im Gestein liegen. Oben auf den Boden gesetzt (wie bis 2026-11-15) standen
      * Prüfungskammern und antike Stadt frei in der Luft – ohne die Gänge, die das Gestein im Original ausspart.
      */
-    static final Set<String> UNDERGROUND = Set.of("ancient_city", "trial_chambers", "stronghold", "mineshaft");
+    static final Set<String> UNDERGROUND = Set.of("ancient_city", "trial_chambers", "stronghold", "mineshaft",
+            "amethyst_geode");
+    /**
+     * Untergrund, den ein Merkmal unter seinem Startpunkt verlangt. Auf Gras scheiterten Wüstenbrunnen (Sand) und
+     * Eisstachel (Schneeblock) mit „Failed to place feature“ (gemessen 2026-11-15, je 2/2); der eine Block landet als
+     * Teil des Gebildes in der Vorlage.
+     */
+    static final Map<String, Material> GROUND = Map.of("desert_well", Material.SAND, "ice_spike",
+            Material.SNOW_BLOCK);
+    /** Arten, die „place feature“ setzt; Registry.STRUCTURE kennt sie nicht. */
+    static final Set<String> FEATURES = Set.of("desert_well", "amethyst_geode", "ice_spike", "fancy_oak",
+            "mega_spruce", "mega_jungle_tree", "dark_oak", "cherry", "mangrove", "pale_oak", "azalea_tree",
+            "huge_red_mushroom", "huge_brown_mushroom");
     /** Tiefe für diese Arten: 83 Blöcke Stein darüber, 44 darunter bis zum Grundgestein. */
     static final int UNDERGROUND_Y = -20;
     /** Vorladen um den Startpunkt: antike Stadt und Prüfungskammern reichen gut 100 Blöcke weit. */
@@ -126,6 +141,21 @@ final class GameStructures {
         put("mineshaft", "Verlassene Mine", "Stollen mit Schienen und Stützen");
         put("ocean_ruin_warm", "Warme Ozeanruine", "Sandsteinruine aus warmem Meer");
         put("shipwreck_beached", "Gestrandetes Schiffswrack", "Wrack am Strand");
+        // Naturgebilde (FEATURES, 2026-11-15): kein Bauwerk mit Bauwerk-ID, sondern ein Merkmal der Weltgenerierung –
+        // dasselbe Erfassen, nur „place feature“ statt „place structure“.
+        put("desert_well", "Wüstenbrunnen", "Sandsteinbrunnen mit Wasser");
+        put("amethyst_geode", "Amethystgeode", "Kugel aus Amethyst, Calcit und Basalt");
+        put("ice_spike", "Eisstachel", "Turm aus Packeis");
+        put("fancy_oak", "Große Eiche", "verzweigte Eiche");
+        put("mega_spruce", "Riesenfichte", "Fichte mit 2×2-Stamm");
+        put("mega_jungle_tree", "Riesentropenbaum", "Tropenbaum mit 2×2-Stamm und Ranken");
+        put("dark_oak", "Schwarzeiche", "Schwarzeiche mit 2×2-Stamm");
+        put("cherry", "Kirschbaum", "Kirschbaum mit rosa Blüten");
+        put("mangrove", "Mangrove", "Mangrove mit Luftwurzeln");
+        put("pale_oak", "Blasseiche", "Blasseiche mit Moosbart");
+        put("azalea_tree", "Azaleenbaum", "Azalee mit Blüten");
+        put("huge_red_mushroom", "Roter Riesenpilz", "roter Pilz in Baumgröße");
+        put("huge_brown_mushroom", "Brauner Riesenpilz", "brauner Pilz in Baumgröße");
     }
 
     /**
@@ -202,8 +232,9 @@ final class GameStructures {
             Texts.info(sender, "Ich erzeuge gerade schon ein Bauwerk – einen Moment.");
             return;
         }
-        Structure structure = Registry.STRUCTURE.get(NamespacedKey.minecraft(id));
-        if (structure == null) {
+        boolean feature = FEATURES.contains(id);
+        Structure structure = feature ? null : Registry.STRUCTURE.get(NamespacedKey.minecraft(id));
+        if (!feature && structure == null) {
             Texts.info(sender, "Dieses Bauwerk gibt es in dieser Minecraft-Fassung nicht: " + id);
             return;
         }
@@ -248,8 +279,13 @@ final class GameStructures {
         }
         ChunkPrefetch.ensure(ChunkPrefetch.of(plugin, w), keys, 8, p -> {
             int y = UNDERGROUND.contains(id) ? UNDERGROUND_Y : w.getHighestBlockYAt(x, z) + 1;
+            Material ground = GROUND.get(id);
+            if (ground != null) {
+                w.getBlockAt(x, y - 1, z).setType(ground, false);
+            }
             boolean placed = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), String.format(Locale.ROOT,
-                    "execute in %s run place structure minecraft:%s %d %d %d", w.getKey(), id, x, y, z));
+                    "execute in %s run place %s minecraft:%s %d %d %d", w.getKey(),
+                    FEATURES.contains(id) ? "feature" : "structure", id, x, y, z));
             // Nach 5 Ticks: Jigsaw-Teile (Dorf, Bastion) setzt der Befehl sofort, Nachbar-Updates sind dann durch.
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 List<ChunkSnapshot> snaps = new ArrayList<>();

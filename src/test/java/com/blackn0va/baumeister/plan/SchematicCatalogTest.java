@@ -71,6 +71,24 @@ class SchematicCatalogTest {
         assertFalse(c.families("tuer").isEmpty(), "Suche ohne Umlaut findet Tür"); // umlaut-ok
     }
 
+    /** Stichwort (2026-11-15): trifft genau eine Herkunft, auch wenn das Wort in fremden Herkunftsspalten steckt. */
+    @Test
+    void tagListsExactlyOneSourceEvenIfTheWordAppearsElsewhere() {
+        List<SchematicCatalog.Entry> entries = List.of(
+                SchematicCatalog.entry("iglu_1", "Iglu, Variante 1", "", "Minecraft, auf diesem Server erzeugt"),
+                SchematicCatalog.entry("taktgeber_1", "Taktgeber, Variante 1", "",
+                        "Technik Wiki (de.minecraft.wiki), Redstone-Welt 1.21a, CC BY-NC-SA 3.0"),
+                SchematicCatalog.entry("glockenspiel_1", "Glockenspiel, Variante 1", "", "Eigenbau"));
+        SchematicCatalog c = new SchematicCatalog(entries, java.util.Map.of(),
+                java.util.Map.of("spiel", "Minecraft, auf diesem Server erzeugt"));
+        assertEquals(List.of(java.util.Map.entry("Iglu", 1)), c.families("spiel"),
+                "Stichwort: nur die genaue Herkunft, nicht Glockenspiel");
+        assertEquals(List.of(java.util.Map.entry("Iglu", 1)), c.families("Spiel"));
+        assertEquals(2, c.families("minecraft").size(), "freie Suche trifft auch die Technik-Wiki-Herkunft");
+        assertEquals(List.of(java.util.Map.entry("Glockenspiel", 1)), new SchematicCatalog(entries).families("spiel"),
+                "ohne Stichwort bleibt es eine Namenssuche");
+    }
+
     /** Zweitnamen (2026-11-15): offizielle Namen und Einzahl treffen die Familie, der eigene Name geht vor. */
     @Test
     void aliasesFindTheFamilyButNeverShadowARealOne() {
@@ -92,5 +110,7 @@ class SchematicCatalogTest {
         assertEquals(2, c.variants("Sumpfhütte").size());
         assertTrue(c.hint("ein Garten mit einer Sumpfhütte", 8).contains("hexenhuette_1"));
         assertEquals(2, c.families("").size(), "Zweitnamen zählen nicht als eigene Familie");
+        assertEquals(List.of(java.util.Map.entry("Hexenhütte", 2)), c.families("spiel"), "Suche nach Herkunft");
+        assertEquals(List.of(java.util.Map.entry("Taktgeber", 1)), c.families("wiki"));
     }
 }

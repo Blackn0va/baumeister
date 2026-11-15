@@ -46,6 +46,8 @@ public final class SchematicCatalog {
     private final Map<String, List<Entry>> families = new LinkedHashMap<>();
     /** Wörter, die eine Familie treffen: der eigene Name und Zweitnamen (normalisiert) → Familie (normalisiert). */
     private final Map<String, String> keys = new LinkedHashMap<>();
+    /** Stichwort (normalisiert) → genaue Herkunft; die Suche nach dem Stichwort listet genau diese Familien. */
+    private final Map<String, String> tags = new LinkedHashMap<>();
 
     public SchematicCatalog(List<Entry> entries) {
         this(entries, Map.of());
@@ -56,6 +58,16 @@ public final class SchematicCatalog {
      * selbst eine Familie ist oder schon einer anderen gehört, zählt nicht – der eigene Name geht immer vor.
      */
     public SchematicCatalog(List<Entry> entries, Map<String, List<String>> aliases) {
+        this(entries, aliases, Map.of());
+    }
+
+    /**
+     * Dazu Stichwörter für die Katalogsuche, die genau eine Herkunft treffen („spiel“ → Bauwerke des Spiels). Die freie
+     * Suche in der Herkunftsspalte reicht dafür nicht: „minecraft“ steckt auch in „Technik Wiki (de.minecraft.wiki)“
+     * und listete alle 804 Technik-Wiki-Schematics mit (gemessen 2026-11-15 an den index.tsv der Paper-Kopie).
+     */
+    public SchematicCatalog(List<Entry> entries, Map<String, List<String>> aliases, Map<String, String> tags) {
+        tags.forEach((word, source) -> this.tags.put(RequestHints.normalize(word), source));
         Map<String, Entry> m = new LinkedHashMap<>();
         for (Entry e : entries) {
             m.putIfAbsent(e.name(), e);
@@ -94,14 +106,35 @@ public final class SchematicCatalog {
         return byName.size();
     }
 
-    /** Familien mit Anzahl, gefiltert nach einem Suchwort (normalisiert, Teilwort), alphabetisch. */
+    /** Familien mit Anzahl; Suchwort in Name, Zweitname oder Herkunft (normalisiert, Teilwort), alphabetisch. */
     public List<Map.Entry<String, Integer>> families(String filter) {
         String f = RequestHints.normalize(filter == null ? "" : filter);
         List<Map.Entry<String, Integer>> out = new ArrayList<>();
         java.util.Set<String> hit = new java.util.LinkedHashSet<>();
+        String tagged = tags.get(f);
+        if (tagged != null) {
+            families.forEach((key, l) -> {
+                if (tagged.equals(l.getFirst().source())) {
+                    hit.add(key);
+                }
+            });
+            for (String family : hit) {
+                List<Entry> l = families.get(family);
+                out.add(Map.entry(l.getFirst().family(), l.size()));
+            }
+            out.sort(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER));
+            return out;
+        }
         keys.forEach((key, family) -> {
             if (f.isEmpty() || key.contains(f)) {
                 hit.add(family);
+            }
+        });
+        // Auch nach Herkunft (2026-11-15): „technik“ listet die Technik-Wiki-Sammlung – vorher fand man eine Familie
+        // nur, wenn man ihren Namen schon kannte. Für die Bauwerke des Spiels gibt es das Stichwort (tags) „spiel“.
+        families.forEach((key, l) -> {
+            if (!f.isEmpty() && RequestHints.normalize(l.getFirst().source()).contains(f)) {
+                hit.add(key);
             }
         });
         for (String family : hit) {

@@ -453,6 +453,8 @@ public final class HelpBook {
                         Part.run("Katalog öffnen", "/bm katalog"),
                         Part.type("Suchen …", "/bm katalog "),
                         Part.run("Liste im Chat", "/bm schematics"),
+                        // Bauwerke und Naturgebilde des Spiels (/bm spielbauwerk, 2026-11-15) über die Herkunft.
+                        Part.run("Aus dem Spiel", "/bm katalog spiel"),
                         Part.text("\n"),
                         Part.text("Klick im Katalog\n"),
                         Part.text("baut vor dir.\n"),
