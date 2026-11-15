@@ -151,7 +151,7 @@ class GameStructuresTest {
 
     @Test
     void flatWorldHasItsSurfaceAt63WithStoneBelow() {
-        JsonObject o = JsonParser.parseString(GameStructures.FLAT_SETTINGS).getAsJsonObject();
+        JsonObject o = JsonParser.parseString(GameStructures.FLAT_SETTINGS.formatted("minecraft:plains")).getAsJsonObject();
         int height = 0;
         for (var layer : o.getAsJsonArray("layers")) {
             height += layer.getAsJsonObject().get("height").getAsInt();

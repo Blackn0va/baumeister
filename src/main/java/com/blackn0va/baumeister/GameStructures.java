@@ -45,9 +45,8 @@ import org.bukkit.util.BlockVector;
  * .nbt unter schematics/spiel/ samt index.tsv. Danach baut der Baumeister es wie jede Schematic: Block für Block,
  * mit Rückgängig, Rechteprüfung und Lag-Wächter. Die Dateien entstehen auf dem Server und kommen nie ins Repo.
  *
- * Gemessen 2026-11-15 (Spigot 1.21.11, Flachwelt): place structure greift für desert_pyramid, swamp_hut,
- * pillager_outpost, bastion_remnant, ancient_city, trial_chambers, village_plains, jungle_pyramid, igloo; mansion
- * scheiterte („Failed to place structure“).
+ * Gemessen 2026-11-15: Auf Spigot 1.21.11 scheiterte mansion („Failed to place structure“), auf Paper 26.2 (dev01)
+ * greifen alle 25 Arten hier, je 3× erzeugt (75/75) – das Ozeanmonument nur in der Tiefsee-Welt (SEA_WORLD).
  *
  * Threads: Server-Thread; Vorladen über ChunkPrefetch, nur der Blockvergleich läuft auf ChunkSnapshots außerhalb.
  * Fehler: Meldung an den Absender und ins Log, nichts halb Gespeichertes (erst .nbt, dann die index-Zeile).
@@ -57,6 +56,13 @@ final class GameStructures {
     private static final Logger LOG = Logger.getLogger("Baumeister");
 
     static final String WORLD = "baumeister_vorlagen";
+    /**
+     * Zweite Vorlagenwelt mit Tiefsee-Biom: Das Ozeanmonument prüft beim Setzen selbst, ob ringsum Ozean ist, und
+     * scheiterte in der Wiesen-Flachwelt mit „Failed to place structure“ (gemessen 2026-11-15, Paper 26.2). Die anderen
+     * Arten prüfen das Biom bei /place structure nicht.
+     */
+    static final String SEA_WORLD = "baumeister_vorlagen_meer";
+    static final Set<String> SEA = Set.of("monument");
     /** Quellenspalte der index.tsv; daran erkennt der Auftragsweg ein Bauwerk des Spiels (preferred). */
     static final String SOURCE = "Minecraft, auf diesem Server erzeugt";
     /**
@@ -72,7 +78,7 @@ final class GameStructures {
      * Boden über Luft war schlechter: Das Spiel füllt Fundamente bis zum nächsten festen Block auf, der Tempel wurde
      * 21×137×21 (gemessen). Unberührtes Gestein nimmt keepMask wieder aus der Vorlage.
      */
-    static final String FLAT_SETTINGS = "{\"biome\":\"minecraft:plains\",\"lakes\":false,\"features\":false,"
+    static final String FLAT_SETTINGS = "{\"biome\":\"%s\",\"lakes\":false,\"features\":false,"
             + "\"layers\":[{\"block\":\"minecraft:bedrock\",\"height\":1},{\"block\":\"minecraft:stone\","
             + "\"height\":123},{\"block\":\"minecraft:dirt\",\"height\":3},{\"block\":\"minecraft:grass_block\","
             + "\"height\":1}],\"structure_overrides\":[]}";
@@ -80,7 +86,7 @@ final class GameStructures {
      * Arten, die im Spiel tief im Gestein liegen. Oben auf den Boden gesetzt (wie bis 2026-11-15) standen
      * Prüfungskammern und antike Stadt frei in der Luft – ohne die Gänge, die das Gestein im Original ausspart.
      */
-    static final Set<String> UNDERGROUND = Set.of("ancient_city", "trial_chambers");
+    static final Set<String> UNDERGROUND = Set.of("ancient_city", "trial_chambers", "stronghold", "mineshaft");
     /** Tiefe für diese Arten: 83 Blöcke Stein darüber, 44 darunter bis zum Grundgestein. */
     static final int UNDERGROUND_Y = -20;
     /** Vorladen um den Startpunkt: antike Stadt und Prüfungskammern reichen gut 100 Blöcke weit. */
@@ -111,6 +117,15 @@ final class GameStructures {
         put("shipwreck", "Schiffswrack", "gestrandetes Schiff");
         put("ocean_ruin_cold", "Ozeanruine", "Steinziegelruine aus dem Meer");
         put("end_city", "Endstadt", "Türme der Endstadt");
+        // Neue Arten nur hinten anhängen: Der Platz in der Vorlagenwelt hängt an der Reihenfolge (slot in next).
+        // Familiennamen mit zwei Wörtern, wo ein Wort allein schon etwas anderes heißt („Festung“ baut sonst das LLM
+        // als Burg, „Mine“ wäre jeder Schacht) – der Katalog trifft nur den ganzen Namen.
+        put("monument", "Ozeanmonument", "Unterwassertempel aus Prismarin");
+        put("mansion", "Waldanwesen", "dreistöckige Villa der Illager");
+        put("stronghold", "Endportal-Festung", "Gänge, Bibliothek und Endportal");
+        put("mineshaft", "Verlassene Mine", "Stollen mit Schienen und Stützen");
+        put("ocean_ruin_warm", "Warme Ozeanruine", "Sandsteinruine aus warmem Meer");
+        put("shipwreck_beached", "Gestrandetes Schiffswrack", "Wrack am Strand");
     }
 
     private static void put(String id, String family, String description) {
@@ -180,7 +195,7 @@ final class GameStructures {
             Texts.info(sender, "Dieses Bauwerk gibt es in dieser Minecraft-Fassung nicht: " + id);
             return;
         }
-        World w = world();
+        World w = SEA.contains(id) ? world(SEA_WORLD, "minecraft:deep_ocean") : world(WORLD, "minecraft:plains");
         if (w == null) {
             Texts.info(sender, "Die Vorlagenwelt ließ sich nicht anlegen – siehe Serverlog.");
             return;
@@ -475,16 +490,16 @@ final class GameStructures {
     }
 
     /** Flache Vorlagenwelt ohne eigene Bauwerke und ohne Monster; null, wenn sie sich nicht anlegen lässt. */
-    private World world() {
-        World w = Bukkit.getWorld(WORLD);
+    private World world(String name, String biome) {
+        World w = Bukkit.getWorld(name);
         if (w != null) {
             return w;
         }
-        w = new WorldCreator(WORLD).type(WorldType.FLAT).generatorSettings(FLAT_SETTINGS).generateStructures(false)
-                .createWorld();
+        w = new WorldCreator(name).type(WorldType.FLAT).generatorSettings(FLAT_SETTINGS.formatted(biome))
+                .generateStructures(false).createWorld();
         if (w != null) {
             w.setSpawnFlags(false, false);
-            LOG.info(() -> "spielbauwerk | welt_angelegt | welt=" + WORLD);
+            LOG.info(() -> "spielbauwerk | welt_angelegt | welt=" + name + " biom=" + biome);
         }
         return w;
     }
