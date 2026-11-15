@@ -54,6 +54,9 @@ public final class QuickOrders {
     public static Optional<String> match(String prompt, ModuleLibrary modules, int maxExtent) {
         Optional<String> special = bunker(prompt, maxExtent);
         if (special.isEmpty()) {
+            special = lobby(prompt, maxExtent);
+        }
+        if (special.isEmpty()) {
             special = pool(prompt, maxExtent);
         }
         if (special.isEmpty()) {
@@ -179,6 +182,15 @@ public final class QuickOrders {
     static Optional<String> bunker(String prompt, int maxExtent) {
         return Bunker.parse(RequestHints.tokens(RequestHints.normalize(prompt)), FILLER)
                 .flatMap(o -> Bunker.plan(o, maxExtent));
+    }
+
+    /**
+     * Lobby und Portalhalle (Lobby): Eingang für einen frischen Server, ohne LLM. Nach sizes, damit „60 mal 60“ als
+     * „60x60“ ankommt – sonst blieben „60“, „mal“, „60“ als zwei Zahlen stehen und der Auftrag ginge ans LLM.
+     */
+    static Optional<String> lobby(String prompt, int maxExtent) {
+        return Lobby.parse(RequestHints.tokens(RequestHints.sizes(RequestHints.normalize(prompt))), FILLER)
+                .flatMap(o -> Lobby.plan(o, maxExtent));
     }
 
     /** Pool (Pool): Becken mit Wasser auf Bodenhöhe, Terrasse, Leiter, Licht – ohne LLM. */

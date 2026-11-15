@@ -172,7 +172,11 @@ nicht passt, geht zur Nachbesserung oder wird mit Maßen abgesagt; fremde Plots 
 
 **Schnellaufträge ohne LLM:** „Hochhaus mit 20 Stockwerken“, ein Maschinenname, „bau mir eine fette Maschine“,
 „bau mir hier Fort Knox“ (Golddepot 32 × 37 m mit Tresor über zwei Ebenen unter der Erde), „bau einen (großen) Bunker“
-(1–3 Ebenen unter einem getarnten Eingang), „bau einen (kleinen/großen) Pool“ (Becken 5×7 bis 11×17, Wasser auf
+(1–3 Ebenen unter einem getarnten Eingang), „bau mir eine (kleine/große/riesige) Lobby“ (Spawn-Lobby 33 × 33 bis
+81 × 81 oder „Lobby 60x60“: Glaskuppel über dem Platz in der Mitte, Lichtringe im Boden, Portalrahmen aus Obsidian
+an Seiten- und Rückwand, „ohne Portale“ oder „mit 7 Portalen“ geht auch), „bau eine Portalhalle mit 6 Portalen“
+(lange Halle mit rotem Teppich und Oberlicht; die Rahmen sind nicht entzündet, ein Feuerzeug macht ein
+Netherportal daraus), „bau einen (kleinen/großen) Pool“ (Becken 5×7 bis 11×17, Wasser auf
 Bodenhöhe, Terrasse, Leiter, Licht im Boden), „bau einen Taschenrechner“ (2-Bit-Addierer)
 (Maschinenhalle mit bis zu 6 Anlagen, Testserver: 1 726 Blöcke in 91 s), „bau mir einen Prozessor aus Redstone“
 (Prozessor-Werkstatt: Takt, Zähler, 4-Bit-Register, D-Speicher, ALU-Scheibe, Addierer, Vergleicher – jeder Baustein

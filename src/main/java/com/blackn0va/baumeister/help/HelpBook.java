@@ -435,6 +435,9 @@ public final class HelpBook {
                     Part.text("Sofort, ohne KI:\n"),
                     Part.run("Pyramide", "/bm bau eine Pyramide"),
                     Part.run("Burg", "/bm bau eine Burg"),
+                    // Lobby und Portalhalle (Lobby, 2026-11-15): Eingang für einen frischen Server.
+                    Part.run("Lobby", "/bm bau eine Lobby"),
+                    Part.run("Portalhalle", "/bm bau eine Portalhalle"),
                     Part.run("Mauer", "/bm bau eine Mauer"),
                     Part.run("Brücke", "/bm bau eine Brücke"),
                     Part.run("Garten", "/bm bau einen Garten"),

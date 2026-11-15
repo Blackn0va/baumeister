@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.blackn0va.baumeister.companion.CompanionIntent;
 import com.blackn0va.baumeister.companion.CompanionReply;
 import com.blackn0va.baumeister.companion.CompanionRules;
+import com.blackn0va.baumeister.plan.ModuleLibrary;
 import com.blackn0va.baumeister.plan.QuickOrders;
 
 import java.util.HashSet;
@@ -53,10 +54,12 @@ class HelpBookControlsTest {
     @Test
     void quickBuildButtonsHitTheFastPathWithoutTheLlm() {
         List<String> quick = chapterCommands("Schnellbau").stream().filter(c -> c.startsWith("/bm bau ein")).toList();
-        assertEquals(7, quick.size(), quick.toString());
+        assertEquals(9, quick.size(), quick.toString());
         for (String c : quick) {
             String prompt = c.substring("/bm bau ".length());
-            assertTrue(QuickOrders.match(prompt, Set.of(), 64).isPresent(), "ginge ans LLM: " + prompt);
+            // Dieselbe Überladung wie BuildService und ClientPlanner: Vorher prüfte der Test die mit einer Namensmenge,
+            // die Sonderaufträge (Bunker, Pool, Lobby) gar nicht kennt – ein Lobby-Knopf wäre dort rot, im Spiel grün.
+            assertTrue(QuickOrders.match(prompt, ModuleLibrary.EMPTY, 64).isPresent(), "ginge ans LLM: " + prompt);
         }
     }
 

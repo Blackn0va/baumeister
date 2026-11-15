@@ -1345,8 +1345,10 @@ final class BuildService {
         activeGuides = FarmGuide.inPlan(plannedJson);
         guidedJob = activeGuides.isEmpty() ? null : active;
         guideTo = r.sender();
+        // „platz_frei“ statt vorher „verschoben“: Der Wert ist free (Bauplatz ohne Bestand), kein Verschieben – beim
+        // Lobby-Lauf 2026-11-15 las sich „verschoben=true“ wie ein ausgewichener Bau.
         LOG.info(() -> String.format("bau | start | besitzer=%s aktionen=%d blöcke=%d welt=%s x=%d y=%d z=%d "
-                + "verschoben=%s", r.ownerName(), build.actions().size(), blocks, world.getName(),
+                + "platz_frei=%s", r.ownerName(), build.actions().size(), blocks, world.getName(),
                 r.feet().getBlockX(), by, r.feet().getBlockZ(), free));
         active.start();
     }
