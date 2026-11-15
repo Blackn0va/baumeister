@@ -1213,6 +1213,18 @@ final class BuildJob {
 
     UndoRecord undoRecord() {
         return new UndoRecord(ownerId, ownerName, center.getWorld(), new ArrayList<>(originals.entrySet()),
-                Instant.now(), null, Map.copyOf(placedTypes));
+                Instant.now(), null, frozenCopy(placedTypes));
+    }
+
+    /**
+     * Unveränderliche Kopie einer Map, deren Schlüssel Blöcke (oder andere Positionen) sind. Vorher Map.copyOf: Das legt
+     * eine Tabelle mit linearer Sondierung an, und Paper-Blöcke hashen schwach (Vec3i: (y + z·31)·31 + x) – benachbarte
+     * Stellen landen in denselben Fächern, die Sondierung wird quadratisch. Gemessen 2026-11-15: 45 000 Einträge 1 141 ms
+     * statt 9 ms (CopyOfProbe); auf dev01 hing nach dem Bau einer Bastionsruine (45 804 Blöcke) der Server-Thread über
+     * 35 s in undoRecord, der Watchdog schlug an, der Spieler flog. HashMap verteilt die Bits und baut volle Fächer zu
+     * Bäumen um. Wer hier wieder Map.copyOf oder Map.of nimmt, friert den Server nach jedem großen Bau ein.
+     */
+    static <K, V> Map<K, V> frozenCopy(Map<K, V> m) {
+        return Collections.unmodifiableMap(new HashMap<>(m));
     }
 }
