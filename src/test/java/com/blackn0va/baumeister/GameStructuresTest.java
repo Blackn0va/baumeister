@@ -162,6 +162,20 @@ class GameStructuresTest {
     }
 
     @Test
+    void onlyGameStructuresGoBeforeTheTemplateCatalog() {
+        String[] game = GameStructures.indexLine("wiesendorf_1.nbt", "wiesendorf_1", "Wiesendorf", 1, "ganzes Dorf")
+                .strip().split("\t");
+        SchematicCatalog.Entry village = SchematicCatalog.entry(game[1], game[2], game[3], game[4]);
+        SchematicCatalog.Entry clock = SchematicCatalog.entry("taktgeber_1", "Taktgeber, Variante 1", "Uhr",
+                "Technik-Wiki");
+        SchematicCatalog catalog = new SchematicCatalog(List.of(village, clock));
+        assertTrue(GameStructures.preferred(catalog.match("bau mir ein Wiesendorf").orElseThrow()));
+        assertFalse(GameStructures.preferred(catalog.match("bau mir einen Taktgeber").orElseThrow()));
+        // Zusätze treffen keine Familie – „mit 8 Häusern“ bleibt Sache des TemplateCatalog.
+        assertTrue(catalog.match("bau mir ein Wiesendorf mit 8 Häusern").isEmpty());
+    }
+
+    @Test
     void numbersContinueAfterExistingFiles(@TempDir Path dir) throws Exception {
         assertEquals(1, GameStructures.nextNumber(dir, "Iglu"));
         Files.writeString(dir.resolve("iglu_1.nbt"), "x");

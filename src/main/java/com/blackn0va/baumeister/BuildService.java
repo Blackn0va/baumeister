@@ -643,10 +643,15 @@ final class BuildService {
         if (quick.isPresent() && acceptPlan(r, prompt, quick.get())) {
             return;
         }
+        // Bauwerk-Dateien (FileSchematics, 2026-11-08): „bau mir einen Taktgeber“ / „… Variante 3“ ohne LLM. Ein Bauwerk
+        // des Spiels (/bm spielbauwerk) geht dem TemplateCatalog vor – Begründung bei GameStructures.preferred.
+        Optional<com.blackn0va.baumeister.plan.SchematicCatalog.Match> file = fileSchematics == null
+                ? Optional.empty() : fileSchematics.catalog().match(prompt);
+        boolean gameFirst = file.isPresent() && GameStructures.preferred(file.get());
         // Zwischenschicht (TemplateCatalog, Wunsch 2026-11-04): reine
         // Vorlagen-Aufträge („ein Iglu“, „ein Wüstendorf mit 8 Häusern“) ohne LLM, in Millisekunden.
-        Optional<TemplateCatalog.Match> tpl = TemplateCatalog.match(prompt, templates, biomeAt(r.feet()),
-                settings.maxExtent(), System.nanoTime(), true);
+        Optional<TemplateCatalog.Match> tpl = gameFirst ? Optional.empty() : TemplateCatalog.match(prompt, templates,
+                biomeAt(r.feet()), settings.maxExtent(), System.nanoTime(), true);
         if (tpl.isPresent()) {
             String what = tpl.get().what();
             LOG.info(() -> "bau | vorlage | weg=direkt " + what);
@@ -654,9 +659,6 @@ final class BuildService {
                 return;
             }
         }
-        // Bauwerk-Dateien (FileSchematics, 2026-11-08): „bau mir einen Taktgeber“ / „… Variante 3“ ohne LLM.
-        Optional<com.blackn0va.baumeister.plan.SchematicCatalog.Match> file = fileSchematics == null
-                ? Optional.empty() : fileSchematics.catalog().match(prompt);
         if (file.isPresent()) {
             com.blackn0va.baumeister.plan.SchematicCatalog.Match fm = file.get();
             LOG.info(() -> "bau | schematic | weg=direkt name=" + fm.entry().name());

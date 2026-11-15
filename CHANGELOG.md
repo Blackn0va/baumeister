@@ -12,7 +12,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 - **Ganze Bauwerke des Spiels als Vorlagen:** `/bm spielbauwerk <art>` lässt den Server Wüstentempel, Hexenhütten,
   Außenposten, ganze Dörfer, Bastionen, Prüfungskammern oder die antike Stadt in einer eigenen Flachwelt erzeugen und
   speichert sie als Schematic – danach baut der Baumeister sie Block für Block wie jede Vorlage („bau mir einen
-  Wüstentempel“). Die Dateien entstehen auf dem Server und liegen nicht im Repo.
+  Wüstentempel“). Die Dateien entstehen auf dem Server und liegen nicht im Repo. Solche Bauwerke gehen den
+  zusammengesetzten Vorlagen vor: „ein Wiesendorf“ ist jetzt das echte Dorf, „ein Wüstentempel“ die Pyramide (vorher
+  das Straßendorf bzw. das Tempelhaus aus dem Wüstendorf); „ein Wüstendorf mit 8 Häusern“ bleibt das Straßendorf.
 - **Mehr Bauten aus dem Spiel ohne KI:** 6 Schiffswracks, 2 Segelschiffe, 8 Fossilien, 14 Netherfossilien („bau mir
   ein Netherfossil“), 16 große und 32 kleine Unterwasserruinen („eine kleine Ruine“) und ein überwachsener Wachturm –
   die Varianten wechseln von Bau zu Bau. 263 statt 189 Vorlagen.

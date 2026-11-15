@@ -1,5 +1,6 @@
 package com.blackn0va.baumeister;
 
+import com.blackn0va.baumeister.plan.SchematicCatalog;
 import com.blackn0va.baumeister.structure.Nbt;
 import com.blackn0va.baumeister.structure.NbtOut;
 
@@ -56,6 +57,8 @@ final class GameStructures {
     private static final Logger LOG = Logger.getLogger("Baumeister");
 
     static final String WORLD = "baumeister_vorlagen";
+    /** Quellenspalte der index.tsv; daran erkennt der Auftragsweg ein Bauwerk des Spiels (preferred). */
+    static final String SOURCE = "Minecraft, auf diesem Server erzeugt";
     /**
      * Obergrenze des erfassten Quaders. Vorher 1 Mio. – die antike Stadt (184×31×213 = 1,21 Mio., gemessen 2026-11-15)
      * fiel heraus, obwohl der Großteil Luft ist. Ob der Baumeister sie baut, entscheidet beim Bau schematics.max-blöcke
@@ -131,8 +134,7 @@ final class GameStructures {
     /** Zeile für index.tsv (datei, name, anzeige, beschreibung, quelle) – Tabs und Zeilenumbrüche entfernt. */
     static String indexLine(String file, String name, String family, int n, String description) {
         List<String> cols = new ArrayList<>();
-        for (String c : List.of(file, name, family + ", Variante " + n, description,
-                "Minecraft, auf diesem Server erzeugt")) {
+        for (String c : List.of(file, name, family + ", Variante " + n, description, SOURCE)) {
             // Je Feld: Ein Tab in einem Feld verschöbe sonst alle Spalten dahinter (GameStructuresTest).
             cols.add(c.replaceAll("[\\t\\r\\n]+", " "));
         }
@@ -485,6 +487,17 @@ final class GameStructures {
             LOG.info(() -> "spielbauwerk | welt_angelegt | welt=" + WORLD);
         }
         return w;
+    }
+
+    /**
+     * Ein Katalogtreffer auf ein Bauwerk des Spiels geht dem TemplateCatalog vor. Vorher fing der 9 der 19 Familien ab
+     * (gemessen 2026-11-15): „bau mir ein Wiesendorf“ gab das zusammengesetzte Straßendorf, „einen Wüstentempel“ das
+     * Tempelhaus aus dem Wüstendorf statt der Pyramide, „die antike Stadt“ ein Einzelstück; selbst „… 2“ ging dorthin,
+     * nur „… Variante 2“ kam durch. Aufträge mit Zusätzen („ein Wüstendorf mit 8 Häusern“) trifft der Katalog nicht –
+     * die bleiben beim TemplateCatalog. Wer das zurückdreht, macht die Spiel-Vorlagen für die meisten Sätze unsichtbar.
+     */
+    static boolean preferred(SchematicCatalog.Match m) {
+        return SOURCE.equals(m.entry().source());
     }
 
     /** Für Tests: alle Dateinamen gültig nach SchematicCatalog.NAME (a-z0-9_, 2–32). */
