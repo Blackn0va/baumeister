@@ -277,6 +277,22 @@ class BaumeisterCommandTest {
         assertEquals(List.of(), traveller("ort", "löschen", ""));
     }
 
+    /**
+     * „/bm grab ein tunnel“ (dev01 2026-11-16): zeigte dreimal nur die Hilfe. Grabsätze gehen jetzt den Grabweg,
+     * alles andere bleibt bei der Hilfe – ein Tippfehler baut nichts.
+     */
+    @Test
+    void aDigSentenceAfterBmIsAnOrderAndAnythingElseStaysHelp() {
+        assertTrue(BaumeisterCommand.digSentence("grab ein tunnel"));
+        assertTrue(BaumeisterCommand.digSentence("grab einen Tunnel nach Norden 40 schnell"));
+        assertTrue(BaumeisterCommand.digSentence("bau mir eine Treppe nach unten"));
+        assertTrue(BaumeisterCommand.digSentence("hör auf mit dem Tunnel"), "stopp");
+        assertTrue(BaumeisterCommand.digSentence("grab einen tunnel 20000 schnell"), "Absage statt Hilfe");
+        assertFalse(BaumeisterCommand.digSentence("hilfe"));
+        assertFalse(BaumeisterCommand.digSentence("statu"));
+        assertFalse(BaumeisterCommand.digSentence("bau mir ein haus"), "Bauaufträge nur mit /bm bau");
+    }
+
     @Test
     void previewAndQueueCompleteForPlayersButNotForTravellersOnly() {
         List<String> preview = player("vorschau", "");

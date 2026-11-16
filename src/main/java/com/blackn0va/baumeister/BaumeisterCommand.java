@@ -361,9 +361,24 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             }
             case "ort" -> place(sender, label, args);
             case "begleiter", "companion" -> companion(sender, args);
-            default -> help(sender, label);
+            default -> {
+                // „/bm grab ein tunnel“ (dev01 2026-11-16, dreimal hintereinander): Ein Satz statt eines Unterbefehls
+                // zeigte nur die Hilfe. Ist es ein Grabauftrag (auch „hör auf mit dem Tunnel“), geht er den Grabweg
+                // wie /bm tunnel – nie ans LLM; alles andere bleibt bei der Hilfe, damit ein Tippfehler nicht baut.
+                String sentence = String.join(" ", args);
+                if (sender instanceof Player p && sender.hasPermission(BUILD) && digSentence(sentence)) {
+                    plugin.service().requestFromPlayer(p, sentence);
+                } else {
+                    help(sender, label);
+                }
+            }
         }
         return true;
+    }
+
+    /** Ein Satz nach /bm, den der Grabweg versteht (Auftrag, „stopp“ oder zu lange Länge mit Absage). */
+    static boolean digSentence(String sentence) {
+        return TunnelOrder.parse(sentence).isPresent() || TunnelOrder.problem(sentence) != TunnelOrder.Problem.NONE;
     }
 
     static boolean companionSub(String typed) {

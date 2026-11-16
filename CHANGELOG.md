@@ -264,6 +264,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   verpuffte, das nächste Stück begann trotzdem – auf dev01 zweimal hintereinander. Jetzt endet der ganze Auftrag, auch
   in der Pause; eigene wartende Aufträge fallen mit weg. „tunnel stopp“ hält ebenso an, und ein neuer Grabauftrag löst
   den laufenden eigenen ab, statt dahinter zu warten.
+- **„/bm grab ein tunnel“ gräbt:** Ein Satz nach `/bm` statt eines Unterbefehls zeigte nur die Hilfe. Grabsätze –
+  auch „/bm hör auf mit dem tunnel“ – gehen jetzt den Weg von `/bm tunnel`; alles andere bleibt bei der Hilfe.
 - **Grabbefehle gehen nicht mehr an die KI:** „/bm tunnel stopp“ landete bei der KI und setzte einen Redstone-Block;
   „/bm tunnel 20000 schnell“ wartete in der Warteschlange und höhlte dann, von der KI als Tunnel gedeutet,
   49 × 43 × 4 Blöcke Fels aus. Jetzt sagt eine zu lange Länge ab (höchstens 10 000), und `/bm tunnel`, `/bm treppe`
