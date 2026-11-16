@@ -45,15 +45,16 @@ class BaumeisterCommandTest {
 
     @Test
     void playersDoNotSeeAdminCommands() {
-        assertEquals(List.of("bau", "stop", "rückgängig", "status", "bildschirm", "bauteile", "schematics", "katalog",
-                "fortschritt", "komm",
+        // tunnel, treppe, brücke, weiterbauen seit 2026-11-16 (Graben und Brücken, Rechte wie bau).
+        assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
+                "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm",
                 "vorschau", "warteschlange", "karte", "begleiter", "helfer"), player(""));
     }
 
     @Test
     void adminsSeeEveryMainName() {
         List<String> all = admin("");
-        assertEquals(45, all.size(), all.toString());  // 45 seit portal und einrichten (2026-11-15)
+        assertEquals(49, all.size(), all.toString());  // 49 seit tunnel, treppe, brücke, weiterbauen (2026-11-16)
         assertTrue(all.containsAll(List.of("portal", "einrichten")));
         assertTrue(all.containsAll(List.of("befehle", "befehlsblock", "selbsttest")));
         assertTrue(all.containsAll(List.of("bauteil", "spawn", "stadt", "stadtwelt", "tempo", "helfer", "logik", "logikbei",
@@ -160,7 +161,8 @@ class BaumeisterCommandTest {
         assertEquals(List.of("aus"), admin("erdbau", "AUTO", "au"));
         assertEquals(List.of(), admin("weltbau", "Bad", ""));
         assertEquals(List.of(), player("weltbau", ""));
-        assertEquals(List.of("weltbau", "weiter"), admin("we"));
+        assertEquals(List.of("weiterbauen", "weltbau", "weiter"), admin("we"));
+        assertEquals(List.of("weiterbauen"), player("we"));
     }
 
     @Test
@@ -175,9 +177,9 @@ class BaumeisterCommandTest {
 
     @Test
     void travelCommandsNeedTheTravelRight() {
-        assertEquals(List.of("bau", "stop", "rückgängig", "status", "bildschirm", "bauteile", "schematics", "katalog",
-                "fortschritt", "komm", "vorschau", "warteschlange", "orte", "karte", "ort", "begleiter", "helfer"),
-                traveller(""));
+        assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
+                "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm", "vorschau", "warteschlange",
+                "orte", "karte", "ort", "begleiter", "helfer"), traveller(""));
         assertEquals(List.of(), player("ort", ""));
         assertEquals(List.of(), player("orte", ""));
     }

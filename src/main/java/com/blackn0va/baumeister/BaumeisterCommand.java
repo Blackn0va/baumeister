@@ -65,6 +65,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
      */
     private static final List<Sub> SUBS = List.of(
             new Sub("bau", false, List.of("baue", "build")),
+            // Graben und Brücken (2026-11-16): wie /bm bau, nur ohne Auftragstext; Rechte wie bau.
+            new Sub("tunnel", false, List.of("stollen")),
+            new Sub("treppe", false, List.of()),
+            new Sub("brücke", false, List.of("bruecke", "steg")), // umlaut-ok: Alias ohne Umlaut-Tastatur
+            new Sub("weiterbauen", false, List.of()),
             new Sub("stop", false, List.of()),
             new Sub("rückgängig", false, List.of("rueckgaengig", "undo")), // umlaut-ok: Alias ohne Umlaut-Tastatur
             new Sub("status", false, List.of()),
@@ -155,6 +160,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     static final String COMPANION = "baumeister.begleiter";
     private static final List<String> BUILD_EXAMPLES = List.of("kleine Kapelle aus Stein", "Holzhaus mit Garten",
             "Turm mit Wendeltreppe");
+    private static final List<String> DIG_WORDS = List.of("schnell", "40", "groß", "klein", "aus der Kiste");
     private static final List<String> PLACE_EXAMPLES = List.of("Hepberg", "Grand Canyon", "Mount Everest",
             "48.82,11.46");
 
@@ -205,6 +211,22 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                 if (!plugin.city().control(sender, "stop", null)) {
                     plugin.service().stop(sender);
                 }
+            }
+            // Wie ein Satz an den Baumeister (TunnelOrder liest Länge, „schnell“, Größe, Richtung):
+            // /bm tunnel 40 schnell.
+            case "tunnel", "stollen", "treppe", "brücke", "bruecke", "steg", "weiterbauen" -> { // umlaut-ok: Alias
+                if (!(sender instanceof Player p)) {
+                    Texts.info(sender, "Von der Konsole: /" + label
+                            + " bauenbei <welt> <x> <y> <z> <n|o|s|w> tunnel 40");
+                    return true;
+                }
+                String head = switch (sub) {
+                    case "treppe" -> "treppe nach oben ";
+                    case "brücke", "bruecke", "steg" -> "brücke "; // umlaut-ok: Alias
+                    case "weiterbauen" -> "bau weiter ";
+                    default -> "tunnel ";
+                };
+                plugin.service().requestFromPlayer(p, (head + rest).strip());
             }
             case "stadt", "dorf", "city" -> city(sender, label, args);
             case "stadtwelt" -> cityWorld(sender);
@@ -1230,6 +1252,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         String last = args[args.length - 1];
         List<String> options = switch (sub.name()) {
             case "bau" -> args.length == 2 ? BUILD_EXAMPLES : List.of();
+            case "tunnel", "brücke", "treppe" -> args.length == 2 ? DIG_WORDS : List.of(); // umlaut-ok: Befehlsname
             case "befehle" -> args.length == 2 ? COMMAND_ANSWERS : List.of();
             case "selbsttest" -> args.length == 2 ? SELF_TEST_PARTS : List.of();
             // Stimmnamen wählt das Buch (Kapitel „Stimme“) – hier ohne Bukkit, damit die Vervollständigung testbar bleibt.

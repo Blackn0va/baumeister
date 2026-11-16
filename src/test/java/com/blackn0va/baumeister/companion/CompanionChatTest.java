@@ -72,6 +72,18 @@ class CompanionChatTest {
         assertEquals(java.util.Optional.of("bau mir einen Turm"), CompanionChat.buildOrder("Kannst du mir einen Turm bauen?"));
     }
 
+    /** Wunsch 2026-11-16: „mit dem Baumeister oder Begleiter einen Tunnel graben“ – Vera reicht es so weiter. */
+    @Test
+    void tunnelsStairsAndBridgesGoToTheBuilderAsSaid() {
+        for (String s : java.util.List.of("grab mit mir einen Tunnel", "lass uns einen Tunnel graben",
+                "bau mir eine Treppe nach oben", "bau eine Brücke übers Meer", "bau die Brücke weiter",
+                "grab schnell einen Tunnel, 40 Blöcke")) {
+            assertEquals(java.util.Optional.of(s.replaceAll("[!.?]+$", "")), CompanionChat.buildOrder("Vera, " + s), s);
+        }
+        // „bau weiter“ allein sagt nicht, was – das Modell (mit dem Gespräch) weiß es besser.
+        assertEquals(java.util.Optional.empty(), CompanionChat.buildOrder("bau weiter"));
+    }
+
     @Test
     void questionsAndTalkStayWithTheModel() {
         for (String s : java.util.List.of("Was könntest du mir bauen?", "Wie baut man eine Farm?", "Baut mir Brot",

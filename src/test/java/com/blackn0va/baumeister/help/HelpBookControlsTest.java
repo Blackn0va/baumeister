@@ -10,6 +10,7 @@ import com.blackn0va.baumeister.companion.CompanionReply;
 import com.blackn0va.baumeister.companion.CompanionRules;
 import com.blackn0va.baumeister.plan.ModuleLibrary;
 import com.blackn0va.baumeister.plan.QuickOrders;
+import com.blackn0va.baumeister.plan.TunnelOrder;
 
 import java.util.HashSet;
 import java.util.List;
@@ -60,6 +61,22 @@ class HelpBookControlsTest {
             // Dieselbe Überladung wie BuildService und ClientPlanner: Vorher prüfte der Test die mit einer Namensmenge,
             // die Sonderaufträge (Bunker, Pool, Lobby) gar nicht kennt – ein Lobby-Knopf wäre dort rot, im Spiel grün.
             assertTrue(QuickOrders.match(prompt, ModuleLibrary.EMPTY, 64).isPresent(), "ginge ans LLM: " + prompt);
+            // BuildService fragt TunnelOrder vor den Schnellaufträgen (2026-11-16): Ein Schnellbau-Knopf, den der
+            // Grabweg abfinge, baute statt der Bauform eine endlose Brücke.
+            assertTrue(TunnelOrder.parse(prompt).isEmpty(), "landete beim Graben: " + prompt);
+        }
+    }
+
+    @Test
+    void digButtonsReachTheTunnelPath() {
+        List<String> dig = chapterCommands("Graben");
+        assertEquals(6, dig.size(), dig.toString());
+        for (String c : dig) {
+            // So setzt BaumeisterCommand die Befehle in einen Satz um.
+            String rest = c.replaceFirst("^/bm \\S+ ?", "");
+            String head = c.startsWith("/bm treppe") ? "treppe nach oben " : c.startsWith("/bm brücke") ? "brücke "
+                    : c.startsWith("/bm weiterbauen") ? "bau weiter " : "tunnel ";
+            assertTrue(TunnelOrder.parse((head + rest).strip()).isPresent(), "kein Grabauftrag: " + c);
         }
     }
 

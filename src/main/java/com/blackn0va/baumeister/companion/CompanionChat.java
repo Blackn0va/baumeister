@@ -143,6 +143,14 @@ public final class CompanionChat {
             return java.util.Optional.empty();
         }
         String t = stripLead(text).replaceAll("[!.?]+$", "").trim();
+        // Tunnel, Treppe nach oben, Brücke, „bau die Brücke weiter“ (Wunsch 2026-11-16, „mit dem Baumeister oder
+        // Begleiter einen Tunnel graben“): so, wie gesagt, an den Baumeister – TunnelOrder liest Länge, Tempo und
+        // Richtung dort. Nur mit Tunnel-, Treppen- oder Brückenwort: „bau weiter“ allein bleibt beim Modell.
+        java.util.Optional<com.blackn0va.baumeister.plan.TunnelOrder> dug =
+                com.blackn0va.baumeister.plan.TunnelOrder.parse(t);
+        if (dug.isPresent() && dug.get().kind() != null) {
+            return java.util.Optional.of(t);
+        }
         Matcher dig = DIG.matcher(t);
         if (dig.matches()) {
             return java.util.Optional.of("bau mir ein " + (dig.group(1) == null ? "" : dig.group(1).trim() + " ")

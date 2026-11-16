@@ -87,6 +87,11 @@ Ein Plan braucht 1–3 Minuten (gemessen: 42–102 s), das Bauen danach ~7 Blöc
 |---|---|---|
 | `Baumeister, …` / `@Baumeister …` im Chat | `baumeister.bauen` | Bauauftrag vor dir, in Blickrichtung |
 | `/bm bau <auftrag>` | `baumeister.bauen` | dasselbe als Befehl |
+| `/bm tunnel [länge] [schnell] [groß\|klein] [n\|o\|s\|w]` · „grab mit mir einen Tunnel“ | `baumeister.bauen` | Tunnel in Blickrichtung, ohne Länge mitgraben ohne Ende, siehe [Tunnel, Treppen und Brücken](#tunnel-treppen-und-brücken) |
+| `/bm treppe` · „bau mir eine Treppe nach oben“ | `baumeister.bauen` | Treppe bis zur Oberfläche |
+| `/bm brücke [länge] [schnell]` · „bau eine Brücke übers Meer“ | `baumeister.bauen` | Brücke in Blickrichtung, ohne Länge mitbauen ohne Ende |
+| `/bm weiterbauen` · „bau die Brücke weiter“, „grab den Tunnel weiter“ | `baumeister.bauen` | vorhandenen Tunnel, Treppe oder Brücke erkennen und am Ende genauso weiterbauen |
+| „schneller“ · „langsamer“ im Chat | Auftraggeber, Admin | laufenden Bau in den Schnellgang bzw. zurück zu Block für Block |
 | `/bm stop` | Auftraggeber, Admin | Bau anhalten |
 | `/bm rückgängig` | Auftraggeber, Admin | letzten Bau exakt zurücksetzen (5 Bauten, auch nach einem Neustart, siehe [Komfort](#komfort)) |
 | `/bm vorschau <auftrag>` · `vorschau ja\|nein` · „Baumeister, zeig mir …“ im Chat | `baumeister.bauen` | planen und den Umriss als Partikel zeigen; „ja“ baut, „nein“ verwirft |
@@ -273,6 +278,44 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Mac
 ```
 
 Eigene Bauteile kommen weiter als WorldEdit-Schematic dazu (`/bm bauteil …`).
+
+## Tunnel, Treppen und Brücken
+
+Ohne KI und Abschnitt für Abschnitt, so wie man gräbt – an den Baumeister im Chat, über Vera oder als Befehl:
+
+| Auftrag | Was passiert |
+|---|---|
+| „grab mit mir einen Tunnel“, „lass uns einen Tunnel graben“, `/bm tunnel` | Er gräbt vor dir her, nie mehr als 3 Blöcke voraus. Gehst du mit, geht es ohne Ende weiter; „stopp“ beendet. |
+| „grab einen Tunnel, 40 Blöcke“ | 40 Blöcke allein, sichtbar Block für Block |
+| „grab schnell einen Tunnel, 40 Blöcke“, `/bm tunnel 40 schnell` | im Schnellgang, in wenigen Sekunden |
+| „… großen“ / „… kleinen“, „… nach Norden“, „… nach links“ | 5 × 4 bzw. 1 × 2 statt 3 × 3 innen, andere Richtung |
+| „bau mir eine Treppe nach oben“, `/bm treppe` | Treppe bis zur Oberfläche, eine Stufe je Block, oben offen |
+| „bau eine Brücke übers Meer“, `/bm brücke` | Brücke auf deiner Höhe vor dir her, ohne Ende, solange du mitgehst |
+| „bau die Brücke weiter“, „grab den Tunnel weiter“, `/bm weiterbauen` | erkennt, was dasteht – auch alte und selbst gegrabene Gänge –, und baut am Ende genauso weiter: Breite, Steine, Bogen und Lichtabstand |
+| „schneller“, „langsamer“ im Chat | laufenden Bau in den Schnellgang bzw. zurück |
+
+**Aussehen.** Der Tunnel ist ausgemauert, oben in den Ecken ein Bogen aus Treppen, der Boden abgesetzt, alle 6 Blöcke
+ein Gurtbogen mit einer Laterne darunter – nie Fackeln. Über y 0 Steinziegel mit poliertem Andesit, darunter
+Tiefenschiefer, im Nether poliertes Schwarzgestein mit Seelenlaternen, im End Endstein mit Purpur; „aus Tiefenschiefer“
+im Auftrag wählt den Stein. Kleine Tunnel tragen ihre Laternen in Nischen, große an Ketten. Die Brücke hat ein Deck auf
+deiner Höhe, ein Geländer aus Mauer, Laternen alle 6 Blöcke und alle 12 Blöcke Pfeiler bis zum Grund – im Meer bis 48
+Blöcke tief, darunter ohne.
+
+**Was er nicht tut.** Gegraben wird nur durch Natur: Gestein, Erde, Erz, Kies, Eis, Höhlenbewuchs, Wasser und Lava.
+Steht Gebautes im Weg (Bretter, Bruchstein, Fackeln, Schienen, Baumstämme), hört er davor auf und sagt, wo. Jeder
+Abschnitt bekommt zuerst seine Hülle und die Front zum nächsten wird zugesetzt, erst dann wird ausgeräumt – so kommen
+Lava, Wasser und Kies nie in den Gang, und eine Höhle wird zur geschlossenen Röhre. Grundstücke (WorldGuard,
+PlotSquared) gelten wie beim Bauen; an einer Grenze hört er davor auf, statt abzusagen. Einen Spieler mauert er nie
+ein. Unter einem See macht die Treppe keinen Ausgang, und die Brücke endet vor einem Berg („grab einen Tunnel“ geht
+dort weiter) und dort, wo das Wasser höher steht als der Weg.
+
+**Material.** Admins und Spieler im Kreativmodus bauen frei. Alle anderen stellen eine Kiste oder ein Fass neben sich
+(bis 5 Blöcke, am liebsten die, auf die sie schauen) mit Bausteinen und Laternen (oder Seelenlaternen, Seelaternen,
+Froschlichtern), für den Bogen passenden Treppen, für eine Treppe Treppenstufen und für die Brücke einer Mauer oder einem
+Zaun. Was in der Kiste liegt, bestimmt das Aussehen, bezahlt wird je gesetztem Block. Geht etwas aus, wartet er und sagt,
+was fehlt. Alles Abgebaute kommt in die Kiste – auch bei Admins, wenn eine danebensteht; ist sie voll, fällt der Rest
+daneben. Ein Bau aus der Kiste lässt sich nicht rückgängig machen: Das Abgebaute liegt schon darin, ein Rückgängig
+stellte den Fels wieder her. „aus der Kiste“ im Auftrag lässt auch Admins aus der Kiste bauen.
 
 ## Logik-Schaltungen aus Formeln
 
@@ -832,6 +875,13 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
 
 ## Stand
 
+- ✅ Tunnel, Treppe und Brücke (2026-11-16) auf Paper 26.2 und Spigot 1.21.11 je 33/33 Prüfungen über die Konsole:
+  Tunnel durch Lava, Wasser, Kies und Höhle dicht, 5 Laternen auf 30 Abschnitten, Abschluss vor Lava; Weiterbauen mit
+  Lichttakt; aus der Kiste genau verrechnet (144 Steinziegel, 24 Treppen, 2 Laternen verbaut, 252 Bruchstein in der
+  Kiste), Warten auf fehlende Treppen; Halt vor Brettern; Treppe mit 36 Stufen bis oben; Brücke über 40 Blöcke mit
+  Pfeilern bis zum Grund und Weiterbauen. Längster Tick 26 ms
+- ⏳ Mitbauen mit einem echten Spieler (vorausgraben, warten, nächstes Stück ohne Ende), Kürzen an einer
+  Grundstücksgrenze und Vera als Auftraggeberin nur per Unit-Test geprüft, nicht im Spiel
 - ✅ Plan → Blöcke → Reihenfolge; Plugin gesamt 677 Unit-Tests grün (2026-10-29)
 - ✅ Stadtbau über zwei Neustarts (Testserver 2026-10-29): pausiert bei Etappe 6/13 gesichert und pausiert fortgesetzt,
   laufend bei 9/13 gesichert und laufend fortgesetzt (Etappe 9 nur geprüft, 0 Blöcke doppelt), `/bm stop` löscht den Stand

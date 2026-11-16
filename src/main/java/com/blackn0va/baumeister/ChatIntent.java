@@ -65,7 +65,11 @@ final class ChatIntent {
             case STOP, STATUS, MORE_HELPERS, FEWER_HELPERS -> cityRunning ? Target.CITY : Target.BUILD_SERVICE;
             // Wie /bm rückgängig: der Aufrufer stoppt eine laufende Stadt vorher selbst.
             case UNDO -> Target.BUILD_SERVICE;
-            case PAUSE, RESUME, FASTER, SLOWER -> cityRunning ? Target.CITY : Target.NOT_RUNNING;
+            // Seit 2026-11-16 auch für den normalen Bau (Tunnel, Brücke, jeder andere): „schneller“ schaltet in den
+            // Schnellgang (Wunsch „auch im Schnellverfahren, wenn ich das will“). Ohne Bau antwortet
+            // BuildService.tempo.
+            case FASTER, SLOWER -> cityRunning ? Target.CITY : Target.BUILD_SERVICE;
+            case PAUSE, RESUME -> cityRunning ? Target.CITY : Target.NOT_RUNNING;
         };
     }
 

@@ -5,6 +5,24 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Tunnel graben – mit dir zusammen:** „Baumeister, grab mit mir einen Tunnel“ (oder über Vera, oder `/bm tunnel`):
+  Er gräbt vor dir her, nie mehr als drei Blöcke voraus, und hört nicht auf, solange du mitgehst. Mit Länge gräbt er
+  allein, mit „schnell“ im Schnellgang. Der Tunnel wird schön: ausgemauert, Bogen in den oberen Ecken, abgesetzter
+  Boden, alle 6 Blöcke ein Gurtbogen mit Laterne – keine Fackeln. Jeder Abschnitt bekommt erst die Hülle, dann wird
+  ausgeräumt; Lava, Wasser und Kies kommen so nicht in den Gang, Höhlen werden zur Röhre. Gebautes reißt er nie ab –
+  davor hört er auf und sagt, wo.
+- **Treppe bis zur Oberfläche:** „bau mir eine Treppe nach oben“ (`/bm treppe`) gräbt eine Stufe je Block bis ans
+  Tageslicht, mit Laternen und Bogen wie der Tunnel. Unter einem See macht sie keinen Ausgang.
+- **Brücke ohne Ende, auch übers Meer:** „bau eine Brücke übers Meer“ (`/bm brücke`) baut auf deiner Höhe vor dir her:
+  Deck, Geländer, Laternen alle 6 Blöcke, alle 12 Blöcke Pfeiler bis zum Meeresgrund (bis 48 tief). Vor einem Berg
+  endet sie.
+- **Weiterbauen:** „bau die Brücke weiter“, „grab den Tunnel weiter“ (`/bm weiterbauen`) erkennen, was dasteht –
+  auch alte oder selbst gegrabene Gänge – und bauen am Ende genauso weiter: Breite, Steine, Bogen, Lichtabstand.
+- **Material aus der Kiste:** Wer kein Admin ist und nicht im Kreativmodus spielt, stellt für Tunnel, Treppe und Brücke
+  eine Kiste mit Material neben sich. Was darin liegt, bestimmt das Aussehen; fehlt etwas, wartet der Baumeister und
+  sagt es. Alles Abgebaute kommt in die Kiste. Alle anderen Bauten bleiben wie bisher frei.
+- **„schneller“ und „langsamer“ für jeden Bau:** im Chat an den Baumeister schaltet den laufenden Bau in den Schnellgang
+  und zurück – bisher nur beim Stadtbau.
 - **Lobby und Portalhalle für einen frischen Server:** „bau mir eine riesige Lobby“ baut ohne KI eine Spawn-Lobby
   (33 × 33 bis 81 × 81, oder „Lobby 60x60“) mit Glaskuppel über einem runden Platz in der Mitte, Säulen, Fensterband,
   Lichtringen im Boden und Portalrahmen aus Obsidian an den Seitenwänden und an der Rückwand. „bau eine Portalhalle mit
@@ -202,6 +220,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   zu und werden nie überschrieben.
 
 ### Geändert
+- Im Hilfebuch neues Kapitel „Graben“; der Schnellbau-Knopf „Brücke“ heißt jetzt „Bogenbrücke“ (die Bauform mit
+  Bögen), „Brücke“ baut die endlose.
 - Baumeister-Client 0.3.0 (Stand nach den Blockstufen; vorher hießen zwei verschiedene Stände 0.2.0).
 - Die Server-APIs zum Kompilieren (`lib/*.jar`) stehen nicht mehr im Repo – Herkunft und Hashes in `lib/README.md`.
 - Host: Vorgabe der Fernadresse ist ein Platzhalter (`wss://dein-server.example.net:25580/kanal/v1`). Eingerichtete

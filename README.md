@@ -29,6 +29,10 @@ und mit Vera, einer Begleiterin, die mit dir spricht.**
   bis 1 Mio. Blöcke. Ein Kistenfenster zum Durchklicken.
 - **Maschinen und Logik.** Geprüfte Redstone-Maschinen in vier Richtungen und Schaltungen direkt aus einer Formel
   (`Q = A und (B oder nicht C)`).
+- **Tunnel, Treppen und Brücken.** „Grab mit mir einen Tunnel“ – der Baumeister gräbt vor dir her, solange du
+  mitgehst, ausgemauert und mit Laternen statt Fackeln; auf Wunsch im Schnellgang. Treppe bis zur Oberfläche, Brücke
+  übers Meer mit Pfeilern bis zum Grund. Vorhandenes erkennt er und baut es weiter; wer kein Admin ist, gibt das
+  Material aus einer Kiste.
 - **Vera, die Begleiterin.** Folgt dir, findet Erze und Dörfer, führt durch ein Abenteuer bis zum Enderdrachen,
   repariert, erzählt Witze – und spricht im Voice Chat mit eigener Cartoon-Stimme, gerechnet auf dem Server.
 - **Die Welt 1:1.** Gelände, Städte und ganze Erdkacheln aus Höhendaten und OpenStreetMap.
@@ -85,6 +89,7 @@ Alles in einem Paket: `pwsh -File tools\paket\Paket-Erstellen.ps1`.
 | `/bm vorschau <auftrag>` · `/bm rückgängig` · `/bm stop` | Umriss zeigen · zurückbauen · anhalten |
 | `/bm katalog [suchwort]` | Schematics durchklicken und bauen |
 | `/bm logik Q = A und B` | Redstone-Schaltung aus einer Formel |
+| `Baumeister, grab mit mir einen Tunnel` · `/bm tunnel` · `/bm treppe` · `/bm brücke` | Tunnel, Treppe nach oben, Brücke – mitbauen oder im Schnellgang |
 | `/vera` · `Vera, wo finde ich Diamanten?` | Begleiterin rufen und fragen |
 | `/hilfe` | Hilfebuch – alles per Klick |
 | `/rucksack` · `/warp` · `/aufgaben` · `/mods` | Rucksack, Warps, Tagesaufgaben, Mods |
@@ -123,7 +128,7 @@ Request; jeder Pull Request wird vor dem Mergen von Hand geprüft und freigegebe
 - ✅ Vera mit Stimme vom Server (Piper), Hilfebuch, Katalog, Rucksack, Warps, Aufgaben – im Betrieb auf einem
   Community-Server
 - ✅ Städte, Gelände und Erdkacheln 1:1 auf dem Testserver nachgemessen
-- ✅ Plugin 1 488 Unit-Tests, Relay 144, Host 12 Testprogramme – jede Korrektur mit Gegenprobe
+- ✅ Plugin 1 640 Unit-Tests, Relay 144, Host 14 Testprogramme – jede Korrektur mit Gegenprobe
 - ⏳ Mehreres nur per Test und nicht mit Spielern im Spiel gesehen – Liste im [Handbuch](docs/handbuch.md#stand)
 - ⏳ `akkumulator_4bit` baut nach Süden nicht fehlerfrei (Norden, Osten, Westen ja)
 - ⏳ Host auf NVIDIA/CUDA nur auf dem GPU-PC, nicht in jedem Lauf geprüft

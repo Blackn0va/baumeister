@@ -33,9 +33,11 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.type.Repeater;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 /**
@@ -198,7 +200,8 @@ final class BuildJob {
      */
     private Tier cap = Tier.COMMANDS;
     private final CommandSender replyTo;
-    private final List<WorldAction> actions;
+    /** Nicht final: Graben kürzt beim Prüfen vor einem verweigerten Abschnitt (cutBefore). */
+    private List<WorldAction> actions;
     private final List<String> stepNames;
     private final Location center;
     private final Vector frontDir;
@@ -250,6 +253,61 @@ final class BuildJob {
     private int dataSkipped;
     private BuildDropGuard.Box dropBox;
 
+    /**
+     * Graben und Brücken (TunnelService, Wunsch 2026-11-16): was beim normalen Bau anders ist. Abschnitt = step der
+     * Aktion. Ohne Dig (null) bleibt alles wie bisher.
+     */
+    interface Dig {
+        /** Standplatz des Arbeiters, während er Abschnitt slice baut (im Gang bzw. auf dem Deck dahinter). */
+        Location stand(int slice);
+
+        /** Mitbauen: Abschnitt slice erst, wenn der Spieler nah genug ist; sonst wartet der Bau. */
+        boolean ready(int slice);
+
+        /** Material, das für diese Zelle fehlt (Kiste), oder null. Nimmt noch nichts. */
+        Material missing(Block b, BlockData target);
+
+        /** Unmittelbar vor dem Setzen: Material aus der Kiste nehmen, das Abgebaute hinein. */
+        void settle(Block b, BlockData before, BlockData target);
+
+        /** Steht dort etwas, das der Bau nicht abreißen darf (Gebautes, Grundgestein)? Eigenes fragt der Bau nicht. */
+        boolean foreign(Block b);
+
+        /** Aktionen je Tick im Schnellgang; 0 = sichtbar Block für Block. */
+        int fastPerTick(int actions);
+
+        /** Rückgängig nur ohne Kiste – sonst wäre Abgebautes doppelt da (Erz in der Kiste und wieder im Fels). */
+        boolean undoable();
+
+        /** Schlusssatz nach dem letzten Block; leer = nichts sagen (Mitbauen geht im nächsten Stück weiter). */
+        String done(int placed, long seconds);
+
+        /** Nach finish, auch nach Abbruch (BuildService.onJobFinished): nächstes Stück, Kiste freigeben. */
+        void finished(BuildJob job, boolean complete);
+
+        /** „x y z“ der Kiste für die Ansage, wenn Material fehlt; leer ohne Kiste. */
+        String chestAt();
+    }
+
+    /** Länger als so lange auf den Spieler warten (Mitbauen) beendet den Bau – sonst stünde er ewig im Fels. */
+    static final long GATE_LIMIT_MS = 5 * 60_000L;
+    /** Länger als so lange auf Material warten beendet den Bau. */
+    static final long MATERIAL_LIMIT_MS = 10 * 60_000L;
+
+    private Dig dig;
+    /** Material, auf das der Bau gerade wartet (null = keins), und seit wann. */
+    private Material waitingFor;
+    private long waitingSince;
+    /** Mitbauen: seit wann der Bau auf den Spieler wartet (0 = er wartet nicht). */
+    private long gateSince;
+    /** Ein Spieler steht in der Zelle, die gerade zugesetzt wird: warten statt einmauern; einmal sagen. */
+    private boolean deferSaid;
+
+    /** Was place mit einer Aktion getan hat. */
+    private enum Outcome {
+        DONE, DEFERRED, STOPPED
+    }
+
     BuildJob(BaumeisterPlugin plugin, BuilderNpc npc, Settings settings, UUID ownerId, String ownerName,
             UUID checkAs, UUID rightsOf, CommandSender replyTo, List<WorldAction> actions, List<String> stepNames,
             Location center, Vector frontDir, int groundY, int helperCount, boolean helpersWished,
@@ -283,6 +341,26 @@ final class BuildJob {
     BuildJob cap(Tier max) {
         this.cap = max;
         return this;
+    }
+
+    /** Graben bzw. Brücke (vor start). Zurück: dieser Job. */
+    BuildJob dig(Dig d) {
+        this.dig = d;
+        return this;
+    }
+
+    Dig dig() {
+        return dig;
+    }
+
+    /** Darf dieser Bau auf den Rückgängig-Stapel? Graben aus der Kiste nicht (Dig.undoable). */
+    boolean undoable() {
+        return dig == null || dig.undoable();
+    }
+
+    /** Alle Aktionen gelaufen (nicht abgebrochen)? */
+    boolean complete() {
+        return done >= actions.size();
     }
 
     /** Soll-Zustand aller Schritte – fürs Baubuch (BuildLedger) nach dem Fertigwerden. */
@@ -476,6 +554,10 @@ final class BuildJob {
                 String what = target.getType().getKey().getKey();
                 LOG.info(() -> String.format("bau | behälter_voll | besitzer=%s x=%d y=%d z=%d block=%s", ownerName,
                         target.getX(), target.getY(), target.getZ(), what));
+                if (cutBefore(checkIndex, "Vorne steht ein Behälter mit Inhalt (" + what + " bei " + target.getX()
+                        + " " + target.getY() + " " + target.getZ() + ") – ich baue bis davor.")) {
+                    return false;
+                }
                 finish("Da steht ein Block mit Inhalt (" + what + " bei " + target.getX() + " " + target.getY() + " "
                         + target.getZ() + ") – leere oder entferne ihn zuerst, Rückgängig könnte den Inhalt nicht "
                         + "zurückholen. Ich habe nichts angefasst.");
@@ -485,6 +567,10 @@ final class BuildJob {
                 Block b = c.block();
                 LOG.info(() -> String.format("bau | verweigert | besitzer=%s x=%d y=%d z=%d",
                         ownerName, b.getX(), b.getY(), b.getZ()));
+                if (cutBefore(checkIndex, "Ab " + b.getX() + " " + b.getY() + " " + b.getZ()
+                        + " darfst du nicht bauen – ich baue bis davor.")) {
+                    return false;
+                }
                 finish("Hier darfst du nicht bauen (" + b.getX() + " " + b.getY() + " " + b.getZ()
                         + ") – ich habe nichts angefasst.");
                 return false;
@@ -492,6 +578,31 @@ final class BuildJob {
         }
         checkIndex++;
         return checkIndex < actions.size();
+    }
+
+    /**
+     * Graben und Brücke: vor dem Abschnitt der Aktion index aufhören, statt den ganzen Bau abzusagen (Wunsch
+     * 2026-11-16 – ein Tunnel bis zur Grundstücksgrenze ist gewollt, ein halber im fremden Grundstück nicht). false,
+     * wenn es kein Graben ist oder schon der erste Abschnitt betroffen wäre; dann sagt der Aufrufer ab wie bisher.
+     */
+    private boolean cutBefore(int index, String message) {
+        if (dig == null) {
+            return false;
+        }
+        int slice = actions.get(index).step();
+        int cut = index;
+        while (cut > 0 && actions.get(cut - 1).step() == slice) {
+            cut--;
+        }
+        if (cut == 0) {
+            return false;
+        }
+        int kept = cut;
+        LOG.info(() -> String.format("bau | gekürzt | besitzer=%s abschnitt=%d aktionen=%d", ownerName, slice, kept));
+        actions = actions.subList(0, cut);
+        checkIndex = actions.size();
+        Texts.info(replyTo, message);
+        return true;
     }
 
     /** Regionsrechte wie ein Spieler (RegionCheck – WorldGuard, PlotSquared …), ASVS V4.1.3. */
@@ -526,7 +637,16 @@ final class BuildJob {
         // bräuchte so 14 min; über der Zieldauer wird im Schnellbau gesetzt (mehrere Blöcke je Tick, Arbeiter
         // fliegen mit), damit auch große Bauten in etwa der Zieldauer stehen.
         long targetTicks = settings.targetSeconds() * 20L;
-        if (normalTicks(actions.size(), settings.ticksPerBlock(), workers.size()) > targetTicks) {
+        if (dig != null) {
+            // Graben: Tempo nach Auftrag (mitbauen sichtbar, „schnell“ im Schnellgang), nie nach Größe – sonst liefe
+            // jeder längere Tunnel im Schnellgang, und Mitbauen gäbe es nicht.
+            fastPerTick = dig.fastPerTick(actions.size());
+            fastBase = fastPerTick;
+            fastWorkers = workers.size();
+            if (fastPerTick > 0) {
+                Texts.chat(npc.name(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
+            }
+        } else if (normalTicks(actions.size(), settings.ticksPerBlock(), workers.size()) > targetTicks) {
             fastPerTick = (int) Math.min(5000, Math.ceilDiv(actions.size(), targetTicks));
             fastBase = fastPerTick;
             fastWorkers = workers.size();
@@ -555,14 +675,16 @@ final class BuildJob {
         }
         if (allIdle()) {
             if (segmentEnd >= actions.size()) {
-                long secs = Duration.between(started, Instant.now()).toSeconds();
-                finish("Fertig! " + placed + " Blöcke in " + secs + " s. Gefällt's dir nicht? /bm rückgängig");
+                finish(completeText());
                 return;
             }
             nextSegment();
         }
         for (Worker w : workers) {
             work(w);
+            if (phase == Phase.DONE) {
+                return;
+            }
         }
         logProgress();
     }
@@ -578,29 +700,36 @@ final class BuildJob {
         while (budget > 0 && System.nanoTime() < deadline) {
             if (allIdle()) {
                 if (segmentEnd >= actions.size()) {
-                    long secs = Duration.between(started, Instant.now()).toSeconds();
-                    finish("Fertig! " + placed + " Blöcke in " + secs + " s. Gefällt's dir nicht? /bm rückgängig");
+                    finish(completeText());
                     return;
                 }
                 nextSegment();
             }
             for (Worker w : workers) {
-                WorldAction a = w.queue.pollFirst();
+                WorldAction a = w.queue.peekFirst();
                 if (a == null) {
                     continue;
                 }
-                done++;
                 if (isNoop(a)) {
+                    w.queue.pollFirst();
+                    done++;
                     continue;
                 }
-                budget--;
+                if (dig != null && !digReady(a)) {
+                    return;  // wartet auf Spieler oder Material – der ganze Tick
+                }
                 Mannequin m = w.entity();
-                boolean show = m != null && done % FAST_EFFECT_EVERY == 0;
+                boolean show = m != null && (done + 1) % FAST_EFFECT_EVERY == 0;
                 if (show) {
                     Location target = a.anchor().getLocation().add(0.5, 0.5, 0.5);
-                    m.teleport(BuilderNpc.facing(standFor(a), target));
+                    m.teleport(BuilderNpc.facing(dig != null ? dig.stand(a.step()) : standFor(a), target));
                 }
-                place(a, show ? m : null);
+                if (place(a, show ? m : null) != Outcome.DONE) {
+                    return;
+                }
+                w.queue.pollFirst();
+                done++;
+                budget--;
             }
         }
         if (done % 10 == 0 || fastPerTick > 10) {
@@ -767,11 +896,15 @@ final class BuildJob {
         if (a == null) {
             return;
         }
+        if (dig != null && !digReady(a)) {
+            return;
+        }
         Location target = a.anchor().getLocation().add(0.5, 0.5, 0.5);
+        Location stand = dig != null ? dig.stand(a.step()) : standFor(a);
         Mannequin m = w.entity();
         if (m == null) {
             if (w.helper == null) {
-                npc.ensureNear(standFor(a));
+                npc.ensureNear(stand);
             } else {
                 // Helfer weg (z. B. per /kill): seine Arbeit übernimmt der Baumeister.
                 workers.getFirst().queue.addAll(w.queue);
@@ -785,26 +918,57 @@ final class BuildJob {
         // 2026-10-29). Jetzt: angekommen ist angekommen, er setzt den Block vom Standplatz aus. Wer das zurückdreht,
         // bringt den stillen Hänger für jeden Bau mit tiefen Teilen zurück.
         if (BuilderNpc.eye(m.getLocation()).distance(target) > REACH
-                && !BuilderNpc.stepToward(m, standFor(a), target, SPEED)) {
+                && !BuilderNpc.stepToward(m, stand, target, SPEED)) {
             return;
         }
         BuilderNpc.lookAt(m, target);
-        place(a, m);
+        if (place(a, m) != Outcome.DONE) {
+            return;
+        }
         w.queue.pollFirst();
         done++;
-        w.cooldown = settings.ticksPerBlock() - 1;
+        // Graben Block für Block: jeden Tick einer (20/s) – ein Abschnitt in gut einer Sekunde, so kommt er einem
+        // Spieler hinterher, der mitgeht. Mit bau.ticks-pro-block (3) bräuchte jeder Abschnitt 4 s.
+        w.cooldown = dig != null ? 0 : settings.ticksPerBlock() - 1;
         if (w.helper == null && done % 10 == 0) {
             npc.status("baut " + done + "/" + actions.size());
         }
     }
 
-    private void place(WorldAction a, Mannequin m) {
+    private Outcome place(WorldAction a, Mannequin m) {
+        if (dig != null) {
+            for (WorldChange c : a.changes()) {
+                Block b = c.block();
+                if (isNoop(c)) {
+                    continue;
+                }
+                // Nie jemanden einmauern: Steht ein Spieler in der Zelle, die zugesetzt wird, wartet der Bau.
+                if (!c.data().getMaterial().isAir() && occupied(b)) {
+                    if (!deferSaid) {
+                        deferSaid = true;
+                        Texts.chat(npc.name(), b.getLocation(), replyTo, "Geh mal kurz einen Schritt zurück – da "
+                                + "setze ich gerade einen Block hin.");
+                    }
+                    return Outcome.DEFERRED;
+                }
+                // Gebautes, das seit der Planung dazugekommen ist (oder beim Mitbauen erst jetzt drankommt): aufhören.
+                if (!placedTypes.containsKey(b) && dig.foreign(b)) {
+                    String what = b.getType().getKey().getKey();
+                    LOG.info(() -> String.format("bau | fremdes_im_weg | besitzer=%s x=%d y=%d z=%d block=%s",
+                            ownerName, b.getX(), b.getY(), b.getZ(), what));
+                    finish("Da steht etwas Gebautes im Weg (" + com.blackn0va.baumeister.plan.TunnelStyle.german(what)
+                            + " bei " + b.getX() + " " + b.getY() + " " + b.getZ() + ") – davor höre ich auf.");
+                    return Outcome.STOPPED;
+                }
+            }
+            deferSaid = false;
+        }
         // Stufen (Plan B1/B6): Rechte dieses Takts gegen „was hin soll“ und „was dort steht“; ein Paar und ein Bauteil
         // kommen ganz oder gar nicht.
         PlacementGate.Decision d = gate.action(a.changes(), g -> groupCells.getOrDefault(g, List.of()));
         if (!d.allowed()) {
             skip(a, d);
-            return;
+            return Outcome.DONE;
         }
         BlockData first = null;
         BlockData removedLast = null;
@@ -823,6 +987,9 @@ final class BuildJob {
                 continue;
             }
             originals.putIfAbsent(b, before);
+            if (dig != null && !before.equals(c.data())) {
+                dig.settle(b, before, c.data());
+            }
             BlockData data;
             if (pair) {
                 data = c.data();
@@ -863,19 +1030,114 @@ final class BuildJob {
             }
         }
         if (m == null) {
-            return;  // Schnellbau: Arm, Geräusch und Partikel nur bei jedem n-ten Block
+            return Outcome.DONE;  // Schnellbau: Arm, Geräusch und Partikel nur bei jedem n-ten Block
         }
         m.swingMainHand();
         Location at = a.anchor().getLocation().add(0.5, 0.5, 0.5);
         World w = at.getWorld();
         if (removedLast != null) {
-            BuilderNpc.hold(m, null);
+            // Graben mit der Spitzhacke in der Hand – ein Baumeister, der mit leerer Hand Fels abträgt, sah falsch aus.
+            BuilderNpc.hold(m, dig != null ? Material.DIAMOND_PICKAXE : null);
             w.playSound(at, removedLast.getSoundGroup().getBreakSound(), SoundCategory.BLOCKS, 1f, 0.9f);
             w.spawnParticle(Particle.BLOCK, at, 12, 0.3, 0.3, 0.3, 0, removedLast);
         } else if (first != null) {
             BuilderNpc.hold(m, first.getPlacementMaterial());
             w.playSound(at, first.getSoundGroup().getPlaceSound(), SoundCategory.BLOCKS, 1f, 0.8f);
         }
+        return Outcome.DONE;
+    }
+
+    /** Steht ein Spieler in diesem Block? */
+    private static boolean occupied(Block b) {
+        for (Entity e : b.getWorld().getNearbyEntities(BoundingBox.of(b))) {
+            if (e instanceof Player) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Graben: darf die nächste Aktion jetzt? Wartet auf den Spieler (Mitbauen) oder auf Material aus der Kiste – mit
+     * Ansage beim ersten Mal und Ende nach GATE_LIMIT_MS bzw. MATERIAL_LIMIT_MS.
+     */
+    private boolean digReady(WorldAction a) {
+        long now = System.currentTimeMillis();
+        if (!dig.ready(a.step())) {
+            if (gateSince == 0) {
+                gateSince = now;
+                npc.status("wartet auf dich");
+            } else if (now - gateSince > GATE_LIMIT_MS) {
+                finish("Du bist nicht mehr mitgekommen – ich mache hier Schluss. Sag Bescheid, wenn's "
+                        + "weitergehen soll.");
+            }
+            return false;
+        }
+        if (gateSince != 0) {
+            gateSince = 0;
+            npc.status("baut " + done + "/" + actions.size());
+        }
+        for (WorldChange c : a.changes()) {
+            Material miss = dig.missing(c.block(), c.data());
+            if (miss == null) {
+                continue;
+            }
+            if (waitingFor != miss) {
+                waitingFor = miss;
+                waitingSince = now;
+                String name = com.blackn0va.baumeister.plan.TunnelStyle.german(miss.getKey().getKey());
+                npc.status("wartet auf " + name);
+                String where = dig.chestAt();
+                Texts.say(npc.name(), c.block().getLocation(), replyTo, "Mir fehlen " + name + " – leg welche in die "
+                        + "Kiste" + (where.isEmpty() ? "" : " bei " + where) + ", dann mache ich weiter.");
+                LOG.info(() -> String.format("bau | material_fehlt | besitzer=%s material=%s", ownerName,
+                        miss.getKey().getKey()));
+            } else if (now - waitingSince > MATERIAL_LIMIT_MS) {
+                finish("Ohne Material komme ich nicht weiter – ich höre hier auf.");
+            }
+            return false;
+        }
+        if (waitingFor != null) {
+            waitingFor = null;
+            npc.status("baut " + done + "/" + actions.size());
+        }
+        return true;
+    }
+
+    /** Schlusssatz nach dem letzten Block. */
+    private String completeText() {
+        long secs = Duration.between(started, Instant.now()).toSeconds();
+        if (dig != null) {
+            return dig.done(placed, secs);
+        }
+        return "Fertig! " + placed + " Blöcke in " + secs + " s. Gefällt's dir nicht? /bm rückgängig";
+    }
+
+    /**
+     * „schneller“ im Chat (Wunsch 2026-11-16, „auch im Schnellverfahren, wenn ich das will“): vom Block-für-Block in
+     * den Schnellgang, im Schnellgang doppelt so schnell. Zurück: Blöcke je Sekunde danach, 0 = noch in der Prüfung.
+     */
+    int faster() {
+        if (phase != Phase.BUILD) {
+            return 0;
+        }
+        int rest = Math.max(1, actions.size() - done);
+        fastPerTick = fastPerTick == 0 ? Math.max(dig != null ? 8 : 4, Math.ceilDiv(rest, 600))
+                : (int) Math.min(5000, fastPerTick * 2L);
+        fastBase = fastPerTick;
+        fastWorkers = workers.size();
+        return fastPerTick * 20;
+    }
+
+    /** „langsamer“: halb so schnell, unter 5 je Tick wieder Block für Block. Zurück: Blöcke je Sekunde, 0 = einzeln. */
+    int slower() {
+        if (phase != Phase.BUILD || fastPerTick == 0) {
+            return 0;
+        }
+        fastPerTick = fastPerTick <= 4 ? 0 : fastPerTick / 2;
+        fastBase = fastPerTick;
+        fastWorkers = workers.size();
+        return fastPerTick * 20;
     }
 
     /**
@@ -1130,8 +1392,14 @@ final class BuildJob {
         Mannequin m = npc.get();
         if (m != null && placed > 0) {
             // Gemessen 2026-10-28: Ohne das blieb der NPC nach dem letzten Firstblock über dem Dach
-            // schweben. Jetzt landet er vor der Front und schaut auf sein Werk.
-            m.teleport(BuilderNpc.facing(landingSpot(), center.clone().add(0, 2, 0)));
+            // schweben. Jetzt landet er vor der Front und schaut auf sein Werk. Beim Graben läge „vor der Front“ im
+            // Fels – dort bleibt er im letzten Abschnitt stehen.
+            if (dig != null) {
+                int last = actions.get(Math.max(0, Math.min(done, actions.size()) - 1)).step();
+                m.teleport(dig.stand(last + 1));
+            } else {
+                m.teleport(BuilderNpc.facing(landingSpot(), center.clone().add(0, 2, 0)));
+            }
         }
         Player owner = Bukkit.getPlayer(ownerId == null ? new UUID(0, 0) : ownerId);
         if (owner != null) {
@@ -1141,7 +1409,10 @@ final class BuildJob {
         // die Lücke im Bau.
         String spared = containersSpared > 0 ? " " + containersSpared + " Behälter mit Inhalt habe ich stehen lassen."
                 : "";
-        Texts.say(npc.name(), m != null ? m.getLocation() : center, replyTo, message + spared + skippedText());
+        String said = message + spared + skippedText();
+        if (!said.isBlank()) {
+            Texts.say(npc.name(), m != null ? m.getLocation() : center, replyTo, said);
+        }
         // finish läuft meist mitten in tickGuarded, also vor meter.tick: den laufenden Tick mitzählen, sonst fehlte in
         // der Ende-Zeile gerade der letzte Tick (Prüfbefund 2026-10-29).
         String ticks = tickStart != 0 ? meter.summaryWith(tickStart, System.nanoTime()) : meter.summary();

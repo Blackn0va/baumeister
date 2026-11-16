@@ -134,7 +134,9 @@ final class BaumeisterListener implements Listener {
                 }
                 plugin.service().undo(player);
             }
-            // route() schickt nur STOP, STATUS und UNDO hierher; alles andere wäre ein Fehler in ChatIntent.
+            case FASTER -> plugin.service().tempo(player, true);
+            case SLOWER -> plugin.service().tempo(player, false);
+            // route() schickt nur STOP, STATUS, Helfer, Tempo und UNDO hierher; alles andere wäre ein Fehler.
             default -> throw new IllegalStateException("Steuerwort " + kind + " gehört nicht zum normalen Bau");
         }
     }

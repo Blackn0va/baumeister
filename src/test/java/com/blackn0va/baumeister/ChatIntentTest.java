@@ -40,8 +40,14 @@ class ChatIntentTest {
 
     @Test
     void idleSpeedWordsSayNothingRuns() {
-        for (String text : List.of("schneller", "langsamer", "pause", "weiter")) {
+        for (String text : List.of("pause", "weiter")) {
             assertEquals(Target.NOT_RUNNING, ChatIntent.route(ChatIntent.parse(text), false, false), text);
+            assertEquals(Target.CITY, ChatIntent.route(ChatIntent.parse(text), true, false), text);
+        }
+        // Tempo seit 2026-11-16 auch für den normalen Bau (Tunnel, Brücke …); ohne Bau antwortet BuildService.tempo.
+        for (String text : List.of("schneller", "langsamer", "gib gas")) {
+            assertEquals(Target.BUILD_SERVICE, ChatIntent.route(ChatIntent.parse(text), false, true), text);
+            assertEquals(Target.BUILD_SERVICE, ChatIntent.route(ChatIntent.parse(text), false, false), text);
             assertEquals(Target.CITY, ChatIntent.route(ChatIntent.parse(text), true, false), text);
         }
         // „komm“ holt den NPC auch ohne Stadt.

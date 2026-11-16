@@ -105,6 +105,8 @@ final class BuildService {
 
     /** Komfort: Warteschlange, Bauvorschau, Rückgängig über Neustart (ComfortService; Entscheidungen: ComfortFlow). */
     private final ComfortService comfort;
+    /** Tunnel, Treppe nach oben, Brücke – ohne LLM, mit Kiste und Mitbauen (TunnelService, Wunsch 2026-11-16). */
+    private final TunnelService tunnels;
     /** Recherche echter Bauwerke vor dem LLM (llm.recherche), null = aus. */
     private final ReferenceLookup research;
 
@@ -343,6 +345,7 @@ final class BuildService {
                         Math.clamp(plugin.getConfig().getInt("schematics.max-blöcke", 1_000_000), 1, 4_000_000),
                         Math.clamp(plugin.getConfig().getInt("schematics.max-ausdehnung", 384), 4, 512)), modules);
         this.comfort = new ComfortService(plugin, this, npc, settings);
+        this.tunnels = new TunnelService(plugin, this, settings, npc);
         this.ledger = new BuildLedger(plugin.getDataFolder().toPath().resolve("bauten"));
         org.bukkit.configuration.file.FileConfiguration c = plugin.getConfig();
         this.research = c.getBoolean("llm.recherche", true) ? new ReferenceLookup(
@@ -558,6 +561,12 @@ final class BuildService {
         String prompt = SpokenWords.fix(PlotLayout.strip(HelperWish.strip(Texts.clean(r.prompt(), MAX_PROMPT))));
         if (prompt.length() < 3) {
             Texts.info(r.sender(), "Was soll ich bauen? Zum Beispiel: " + npc.name() + ", bau ein kleines Haus aus Fichtenholz");
+            return;
+        }
+        // Tunnel, Treppe nach oben, Brücke, „bau weiter“ (Wunsch 2026-11-16): eigener Weg ohne LLM, ohne Plot-Modus und
+        // ohne Bauplatz-Scan – sie hängen am Boden entlang ihres Wegs, nicht an einem Kasten vor dem Spieler. Vor dem
+        // Plot-Modus, weil „Tunnel“ und „Brücke“ nie den Plot meinen.
+        if (tunnels.request(r, prompt)) {
             return;
         }
         // Plot-Modus (PlotLayout): Nennt der Auftrag den Plot und steht der Spieler auf einem, ist der ganze Plot der
@@ -1711,9 +1720,13 @@ final class BuildService {
 
     private void onJobFinished(BuildJob job) {
         UndoRecord finished = job.undoRecord();
-        pushUndo(finished);
-        watchForLag(job, finished);
-        if (active == job && activeKind != LedgerKind.REPAIR && job.done() >= job.total()) {
+        // Graben aus der Kiste: kein Rückgängig und kein Baubuch (TunnelService) – Rückgängig stellte den Fels wieder
+        // her, obwohl das Abgebaute schon in der Kiste liegt, und „reparieren“ setzte Blöcke ohne Bezahlung.
+        if (job.undoable()) {
+            pushUndo(finished);
+            watchForLag(job, finished);
+        }
+        if (active == job && activeKind != LedgerKind.REPAIR && job.done() >= job.total() && job.undoable()) {
             record(job, activeKind == LedgerKind.UPDATE, activeLedgerOrder, activeLedgerInfo);
         }
         ResultReporter rr = plugin.resultReporter();
@@ -1731,6 +1744,104 @@ final class BuildService {
         if (active == job) {
             active = null;
         }
+        // Nach dem Freigeben: Das nächste Stück einer endlosen Brücke startet hier einen neuen Bau.
+        if (job.dig() != null) {
+            job.dig().finished(job, job.complete());
+        }
+    }
+
+    /** Während TunnelService vorlädt, gilt der Dienst als beschäftigt (Warteschlange, Stadtbau warten). */
+    void digThinking(boolean on) {
+        thinking = on;
+    }
+
+    /**
+     * Graben bzw. Brücke starten (TunnelService): Der Plan ist fertig und lokal zum Rahmen frame (Abstand 0). Kein
+     * Gedächtnis, keine Vorschau, kein Verschieben, keine Helfer – ein Arbeiter im Gang. false = nicht gestartet
+     * (anderer Bau, nichts umsetzbar); der Spieler hat dann Bescheid.
+     */
+    boolean startDig(Request r, CompiledBuild build, SiteFrame frame, BuildJob.Dig dig) {
+        String conflict = otherBuildConflict();
+        if (conflict != null) {
+            Texts.info(r.sender(), conflict);
+            return false;
+        }
+        if (thinking || active != null && active.running() || restoring != null) {
+            Texts.info(r.sender(), "Ich baue gerade noch etwas anderes. /bm stop bricht ab.");
+            return false;
+        }
+        World world = frame.world();
+        Orientation o = frame.orientation();
+        BlockTiers.WorldFacts facts = new BlockTiers.WorldFacts(world.isBedWorks(), world.isRespawnAnchorWorks());
+        List<WorldAction> actions = new ArrayList<>(build.actions().size());
+        int invalid = 0;
+        for (Action a : build.actions()) {
+            List<WorldChange> changes = new ArrayList<>(1);
+            for (Change c : a.changes()) {
+                Converted conv = toBlockData(c.block(), o);
+                if (conv.data() == null) {
+                    invalid++;
+                    continue;
+                }
+                changes.add(new WorldChange(frame.blockAt(c.pos()), conv.data(),
+                        placement(c.block(), 0, facts, o, frame::blockAt)));
+            }
+            if (!changes.isEmpty()) {
+                actions.add(new WorldAction(a.step(), List.copyOf(changes)));
+            }
+        }
+        if (invalid > 0) {
+            int bad = invalid;
+            LOG.warning(() -> "tunnel | ungültig | besitzer=" + r.ownerName() + " zellen=" + bad);
+        }
+        if (actions.isEmpty()) {
+            Texts.info(r.sender(), "Nach dem Umrechnen blieb kein Block übrig.");
+            return false;
+        }
+        Location center = frame.blockAt(new Pos(0, 0, 0)).getLocation().add(0.5, 0, 0.5);
+        Pos f = o.toWorldOffset(new Pos(0, 0, -1));
+        UUID checkAs = r.checkAsOwner() ? r.ownerId() : null;
+        UUID rightsOf = r.sender() instanceof Player rp ? rp.getUniqueId() : null;
+        activeOrder = orderText(r);
+        activeKind = LedgerKind.NEW;
+        activeLedgerOrder = HelperWish.strip(r.prompt());
+        activeLedgerInfo = "";
+        activePlot = "";
+        activeFixes = List.of();
+        activeRounds = 0;
+        activeGuides = List.of();
+        guidedJob = null;
+        active = new BuildJob(plugin, npc, settings, r.ownerId(), r.ownerName(), checkAs, rightsOf, r.sender(),
+                List.copyOf(actions), build.stepNames(), center, new Vector(f.x(), 0, f.z()), frame.feetY(), 0, false,
+                this::onJobFinished).cap(r.cap()).dig(dig);
+        npc.ensureNear(dig.stand(actions.getFirst().step()));
+        int n = actions.size();
+        LOG.info(() -> String.format("tunnel | start | besitzer=%s aktionen=%d welt=%s x=%d y=%d z=%d", r.ownerName(),
+                n, world.getName(), frame.feetX(), frame.feetY(), frame.feetZ()));
+        active.start();
+        return true;
+    }
+
+    /**
+     * „schneller“/„langsamer“ im Chat (ChatIntent, Wunsch 2026-11-16 „auch im Schnellverfahren, wenn ich das will“):
+     * gilt für den laufenden Bau – Tunnel, Brücke und jeden anderen.
+     */
+    void tempo(CommandSender sender, boolean faster) {
+        if (active == null || !active.running()) {
+            Texts.info(sender, thinking ? "Ich plane noch – gleich." : "Ich baue gerade nichts.");
+            return;
+        }
+        if (!mayTouch(sender, active.ownerId())) {
+            Texts.info(sender, "Das ist nicht dein Bau.");
+            return;
+        }
+        int perSecond = faster ? active.faster() : active.slower();
+        if (faster && perSecond == 0) {
+            Texts.info(sender, "Ich prüfe noch den Bauplatz – gleich geht's los.");
+            return;
+        }
+        Texts.info(sender, perSecond == 0 ? "Wieder Block für Block." : "Jetzt " + perSecond + " Blöcke/s.");
+        LOG.info(() -> "bau | tempo | besitzer=" + sender.getName() + " blöcke_je_s=" + perSecond);
     }
 
     /**
@@ -1814,7 +1925,8 @@ final class BuildService {
             Texts.info(sender, "Das ist nicht dein Bau.");
             return;
         }
-        active.cancel("Gestoppt. Was steht, bleibt stehen – /bm rückgängig räumt es weg.");
+        active.cancel(active.dig() != null && !active.undoable() ? "Gut, ich höre hier auf."
+                : "Gestoppt. Was steht, bleibt stehen – /bm rückgängig räumt es weg.");
     }
 
     /**

@@ -439,12 +439,29 @@ public final class HelpBook {
                     Part.run("Lobby", "/bm bau eine Lobby"),
                     Part.run("Portalhalle", "/bm bau eine Portalhalle"),
                     Part.run("Mauer", "/bm bau eine Mauer"),
-                    Part.run("Brücke", "/bm bau eine Brücke"),
+                    // Seit 2026-11-16 baut „Brücke“ die endlose (Kapitel Graben); die Bauform mit Bögen heißt hier so.
+                    Part.run("Bogenbrücke", "/bm bau eine Bogenbrücke"),
                     Part.run("Garten", "/bm bau einen Garten"),
                     Part.run("Baum", "/bm bau einen Baum"),
                     Part.run("Tanne", "/bm bau eine Tanne"),
                     Part.text("\n"),
                     Part.type("Hochhaus …", "/bm bau ein Hochhaus mit 8 Stockwerken"))));
+            // Graben und Brücken (Wunsch 2026-11-16): TunnelOrder liest die Knöpfe wie Sätze, HelpBookControlsTest
+            // prüft jeden. Ohne Admin braucht es eine Kiste – das steht dabei, sonst wundert sich jeder über die
+            // Absage.
+            chapters.add(new Chapter("Graben", List.of(
+                    Part.title("Graben\n"),
+                    Part.text("Er baut mit dir:\n"),
+                    Part.run("Tunnel", "/bm tunnel"),
+                    Part.run("Tunnel schnell", "/bm tunnel 40 schnell"),
+                    Part.run("Großer Tunnel", "/bm tunnel groß"),
+                    Part.run("Treppe nach oben", "/bm treppe"),
+                    Part.run("Brücke", "/bm brücke"),
+                    Part.run("Weiterbauen", "/bm weiterbauen"),
+                    Part.text("\n"),
+                    Part.text("Ohne Admin: Kiste\n"),
+                    Part.text("mit Material neben\n"),
+                    Part.text("dich stellen.\n"))));
             // Bauwerk-Dateien: im Buch nur der Einstieg, das Blättern macht das Kistenfenster (SchematicMenu) – bei
             // Hunderten Familien wäre das Buch ein Telefonbuch.
             if (c.extras().schematics() > 0) {
@@ -741,7 +758,7 @@ public final class HelpBook {
             return companion;
         }
         return switch (chapter) {
-            case "Bauen", "Schnellbau", "Sammlung" -> "Bauen";
+            case "Bauen", "Schnellbau", "Graben", "Sammlung" -> "Bauen";
             case "Fragen", "Suchen", "Abenteuer" -> companion;
             case "Zusammen", "Rucksack", "Teamkisten", "Warps", "Aufgaben" -> "Gemeinsam";
             case "Mods", "Einrichten", "Admin", RIGHTS_CHAPTER -> "Server";
