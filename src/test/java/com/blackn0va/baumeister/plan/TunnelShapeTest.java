@@ -88,6 +88,12 @@ class TunnelShapeTest {
         return TunnelShape.plan(TunnelOrder.Kind.TUNNEL, TunnelOrder.Size.NORMAL, length, 192, STONE, site);
     }
 
+    /** „bis ins Freie“: das alte Ende am Durchbruch und vor Wasser von oben. */
+    private static TunnelShape.Result daylight(TunnelTestSite site, int length) {
+        return TunnelShape.plan(new TunnelShape.Spec(TunnelOrder.Kind.TUNNEL, 1, 3, length, 192, 0,
+                TunnelShape.NO_ANCHOR, true, STONE, true), site);
+    }
+
     @Test
     void aTunnelInRockIsLinedArchedAndLitWithLanterns() {
         TunnelTestSite site = new TunnelTestSite();
@@ -219,7 +225,7 @@ class TunnelShapeTest {
     }
 
     @Test
-    void aCellarOrMeadowInFrontIsLeftAloneAndBreakingThroughEndsIt() {
+    void aCellarOrMeadowInFrontIsLeftAloneAndUpToDaylightEndsAtTheOpen() {
         TunnelTestSite cellar = new TunnelTestSite();
         cellar.box(-1, 1, 0, 2, 0, 2, Ground.OPEN, "air");
         cellar.box(-3, 3, -1, -1, 0, 2, Ground.BUILT, "stone_bricks");
@@ -231,15 +237,106 @@ class TunnelShapeTest {
         }
         TunnelTestSite hill = new TunnelTestSite();
         hill.top = z -> z < 10 ? 50 : 1;
-        TunnelShape.Result through = tunnel(hill, 40);
+        TunnelShape.Result through = daylight(hill, 40);
         assertEquals(TunnelShape.Stop.THROUGH, through.stop());
         assertEquals(9, through.last());
         TunnelTestSite lake = new TunnelTestSite();
         lake.top = z -> z < 10 ? 50 : 1;
         lake.box(-1, 1, 2, 2, 10, 12, Ground.FLUID, "water");
-        TunnelShape.Result wet = tunnel(lake, 40);
+        TunnelShape.Result wet = daylight(lake, 40);
         assertEquals(TunnelShape.Stop.WATER, wet.stop());
         assertEquals(8, wet.last(), "kein Abschnitt, dessen Front an den See grenzt");
+        // Ohne „bis ins Freie“ geht es an beiden Stellen geradeaus weiter (Röhre, siehe unten).
+        assertEquals(TunnelShape.Stop.LENGTH, tunnel(hill, 40).stop());
+        assertEquals(TunnelShape.Stop.LENGTH, tunnel(lake, 40).stop());
+    }
+
+    /**
+     * Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette Karte gehen“: Über
+     * ein Tal läuft er auf derselben Höhe und Linie weiter, als geschlossene Röhre mit Fenstern in Augenhöhe (nicht im
+     * Gurtbogen) und Pfeilern bis zum Grund unter jedem zweiten Licht. Vorher endete er an der Talkante (THROUGH).
+     */
+    @Test
+    void aTunnelCrossesAValleyStraightAsAClosedTubeWithWindowsAndPillars() {
+        TunnelTestSite site = new TunnelTestSite();
+        site.top = z -> z >= 10 && z < 30 ? -12 : 50;
+        TunnelShape.Result r = tunnel(site, 40);
+        assertEquals(TunnelShape.Stop.LENGTH, r.stop());
+        assertEquals(0, r.first());
+        assertEquals(39, r.last());
+        assertEquals(10, r.openFrom(), "erster Abschnitt im Freien");
+        Map<Pos, String> w = simulate(site, r);
+        for (int z = 10; z < 30; z++) {
+            assertEquals("polished_andesite", at(w, site, 0, -1, z), "Boden der Röhre bei " + z);
+            for (int x = -1; x <= 1; x++) {
+                assertNotEquals("air", at(w, site, x, 3, z), "Decke " + x + " " + z);
+                for (int y = 0; y <= 1; y++) {
+                    assertEquals("air", at(w, site, x, y, z), "Gang " + x + " " + y + " " + z);
+                }
+            }
+            for (int side = -2; side <= 2; side += 4) {
+                for (int y = 0; y <= 2; y++) {
+                    assertNotEquals("air", at(w, site, side, y, z), "Wand " + side + " " + y + " " + z);
+                }
+            }
+        }
+        assertEquals("glass", at(w, site, 2, 1, 12), "Fenster in Augenhöhe");
+        assertEquals("glass", at(w, site, -2, 1, 12));
+        assertEquals("stone_bricks", at(w, site, 2, 0, 12), "unten Wand");
+        assertEquals("stone_bricks", at(w, site, 2, 2, 12), "oben Wand");
+        assertEquals("chiseled_stone_bricks", at(w, site, 2, 1, 14), "kein Fenster im Gurtbogen");
+        assertEquals("lantern", at(w, site, 0, 2, 14), "Licht auch in der Röhre");
+        assertEquals("stone_bricks", at(w, site, 2, 1, 5), "im Fels keine Fenster");
+        // Pfeiler unter dem Licht bei 20 (jedes zweite: 8, 20, 32 – nur 20 liegt im Tal) bis zum Talboden (-12).
+        for (int y = -11; y <= -1; y++) {
+            assertEquals("stone_bricks", at(w, site, 2, y, 20), "Pfeiler rechts bei y " + y);
+            assertEquals("stone_bricks", at(w, site, -2, y, 20), "Pfeiler links bei y " + y);
+        }
+        assertEquals("chiseled_stone_bricks", at(w, site, 0, -2, 20), "Querbalken unter dem Boden");
+        assertEquals("air", at(w, site, 2, -5, 19), "zwischen den Pfeilern frei");
+        // Gerade: nichts weicht seitlich oder in der Höhe ab (außer den Pfeilern nach unten).
+        for (Action a : r.build().actions()) {
+            Pos p = a.anchor();
+            assertTrue(Math.abs(p.x()) <= 2 && p.y() <= 3 && p.y() >= -11, "außerhalb der Linie: " + p);
+        }
+    }
+
+    /** Durch einen See: Hülle und Front setzen das Wasser zu, bevor innen etwas offen ist – der Gang bleibt trocken. */
+    @Test
+    void throughALakeTheTubeStaysDryAndSealed() {
+        TunnelTestSite site = new TunnelTestSite();
+        site.top = z -> z >= 10 && z < 30 ? -12 : 50;
+        site.box(-6, 6, -11, 5, 10, 29, Ground.FLUID, "water");
+        TunnelShape.Result r = tunnel(site, 40);
+        assertEquals(TunnelShape.Stop.LENGTH, r.stop());
+        assertEquals(39, r.last());
+        Map<Pos, String> w = simulate(site, r);
+        for (int z = 0; z <= 39; z++) {
+            for (int y = 0; y <= 2; y++) {
+                for (int x = -1; x <= 1; x++) {
+                    assertFalse(FLUIDS.contains(at(w, site, x, y, z)), "Wasser im Gang " + x + " " + y + " " + z);
+                }
+            }
+        }
+        assertEquals("glass", at(w, site, 2, 1, 12), "Fenster unter Wasser");
+        assertEquals("stone_bricks", at(w, site, 2, 0, 12));
+        assertNotEquals("water", at(w, site, 0, 3, 12), "Decke");
+        assertEquals("stone_bricks", at(w, site, -2, -6, 20), "Pfeiler durchs Wasser bis zum Grund");
+    }
+
+    /** Am Ende der Röhre im Freien steht ein Abschluss – daran erkennt TunnelScan das Ende zum Weiterbauen. */
+    @Test
+    void aTubeThatStopsInTheOpenEndsWithAFace() {
+        TunnelTestSite site = new TunnelTestSite();
+        site.top = z -> z >= 10 ? -12 : 50;
+        TunnelShape.Result r = tunnel(site, 15);
+        assertEquals(14, r.last());
+        Map<Pos, String> w = simulate(site, r);
+        for (int y = 0; y <= 2; y++) {
+            for (int x = -1; x <= 1; x++) {
+                assertEquals("stone_bricks", at(w, site, x, y, 15), "Abschluss " + x + " " + y);
+            }
+        }
     }
 
     @Test
@@ -397,7 +494,8 @@ class TunnelShapeTest {
 
     @Test
     void continuingKeepsTheLightRhythmAndBuildsNoEntranceFrame() {
-        TunnelShape.Spec next = new TunnelShape.Spec(TunnelOrder.Kind.TUNNEL, 1, 3, 10, 192, 1, -5, false, STONE);
+        TunnelShape.Spec next = new TunnelShape.Spec(TunnelOrder.Kind.TUNNEL, 1, 3, 10, 192, 1, -5, false, STONE,
+                false);
         TunnelShape.Result r = TunnelShape.plan(next, new TunnelTestSite());
         assertEquals(1, r.first());
         assertEquals(10, r.last());

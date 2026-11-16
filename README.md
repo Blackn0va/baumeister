@@ -30,9 +30,10 @@ und mit Vera, einer Begleiterin, die mit dir spricht.**
 - **Maschinen und Logik.** Geprüfte Redstone-Maschinen in vier Richtungen und Schaltungen direkt aus einer Formel
   (`Q = A und (B oder nicht C)`).
 - **Tunnel, Treppen und Brücken.** „Grab mit mir einen Tunnel“ – der Baumeister gräbt vor dir her, solange du
-  mitgehst, ausgemauert und mit Laternen statt Fackeln; auf Wunsch im Schnellgang. Treppe bis zur Oberfläche, Brücke
-  übers Meer mit Pfeilern bis zum Grund. Vorhandenes erkennt er und baut es weiter; wer kein Admin ist, gibt das
-  Material aus einer Kiste.
+  mitgehst, ausgemauert und mit Laternen statt Fackeln; auf Wunsch im Schnellgang. Schnurgerade quer über die Karte:
+  über Täler und Meere als Röhre mit Fenstern, bis 10 000 Blöcke am Stück. Treppe bis zur Oberfläche, Brücke übers
+  Meer mit Pfeilern bis zum Grund. Vorhandenes erkennt er und baut es in seiner Richtung weiter; wer kein Admin ist,
+  gibt das Material aus einer Kiste.
 - **Vera, die Begleiterin.** Folgt dir, findet Erze und Dörfer, führt durch ein Abenteuer bis zum Enderdrachen,
   repariert, erzählt Witze – und spricht im Voice Chat mit eigener Cartoon-Stimme, gerechnet auf dem Server.
 - **Die Welt 1:1.** Gelände, Städte und ganze Erdkacheln aus Höhendaten und OpenStreetMap.

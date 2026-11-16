@@ -1,6 +1,8 @@
 package com.blackn0va.baumeister.plan;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.blackn0va.baumeister.plan.TunnelShape.Ground;
 
@@ -36,5 +38,33 @@ class TunnelNatureTest {
         }
         assertEquals(Ground.BUILT, TunnelNature.of("glowstone", false, false), "im Oberland gesetzt");
         assertEquals(Ground.SOLID, TunnelNature.of("glowstone", false, true), "im Nether Natur");
+    }
+
+    /**
+     * Quer über die Karte (Wunsch 2026-11-16): Bretter, Zäune, Stämme, Schienen, Spinnweben und Ketten eines
+     * Mineschachts, den die Welt erzeugt hat, sind Natur; was ein Spieler dort gebaut hat und alle anderen Bauwerke
+     * bleiben Gebautes.
+     */
+    @Test
+    void onlyAMineshaftsOwnBlocksAreDugThrough() {
+        Ground built = Ground.BUILT;
+        assertTrue(TunnelNature.diggableStructure("mineshaft"));
+        assertTrue(TunnelNature.diggableStructure("mineshaft_mesa"));
+        for (String other : List.of("fortress", "stronghold", "ancient_city", "trial_chambers", "village_plains")) {
+            assertFalse(TunnelNature.diggableStructure(other), other);
+            assertEquals(built, TunnelNature.inStructure(other, "oak_planks", false, built), other);
+        }
+        // Wandfackel: Vanilla hängt sie an Stützbalken (Paper-Probe 2026-11-16 hielt sonst daran an).
+        for (String id : List.of("oak_planks", "oak_fence", "oak_log", "dark_oak_planks", "rail", "cobweb",
+                "iron_chain", "wall_torch", "torch")) {
+            assertEquals(Ground.SOLID, TunnelNature.inStructure("mineshaft", id, false, built), id);
+        }
+        assertEquals(Ground.FLUID, TunnelNature.inStructure("mineshaft", "oak_fence", true, built),
+                "Wasser im Zaun: zuerst ausräumen");
+        for (String id : List.of("glass", "lantern", "chest", "stone_bricks", "spruce_planks", "ladder")) {
+            assertEquals(built, TunnelNature.inStructure("mineshaft", id, false, built), id);
+        }
+        assertEquals(Ground.FORBIDDEN, TunnelNature.inStructure("mineshaft", "spawner", false, Ground.FORBIDDEN));
+        assertEquals(built, TunnelNature.inStructure("stronghold", "wall_torch", false, built), "nur im Schacht");
     }
 }

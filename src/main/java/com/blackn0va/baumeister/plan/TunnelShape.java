@@ -28,10 +28,17 @@ import java.util.Map;
  * das Weiterbauen (nächster Abschnitt nach einem fertigen Stück, Lichtabstand läuft weiter).
  *
  * Was im Boden steckt, liest {@link Site}: Gebautes oder Grundgestein innen (wegräumen hieße abreißen) beendet den Bau
- * vor diesem Abschnitt; in der Hülle bleibt es stehen und dient als Wand. Was über der Oberfläche liegt (sky), bekommt
- * keine Hülle – gegraben wird nur im Boden. Ein neuer Tunnel beginnt beim ersten Abschnitt, in dem es etwas zu graben
- * gibt (Keller, Höhle oder Wiese davor bleiben unberührt), und endet, wo er ins Freie bricht. Eine Treppe läuft je
+ * vor diesem Abschnitt; in der Hülle bleibt es stehen und dient als Wand. Ein neuer Tunnel beginnt beim ersten
+ * Abschnitt, in dem es etwas zu graben gibt (Keller, Höhle oder Wiese davor bleiben unberührt). Eine Treppe läuft je
  * Abschnitt einen Block höher, bis der Spieler auf ihr über der Oberfläche steht.
+ *
+ * Röhre (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette Karte gehen“):
+ * Bricht der Tunnel ins Freie (Tal, Schlucht) oder läuft er in einen See oder ins Meer, geht er auf derselben Höhe
+ * geradeaus weiter – als geschlossene Röhre mit derselben Hülle und demselben Abschluss wie im Fels, in Augenhöhe mit
+ * Fenstern, an jedem zweiten Lichtabschnitt auf Pfeilern bis zum Grund. Vorher endete er dort (THROUGH, WATER): Ein
+ * Tunnel quer über die Karte hätte an jedem Tal neu angesetzt werden müssen, und „bau weiter“ fand an einem offenen
+ * Ende nichts zum Weitergraben. Wer nur durch den Berg will („bis ins Freie“, Spec.daylight), bekommt das alte Ende.
+ * Wer die Röhre zurückdreht, lässt jeden Tunnel quer über die Karte am ersten Tal enden.
  *
  * Threads: zustandslos. Fehler: keine.
  */
@@ -80,9 +87,12 @@ public final class TunnelShape {
         BUILT,
         /** Innen Grundgestein oder Weltrand. */
         FORBIDDEN,
-        /** Der Tunnel bricht ins Freie durch. */
+        /** Der Tunnel bricht ins Freie durch – nur „bis ins Freie“ (Spec.daylight), sonst geht er als Röhre weiter. */
         THROUGH,
-        /** Über der Oberfläche steht Wasser oder Lava (See, Meer) – dort kein Ausgang; Brücke: Wasser über dem Deck. */
+        /**
+         * Über der Oberfläche steht Wasser oder Lava (See, Meer): Treppe ohne Ausgang, Tunnel „bis ins Freie“;
+         * Brücke: Wasser über dem Deck.
+         */
         WATER,
         /** Brücke: ein Berg im Weg (fester Boden auf Kopfhöhe). */
         HILL,
@@ -106,24 +116,27 @@ public final class TunnelShape {
      *                  {@link #NO_ANCHOR} = der erste gebaute
      * @param entrance  neuer Bau: Eingang als Gurtbogen, Keller und Wiese davor überspringen. Beim Weiterbauen nie –
      *                  sonst bliebe eine Höhle direkt hinter dem fertigen Stück ohne Hülle.
+     * @param daylight  Tunnel endet, wo er ins Freie bricht oder Wasser von oben käme („durch den Berg“, „bis ins
+     *                  Freie“) – sonst läuft er dort als Röhre weiter
      */
     public record Spec(TunnelOrder.Kind kind, int half, int height, int length, int scanLimit, int start, int anchor,
-            boolean entrance, TunnelStyle style) {
+            boolean entrance, TunnelStyle style, boolean daylight) {
 
         public static Spec of(TunnelOrder.Kind kind, TunnelOrder.Size size, int length, int scanLimit,
                 TunnelStyle style) {
-            return new Spec(kind, size.half, size.height, length, scanLimit, 0, NO_ANCHOR, true, style);
+            return new Spec(kind, size.half, size.height, length, scanLimit, 0, NO_ANCHOR, true, style, false);
         }
     }
 
     /**
-     * @param first   erster gebauter Abschnitt (-1 = keiner)
-     * @param last    letzter gebauter Abschnitt
-     * @param stopAt  wo es aufhörte (lokal), null bei LENGTH
-     * @param blocks  höchstens so viele Blöcke je ID (ohne Luft) – was schon dasteht, kostet beim Bau nichts
+     * @param first    erster gebauter Abschnitt (-1 = keiner)
+     * @param last     letzter gebauter Abschnitt
+     * @param stopAt   wo es aufhörte (lokal), null bei LENGTH
+     * @param blocks   höchstens so viele Blöcke je ID (ohne Luft) – was schon dasteht, kostet beim Bau nichts
+     * @param openFrom erster Abschnitt, der als Röhre im Freien liegt (Tal, See), -1 = keiner – für die Ansage
      */
     public record Result(CompiledBuild build, Spec spec, int first, int last, Stop stop, Pos stopAt, String stopId,
-            int lights, Map<String, Integer> blocks) {
+            int lights, Map<String, Integer> blocks, int openFrom) {
 
         public boolean empty() {
             return first < 0;
@@ -178,11 +191,14 @@ public final class TunnelShape {
             if (!stairs && spec.entrance() && b.first < 0 && b.allOpen(inner)) {
                 continue;  // Keller, Höhle oder Wiese vor dem Fels: dort nichts bauen
             }
-            if (!stairs && site.sky(new Pos(0, base + b.h + 1, k))) {
+            boolean out = !stairs && site.sky(new Pos(0, base + b.h + 1, k));
+            if (out) {
                 if (b.first < 0 && spec.entrance()) {
                     continue;  // noch draußen vor dem Hang
                 }
-                return b.result(Stop.THROUGH, new Pos(0, base + 1, k));
+                if (!b.tube) {
+                    return b.result(Stop.THROUGH, new Pos(0, base + 1, k));
+                }
             }
             List<Pos> removed = new ArrayList<>(inner);
             if (stairs && k >= 1) {
@@ -194,10 +210,14 @@ public final class TunnelShape {
                     return b.result(g == Ground.BUILT ? Stop.BUILT : Stop.FORBIDDEN, p);
                 }
             }
-            for (Pos p : b.allCells(k)) {
+            // Die Röhre schließt See und Meer genauso aus wie Wasser im Fels (Hülle und Front vor dem Ausräumen).
+            for (Pos p : b.tube ? List.<Pos>of() : b.allCells(k)) {
                 if (site.sky(p) && site.at(p) == Ground.FLUID) {
                     return b.result(Stop.WATER, p);
                 }
+            }
+            if (out && b.openFrom < 0) {
+                b.openFrom = k;
             }
             b.emit(k);
             if (stairs && site.sky(new Pos(0, base + 1, k))) {
@@ -218,10 +238,13 @@ public final class TunnelShape {
         final int h;
         final TunnelStyle style;
         final Site site;
+        /** Tunnel, der über der Oberfläche als Röhre weiterläuft (nicht bei „bis ins Freie“, nie bei der Treppe). */
+        final boolean tube;
         final List<Action> actions = new ArrayList<>();
         final Map<String, Integer> blocks = new LinkedHashMap<>();
         int first = -1;
         int last = -1;
+        int openFrom = -1;
         int lights;
         Pos min;
         Pos max;
@@ -234,6 +257,7 @@ public final class TunnelShape {
             this.h = spec.height();
             this.style = spec.style();
             this.site = site;
+            this.tube = kind == TunnelOrder.Kind.TUNNEL && !spec.daylight();
         }
 
         boolean stairs() {
@@ -326,6 +350,27 @@ public final class TunnelShape {
                     niche = at;
                 }
             }
+            // 0. Röhre über Luft oder Wasser: an jedem zweiten Lichtabschnitt Pfeiler unter beiden Wänden bis zum
+            // Grund (von unten nach oben, wie die Brücke) samt Querbalken unter dem Boden.
+            Ground under = site.at(new Pos(0, base - 1, k));
+            if (tube && pillarSlice(k) && (under == Ground.OPEN || under == Ground.FLUID)) {
+                List<Pos> left = column(-w - 1, base, k);
+                List<Pos> right = column(w + 1, base, k);
+                if (left != null && right != null && (!left.isEmpty() || !right.isEmpty())) {
+                    for (List<Pos> col : List.of(left, right)) {
+                        for (int i = col.size() - 1; i >= 0; i--) {
+                            put(col.get(i), style.wall(), k);
+                        }
+                    }
+                    for (int x = -w; x <= w; x++) {
+                        Pos p = new Pos(x, base - 1, k);
+                        Ground g = site.at(p);
+                        if (g == Ground.OPEN || g == Ground.FLUID) {
+                            put(p, style.rib(), k);
+                        }
+                    }
+                }
+            }
             // 1. Hülle: Decke, Wände (oben → unten), Boden bzw. Stufe – bevor innen etwas offen ist.
             for (int x = -w; x <= w; x++) {
                 shellCell(new Pos(x, base + h + 1, k), embedded && x == 0 ? style.light() : shell, k);
@@ -338,7 +383,7 @@ public final class TunnelShape {
                 for (int side = -1; side <= 1; side += 2) {
                     Pos p = new Pos(side * (w + 1), y, k);
                     if (!p.equals(niche)) {
-                        shellCell(p, shell, k);
+                        shellCell(p, window(p, k, base) ? style.window() : shell, k);
                     }
                 }
             }
@@ -354,12 +399,14 @@ public final class TunnelShape {
                     shellCell(p, style.floor(), k);
                 }
             }
-            // 2. Front des nächsten Abschnitts zu, wo dort Luft oder Flüssigkeit steht.
+            // 2. Front des nächsten Abschnitts zu, wo dort Luft oder Flüssigkeit steht – in der Röhre auch über der
+            // Oberfläche: Im See hält sie das Wasser draußen, und am Ende ist sie die Stirn, an der TunnelScan das
+            // Ende erkennt.
             for (int y = base + 1; y <= base + h; y++) {
                 for (int x = -w; x <= w; x++) {
                     Pos p = new Pos(x, y, k + 1);
                     Ground g = site.at(p);
-                    if (!site.sky(p) && (g == Ground.OPEN || g == Ground.FLUID)) {
+                    if ((tube || !site.sky(p)) && (g == Ground.OPEN || g == Ground.FLUID)) {
                         put(p, style.wall(), k);
                     }
                 }
@@ -411,11 +458,12 @@ public final class TunnelShape {
             int top = base + h;
             // Bogen: umgedrehte Treppe, die volle Seite zur Wand (facing nach außen, half=top) – so rundet sie die
             // obere Ecke ab, statt einen Absatz in den Gang zu ragen.
-            if (style.arch() != null && w >= 1 && p.y() == top && Math.abs(p.x()) == w && !site.sky(p)) {
+            if (style.arch() != null && w >= 1 && p.y() == top && Math.abs(p.x()) == w && (tube || !site.sky(p))) {
                 return style.arch().withExplicit("facing", p.x() > 0 ? "right" : "left").withExplicit("half", "top");
             }
             // Hängt nur unter einer Decke im Boden: Über der Oberfläche (Treppenausgang) fiele sie als Gegenstand ab.
-            if (light && style.hangingLight() && w >= 1 && p.x() == 0 && !site.sky(new Pos(0, top + 1, k))) {
+            if (light && style.hangingLight() && w >= 1 && p.x() == 0
+                    && (tube || !site.sky(new Pos(0, top + 1, k)))) {
                 if (style.chain() != null && p.y() == top) {
                     return style.chain().withExplicit("axis", "y");
                 }
@@ -546,16 +594,25 @@ public final class TunnelShape {
             return TunnelStyle.HANGING_LIGHTS.contains(s.id());
         }
 
-        /** Hüllzelle: über der Oberfläche nichts, Gebautes und Grundgestein bleiben als Wand stehen. */
+        /** Hüllzelle: Gebautes und Grundgestein bleiben als Wand stehen; über der Oberfläche nur in der Röhre. */
         private void shellCell(Pos p, BlockSpec block, int k) {
             if (usable(p)) {
                 put(p, block, k);
             }
         }
 
-        /** Im Boden und weder Gebautes noch Grundgestein – dort darf die Hülle hin. */
+        /**
+         * Fenster statt Wand: in der Röhre, wo die Wand über der Oberfläche steht (Tal, See, Meer), in Augenhöhe, nie
+         * im Gurtbogen. Im Fels sähe man nur Stein; in einer Höhle wäre es ein Loch in die Dunkelheit.
+         */
+        private boolean window(Pos p, int k, int base) {
+            return tube && style.window() != null && !ribSlice(k) && p.y() >= base + 2
+                    && p.y() <= Math.max(base + 2, base + h - 1) && site.sky(p);
+        }
+
+        /** Weder Gebautes noch Grundgestein, und im Boden oder in der Röhre – dort darf die Hülle hin. */
         private boolean usable(Pos p) {
-            if (site.sky(p)) {
+            if (!tube && site.sky(p)) {
                 return false;
             }
             Ground g = site.at(p);
@@ -587,7 +644,7 @@ public final class TunnelShape {
             CompiledBuild build = new CompiledBuild(List.copyOf(actions), List.of(),
                     min == null ? new Pos(0, 0, 0) : min, max == null ? new Pos(0, 0, 0) : max, List.copyOf(names));
             return new Result(build, spec, first, last, stop, at, at == null ? null : site.id(at), lights,
-                    Map.copyOf(blocks));
+                    Map.copyOf(blocks), openFrom);
         }
     }
 }

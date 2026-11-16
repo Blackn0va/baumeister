@@ -1,9 +1,13 @@
 package com.blackn0va.baumeister.plan;
 
+import com.blackn0va.baumeister.plan.Orientation.Cardinal;
+
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Vorhandene Tunnel, Treppen und Brücken erkennen, um dort weiterzubauen (Wunsch 2026-11-16: „er muss Tunnel und
@@ -15,8 +19,14 @@ import java.util.Set;
  * Brücke. Dann geht es nach vorn bis zum Ende: beim Tunnel bis zum Fels (öffnet er sich vorher in eine Höhle oder ins
  * Freie, ist dort kein Ende zum Weitergraben), bei der Treppe bis zur letzten Stufe, bei der Brücke bis dahin, wo das
  * Deck fehlt. Maße, Steine, Bogen, Lichter und ihr Abstand kommen aus den letzten Abschnitten vor dem Ende – so läuft
- * der neue Teil genauso weiter. Schaut der Spieler quer zum Gang, misst er die Länge als Breite und erkennt nichts:
- * „schau in die Richtung, in die es weitergehen soll“.
+ * der neue Teil genauso weiter. Schaut der Spieler quer zum Gang, misst er die Länge als Breite und erkennt nichts.
+ *
+ * Gerade weiter (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette Karte
+ * gehen“): {@link #around} sucht in allen vier Richtungen, damit „bau weiter“ dem Gang folgt und nicht dem Blick.
+ * Vorher galt nur die Blickrichtung – wer beim Sagen zur Seite schaute, bekam „nichts erkannt“ und einen neuen Tunnel
+ * quer zum alten. Ein Gang, der ins Freie mündet (alter Durchbruch, Ende über einem Tal), hat dort ein offenes Ende
+ * (Found.open): Weiterbauen setzt die Röhre über das Tal an. Eine Öffnung in eine Höhle oder einen Raum bleibt kein
+ * Ende – dort stünde die Röhre in fremdem Hohlraum.
  *
  * Threads: zustandslos. Fehler: keine – nichts erkannt heißt leer.
  */
@@ -25,14 +35,24 @@ public final class TunnelScan {
     /** Block an einer Stelle, Zustände lokal (facing=back heißt: in Blickrichtung). */
     public interface Look {
         BlockSpec at(Pos local);
+
+        /** Über der Oberfläche (wie TunnelShape.Site.sky)? Ohne dieses Wissen nie – dann gibt es kein offenes Ende. */
+        default boolean sky(Pos local) {
+            return false;
+        }
     }
 
     /**
      * @param end    Füße auf dem letzten fertigen Abschnitt, mittig – dort beginnt das Weiterbauen mit Abschnitt 1
      * @param anchor Lichtanker relativ zu end (TunnelShape.Spec.anchor), {@link TunnelShape#NO_ANCHOR} ohne Licht
+     * @param open   der Tunnel mündet dort ins Freie (kein Fels davor) – weiter geht es als Röhre
      */
     public record Found(TunnelOrder.Kind kind, int half, int height, Pos end, int anchor, String wall, String floor,
-            String rib, String arch, String step, String light, String chain, String railing) {
+            String rib, String arch, String step, String light, String chain, String railing, boolean open) {
+    }
+
+    /** Erkanntes und die Himmelsrichtung, in der es weitergeht. */
+    public record Directed(Cardinal dir, Found found) {
     }
 
     /** So weit sucht er nach vorn das Ende. */
@@ -47,6 +67,37 @@ public final class TunnelScan {
             "dead_bush", "snow", "glow_lichen", "vine", "moss_carpet", "redstone_wire", "tripwire", "ladder");
 
     private TunnelScan() {
+    }
+
+    /**
+     * In allen vier Richtungen suchen, die Blickrichtung zuerst: Endet der Gang dort am Fels, gilt sie. Sonst das
+     * nächste Ende am Fels in einer anderen Richtung, und erst dann ein offenes Ende (Blickrichtung zuerst) – ein Gang
+     * hat meist einen offenen Eingang hinter dem Spieler, und dort weiterzubauen hieße, die Röhre aus dem Eingang
+     * heraus in die Wiese zu setzen.
+     *
+     * @param looks Sicht für eine Blickrichtung (lokal wie {@link #scan})
+     */
+    public static Optional<Directed> around(Cardinal facing, Function<Cardinal, Look> looks) {
+        Directed face = null;
+        Directed open = null;
+        for (Cardinal d : List.of(facing, facing.clockwise(), facing.clockwise().opposite(), facing.opposite())) {
+            Optional<Found> f = scan(looks.apply(d));
+            if (f.isEmpty()) {
+                continue;
+            }
+            Directed hit = new Directed(d, f.get());
+            if (!hit.found().open()) {
+                if (d == facing) {
+                    return Optional.of(hit);
+                }
+                if (face == null || hit.found().end().z() < face.found().end().z()) {
+                    face = hit;
+                }
+            } else if (open == null) {
+                open = hit;
+            }
+        }
+        return Optional.ofNullable(face != null ? face : open);
     }
 
     public static Optional<Found> scan(Look look) {
@@ -106,7 +157,7 @@ public final class TunnelScan {
             }
         }
         return Optional.of(new Found(TunnelOrder.Kind.STAIRS_UP, half, height, end, anchorFrom(lastLight, e),
-                walls.wallBlock(), steps.top(), walls.second(), null, steps.top(), lights.top(), null, null));
+                walls.wallBlock(), steps.top(), walls.second(), null, steps.top(), lights.top(), null, null, false));
     }
 
     private static boolean climbing(BlockSpec s) {
@@ -139,9 +190,10 @@ public final class TunnelScan {
         while (behind < 2 * MAX_WALK && corridor(look, c, l, r, height, -behind - 1)) {
             behind++;
         }
-        // Nach vorn, solange es ein Gang ist; am Fels ist das Ende. Öffnet er sich vorher, gibt es kein Ende zum
-        // Graben.
+        // Nach vorn, solange es ein Gang ist; am Fels ist das Ende. Mündet er ins Freie (Decke dort über der
+        // Oberfläche), ist das ein offenes Ende; öffnet er sich in eine Höhle oder einen Raum, gibt es keins.
         int e = 0;
+        boolean open = false;
         while (true) {
             if (e >= MAX_WALK) {
                 return Optional.empty();
@@ -151,6 +203,10 @@ public final class TunnelScan {
                 break;
             }
             if (!corridor(look, c, l, r, height, e + 1)) {
+                if (look.sky(new Pos(c, height, e + 1))) {
+                    open = true;
+                    break;
+                }
                 return Optional.empty();
             }
             e++;
@@ -166,7 +222,11 @@ public final class TunnelScan {
         Tally lights = new Tally();
         Tally chains = new Tally();
         int lastLight = Integer.MIN_VALUE;
-        for (int z = Math.max(0, e - SAMPLE); z <= e; z++) {
+        // Die letzten SAMPLE Abschnitte auch hinter dem Spieler: Vorher nur ab seinen Füßen – stand er direkt am Ende
+        // und war der letzte Abschnitt ein Gurtbogen, gewann dessen Stein (Probe 2026-11-16, Spigot: Fortsetzung aus
+        // poliertem Tiefenschiefer statt Tiefenschieferziegeln). Wer einen Tunnel quer über die Karte immer wieder
+        // fortsetzt, steht genau dort.
+        for (int z = Math.max(-behind, e - SAMPLE); z <= e; z++) {
             for (int y = 0; y < height; y++) {
                 walls.add(look.at(new Pos(-l - 1, y, z)).id());
                 walls.add(look.at(new Pos(r + 1, y, z)).id());
@@ -203,7 +263,7 @@ public final class TunnelScan {
         }
         return Optional.of(new Found(TunnelOrder.Kind.TUNNEL, half, height, new Pos(c, 0, e), anchorFrom(lastLight, e),
                 walls.wallBlock(), floors.wallBlockOr(walls.wallBlock()), walls.second(), arches.top(), null,
-                lights.top(), chains.top(), null));
+                lights.top(), chains.top(), null, open));
     }
 
     /**
@@ -291,7 +351,7 @@ public final class TunnelScan {
         // Pfeiler aus Erde oder Stein zu setzen.
         String deck = decks.wallBlockOr(decks.top());
         return Optional.of(new Found(TunnelOrder.Kind.BRIDGE, half, 3, new Pos(c, 0, e), anchorFrom(lastLight, e),
-                deck, deck, null, null, null, lights.top(), null, railings.top()));
+                deck, deck, null, null, null, lights.top(), null, railings.top(), false));
     }
 
     // ---------------------------------------------------------------- gemeinsam

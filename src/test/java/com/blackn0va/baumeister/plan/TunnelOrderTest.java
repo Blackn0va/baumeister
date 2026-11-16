@@ -78,7 +78,7 @@ class TunnelOrderTest {
         for (String p : List.of("bau eine Treppe", "bau eine Treppe zum Dach", "bau eine Wendeltreppe nach oben",
                 "bau einen Tunnel unter dem Fluss", "grab ein Loch", "bau einen Gang", "bau einen Tunnel mit Schienen",
                 "grab einen Tunnel 40 und 50 Blöcke", "bau einen großen kleinen Tunnel",
-                "grab einen Tunnel nach Norden und Süden", "grab einen Tunnel 0 Blöcke", "grab einen Tunnel 999",
+                "grab einen Tunnel nach Norden und Süden", "grab einen Tunnel 0 Blöcke", "grab einen Tunnel 10001",
                 "bau mir ein Haus", "grab einen Tunnel aus Holz und Stein")) {
             assertTrue(TunnelOrder.parse(p).isEmpty(), p);
         }
@@ -100,6 +100,39 @@ class TunnelOrderTest {
         for (String p : List.of("bau eine Bogenbrücke", "bau eine Hängebrücke", "bau einen Tunnel und eine Brücke",
                 "bau eine Brücke nach oben", "bau eine Brücke aus Holz und Stein")) {
             assertTrue(TunnelOrder.parse(p).isEmpty(), p);
+        }
+    }
+
+    /**
+     * Wunsch 2026-11-16, „er wird irgendwann durch ca. die komplette Karte gehen“: lange Längen (Stück für Stück
+     * gebaut), auch mit Tausenderpunkt; „durch die ganze Karte“ im Schnellgang heißt so weit wie erlaubt.
+     */
+    @Test
+    void longTunnelsAcrossTheMap() {
+        assertEquals(5000, order("grab einen Tunnel 5000 Blöcke schnell").length());
+        assertEquals(10_000, order("grab einen Tunnel 10.000 Blöcke schnell").length());
+        assertEquals(2000, order("tunnel 2 000 schnell").length());
+        assertEquals(999, order("grab einen Tunnel 999").length());
+        TunnelOrder across = order("grab einen Tunnel durch die ganze Karte im Schnellverfahren");
+        assertEquals(TunnelOrder.MAX_LENGTH, across.length());
+        assertTrue(across.fast());
+        TunnelOrder walk = order("grab mit mir einen Tunnel quer durch die komplette Welt");
+        assertTrue(walk.follow(), "ohne „schnell“: mitgraben, solange der Spieler geht");
+        assertEquals(0, walk.length());
+        assertFalse(walk.daylight());
+    }
+
+    /** „durch den Berg“ und „bis ins Freie“: Ende am Durchbruch – sonst geht der Tunnel dort als Röhre weiter. */
+    @Test
+    void throughTheMountainEndsAtDaylight() {
+        for (String p : List.of("grab einen Tunnel durch den Berg", "grab einen Tunnel bis ins Freie",
+                "grab mit mir einen Tunnel durch den Hügel", "bau einen Tunnel auf die andere Seite",
+                "grab den Tunnel weiter bis ins Freie")) {
+            assertTrue(order(p).daylight(), p);
+        }
+        for (String p : List.of("grab einen Tunnel", "grab einen Tunnel in den Berg", "grab einen Tunnel 40 schnell",
+                "grab einen Tunnel durch die ganze Karte")) {
+            assertFalse(order(p).daylight(), p);
         }
     }
 

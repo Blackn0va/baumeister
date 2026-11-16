@@ -43,6 +43,13 @@ import org.bukkit.inventory.ItemStack;
  * nicht: Das Abgebaute liegt schon in der Kiste – ein Rückgängig stellte den Fels wieder her, und Erz ließe sich so
  * beliebig oft abbauen.
  *
+ * Gerade (Wunsch 2026-11-16, „ein Tunnel muss straight gerade gehen – er wird irgendwann durch ca. die komplette Karte
+ * gehen“): Weiterbauen nimmt Richtung, Mitte, Höhe und Maße vom erkannten Gang ({@link #recognise}), nie vom Blick
+ * des Spielers. Vorher galt nur die Blickrichtung: Wer bei „bau weiter“ zur Seite schaute, bekam einen neuen Tunnel
+ * quer zum alten, und „grab einen Tunnel“ mitten im Gang setzte neu an – um die Füße des Spielers versetzt, mit
+ * Eingangsbogen und neuem Lichttakt. Lange Aufträge (bis TunnelOrder.MAX_LENGTH) laufen Stück für Stück im selben
+ * Rahmen, jedes Stück höchstens bau.max-ausdehnung lang – also auf derselben Linie und Höhe.
+ *
  * Threads: Hauptthread. Fehler: keine (Absagen gehen als Satz an den Spieler).
  */
 final class TunnelService {
@@ -72,10 +79,17 @@ final class TunnelService {
         this.npc = npc;
     }
 
-    /** Alles, was ein Stück braucht – auch das nächste beim Mitbauen ohne Ende. */
+    /**
+     * Alles, was ein Stück braucht – auch das nächste beim Mitbauen ohne Ende oder bei einer langen Länge.
+     *
+     * @param resumed     der Auftrag setzt etwas Vorhandenes fort (bleibt für alle Stücke gleich)
+     * @param rest        so viele Abschnitte kommen nach diesem Stück noch (feste Länge über bau.max-ausdehnung)
+     * @param builtBefore so viele Abschnitte haben die Stücke davor gebaut – für die Schlussansage
+     */
     private record Job(BuildService.Request request, TunnelOrder order, TunnelOrder.Kind kind, SiteFrame frame,
             int half, int height, int length, int start, int anchor, boolean entrance, TunnelStyle style,
-            MaterialChest chest, boolean free, boolean follow, boolean endless, Set<String> ownIds, boolean resumed) {
+            MaterialChest chest, boolean free, boolean follow, boolean endless, Set<String> ownIds, boolean resumed,
+            int rest, int builtBefore) {
     }
 
     /**
@@ -90,22 +104,25 @@ final class TunnelService {
         TunnelOrder order = parsed.get();
         Location feet = r.feet();
         World world = feet.getWorld();
-        Cardinal dir = direction(order.turn(), r.facing());
+        Cardinal asked = direction(order.turn(), r.facing());
         Player p = r.sender() instanceof Player pl ? pl : null;
-        SiteFrame here = new SiteFrame(world, feet.getBlockX(), feet.getBlockY(), feet.getBlockZ(),
-                new Orientation(dir), 0);
-        TunnelScan.Found found = null;
-        if (order.resume()) {
-            found = TunnelScan.scan(look(here)).orElse(null);
-            if (found == null && order.kind() == null) {
+        TunnelScan.Directed hit = recognise(order, feet, asked);
+        if (order.resume() && hit == null) {
+            if (order.kind() == null) {
                 return false;
             }
-            if (found == null) {
-                say(r, "Hier erkenne ich " + noun(order.kind(), false) + " zum Weiterbauen – ich fange hier neu an.");
-            } else if (order.kind() != null && order.kind() != found.kind()) {
-                say(r, "Das hier ist " + noun(found.kind(), true) + " – den baue ich weiter.");
-            }
+            // Vorher fing er hier neu an – in Blickrichtung, also womöglich quer oder versetzt zum vorhandenen Gang.
+            say(r, "Hier finde ich " + noun(order.kind(), false) + " zum Weiterbauen. Stell dich hinein, höchstens "
+                    + TunnelScan.MAX_WALK + " Blöcke vor sein Ende.");
+            LOG.info(() -> "tunnel | abgesagt | besitzer=" + r.ownerName() + " grund=nichts_erkannt");
+            return true;
         }
+        TunnelScan.Found found = hit == null ? null : hit.found();
+        if (found != null && order.kind() != null && order.kind() != found.kind()) {
+            say(r, "Das hier ist " + noun(found.kind(), true) + " – den baue ich weiter.");
+        }
+        Cardinal dir = hit != null ? hit.dir() : asked;
+        SiteFrame here = frameAt(feet, dir);
         TunnelOrder.Kind kind = found != null ? found.kind() : order.kind();
         if (kind == TunnelOrder.Kind.STAIRS_UP && world.getEnvironment() != World.Environment.NORMAL) {
             say(r, "Im Nether und im End gibt es keine Oberfläche, zu der eine Treppe führen könnte.");
@@ -130,9 +147,18 @@ final class TunnelService {
         boolean follow = order.follow() && p != null;
         boolean endless = follow && order.length() == 0;
         int maxExtent = settings.maxExtent();
-        int length = kind == TunnelOrder.Kind.STAIRS_UP ? Math.min(order.length(), maxExtent)
-                : order.length() > 0 ? Math.min(order.length(), maxExtent)
-                        : follow ? FOLLOW_SEGMENT : FAST_DEFAULT;
+        int length;
+        int rest = 0;
+        if (kind == TunnelOrder.Kind.STAIRS_UP) {
+            length = Math.min(order.length(), maxExtent);
+        } else if (order.length() > 0) {
+            // Quer über die Karte (Wunsch 2026-11-16): je Stück höchstens bau.max-ausdehnung, der Rest folgt im selben
+            // Rahmen (Run.finished). Vorher kappte bau.max-ausdehnung die Länge stillschweigend.
+            length = Math.min(order.length(), maxExtent);
+            rest = order.length() - length;
+        } else {
+            length = follow ? FOLLOW_SEGMENT : FAST_DEFAULT;
+        }
 
         // Frei bauen oder aus der Kiste (Wunsch 2026-11-16).
         boolean free = !order.fromChest() && (r.sender().hasPermission("baumeister.admin")
@@ -171,12 +197,12 @@ final class TunnelService {
             }
         }
         Job job = new Job(r, order, kind, frame, half, height, length, start, anchor, found == null, style, chest,
-                free, follow, endless, Set.copyOf(ownIds), found != null);
+                free, follow, endless, Set.copyOf(ownIds), found != null, rest, 0);
         TunnelOrder.Kind k = kind;
-        LOG.info(() -> String.format("tunnel | auftrag | besitzer=%s art=%s weiter=%s länge=%d mitbauen=%s endlos=%s "
-                + "schnell=%s frei=%s kiste=%s stil=%s richtung=%s", r.ownerName(), k, job.resumed(), job.length(),
-                follow, endless, order.fast(), free, chest == null ? "-" : at(chest.location()), job.style().name(),
-                dir));
+        LOG.info(() -> String.format("tunnel | auftrag | besitzer=%s art=%s weiter=%s länge=%d rest=%d mitbauen=%s "
+                + "endlos=%s schnell=%s frei=%s kiste=%s stil=%s richtung=%s blick=%s bis_ins_freie=%s",
+                r.ownerName(), k, job.resumed(), job.length(), job.rest(), follow, endless, order.fast(), free,
+                chest == null ? "-" : at(chest.location()), job.style().name(), dir, r.facing(), order.daylight()));
         prepare(job, true);
         return true;
     }
@@ -206,17 +232,20 @@ final class TunnelService {
     private void plan(Job job, int scanLimit, boolean announce) {
         BuildService.Request r = job.request();
         Set<Pos> ownFace = job.start() > 0 ? faceCells(job) : Set.of();
-        TunnelSite site = new TunnelSite(job.frame(), ownFace, job.ownIds());
+        TunnelSite site = new TunnelSite(job.frame(), ownFace, job.ownIds(), new WorldStructures(job.frame().world()));
         if (job.kind() == TunnelOrder.Kind.STAIRS_UP && job.start() > 0 && site.sky(new Pos(0, 0, 0))) {
             say(r, "Die Treppe ist schon oben angekommen.");
             return;
         }
         long t0 = System.nanoTime();
         TunnelShape.Result result = TunnelShape.plan(new TunnelShape.Spec(job.kind(), job.half(), job.height(),
-                job.length(), scanLimit, job.start(), job.anchor(), job.entrance(), job.style()), site);
+                job.length(), scanLimit, job.start(), job.anchor(), job.entrance(), job.style(),
+                job.order().daylight()), site);
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        LOG.info(() -> String.format("tunnel | plan | besitzer=%s abschnitte=%d stopp=%s aktionen=%d licht=%d ms=%d",
-                r.ownerName(), result.slices(), result.stop(), result.build().actions().size(), result.lights(), ms));
+        LOG.info(() -> String.format("tunnel | plan | besitzer=%s abschnitte=%d stopp=%s aktionen=%d licht=%d "
+                + "röhre_ab=%d ab=%d schacht=%d ms=%d", r.ownerName(), result.slices(), result.stop(),
+                result.build().actions().size(), result.lights(), result.openFrom(), job.start(),
+                site.mineshaftCells(), ms));
         boolean stairs = job.kind() == TunnelOrder.Kind.STAIRS_UP;
         if (result.empty() || stairs && (result.stop() == TunnelShape.Stop.NO_SURFACE
                 || result.stop() == TunnelShape.Stop.WATER)) {
@@ -226,7 +255,7 @@ final class TunnelService {
         if (announce) {
             say(r, announcement(job, result));
         } else if (result.stop() != TunnelShape.Stop.LENGTH) {
-            say(r, stopText(job, result, result.slices()));
+            say(r, stopText(job, result, job.builtBefore() + result.slices()));
         }
         Run run = new Run(job, result);
         if (!service.startDig(r, result.build(), job.frame(), run)) {
@@ -243,7 +272,12 @@ final class TunnelService {
         private final World world;
         private final boolean nether;
         private final UUID owner;
+        /** Bauwerksgrenzen der Welt für foreign – je Stück frisch gelesen. */
+        private final WorldStructures structures;
+        /** Abschluss des Stücks davor (Innen des ersten Abschnitts, Weltkoordinaten) – eigenes Mauerwerk. */
+        private final Set<Long> face = new HashSet<>();
         private boolean spillSaid;
+        private boolean openSaid;
         /** Chunk der Kiste: bleibt geladen, solange gebaut wird – sonst läge sie beim langen Weg im Entladenen. */
         private long ticket = Long.MIN_VALUE;
 
@@ -253,6 +287,13 @@ final class TunnelService {
             this.world = job.frame().world();
             this.nether = world.getEnvironment() == World.Environment.NETHER;
             this.owner = job.request().ownerId();
+            this.structures = new WorldStructures(world);
+            if (job.start() > 0) {
+                for (Pos p : faceCells(job)) {
+                    Block b = job.frame().blockAt(p);
+                    face.add(blockKey(b));
+                }
+            }
             if (job.chest() != null) {
                 Location c = job.chest().location();
                 ticket = ChunkPrefetch.key(c.getBlockX() >> 4, c.getBlockZ() >> 4);
@@ -274,9 +315,19 @@ final class TunnelService {
 
         @Override
         public boolean ready(int slice) {
-            if (!job.follow()) {
-                return true;
+            boolean go = !job.follow() || near(slice);
+            // Mitbauen: Wer im Fels mitgeht, sieht erst an den Fenstern, dass es ins Freie geht – einmal sagen, was
+            // passiert, wenn die Röhre in diesem Stück beginnt (nicht in jedem Stück einer langen Talquerung).
+            if (go && job.follow() && !openSaid && result.openFrom() > result.first() && slice >= result.openFrom()) {
+                openSaid = true;
+                say(job.request(), "Hier geht es ins Freie – ich baue geradeaus als Röhre mit Fenstern weiter. "
+                        + "„stopp“ beendet.");
             }
+            return go;
+        }
+
+        /** Mitbauen: Der Spieler ist nah genug am Abschnitt (nicht weiter als LEAD dahinter, seitlich am Weg). */
+        private boolean near(int slice) {
             Player p = owner == null ? null : Bukkit.getPlayer(owner);
             if (p == null || !p.getWorld().equals(world)) {
                 return false;
@@ -318,7 +369,15 @@ final class TunnelService {
 
         @Override
         public boolean foreign(Block b) {
-            TunnelShape.Ground g = TunnelSite.classify(b, nether);
+            // Den Abschluss des Stücks davor räumt der erste neue Abschnitt wieder aus (TunnelSite.ownFace beim
+            // Planen). Ohne die Ausnahme hier hielt der Bau ihn für Gebautes und hörte am ersten Block auf – gemessen
+            // 2026-11-16 auf Spigot: Weiterbauen hinter einer Röhre im Freien, „fremdes_im_weg … deepslate_bricks“.
+            // Im Fels fiel das nie auf (dort steht Stein statt Abschluss); jede Stückgrenze einer langen Röhre über
+            // ein Tal träfe es.
+            if (face.contains(blockKey(b)) && job.ownIds().contains(b.getType().getKey().getKey())) {
+                return false;
+            }
+            TunnelShape.Ground g = TunnelSite.classify(b, nether, structures);
             return g == TunnelShape.Ground.BUILT || g == TunnelShape.Ground.FORBIDDEN;
         }
 
@@ -335,14 +394,16 @@ final class TunnelService {
 
         @Override
         public String done(int placed, long seconds) {
-            if (job.endless() && result.stop() == TunnelShape.Stop.LENGTH) {
+            if (more()) {
                 return "";  // es geht im nächsten Stück weiter
             }
-            int n = result.slices();
+            int n = job.builtBefore() + result.slices();
             String text = switch (job.kind()) {
-                case TUNNEL -> "Fertig! Der Tunnel ist " + n + " Blöcke lang";
+                case TUNNEL -> job.resumed() ? "Fertig! " + n + " Blöcke weitergegraben"
+                        : "Fertig! Der Tunnel ist " + n + " Blöcke lang";
                 case STAIRS_UP -> "Fertig! " + Math.max(0, n - (job.start() == 0 ? 1 : 0)) + " Stufen nach oben";
-                case BRIDGE -> "Fertig! Die Brücke ist " + n + " Blöcke lang";
+                case BRIDGE -> job.resumed() ? "Fertig! Die Brücke ist " + n + " Blöcke länger"
+                        : "Fertig! Die Brücke ist " + n + " Blöcke lang";
             };
             text += result.lights() > 0 ? ", " + result.lights() + " Lichter." : ".";
             if (result.stop() != TunnelShape.Stop.LENGTH && result.stop() != TunnelShape.Stop.SURFACE) {
@@ -351,25 +412,31 @@ final class TunnelService {
             return text + (job.free() ? " Gefällt's dir nicht? /bm rückgängig" : "");
         }
 
+        /** Kommt nach diesem Stück noch eines – ohne Ende, oder der Rest einer langen Länge? */
+        private boolean more() {
+            return result.stop() == TunnelShape.Stop.LENGTH && (job.endless() || job.rest() > 0);
+        }
+
         @Override
         public void finished(BuildJob done, boolean complete) {
             release();
-            if (!complete || !job.endless() || result.stop() != TunnelShape.Stop.LENGTH || !plugin.isEnabled()) {
+            if (!complete || !more() || !plugin.isEnabled()) {
                 return;
             }
-            // Ohne Ende (Wunsch 2026-11-16): Der Spieler ist bis ans Ende mitgegangen – das nächste Stück im selben
-            // Rahmen, Licht und Pfeiler laufen im selben Abstand weiter, kein Eingangsbogen.
+            // Ohne Ende bzw. lange Länge (Wunsch 2026-11-16): das nächste Stück im selben Rahmen – dieselbe Linie und
+            // Höhe –, Licht und Pfeiler laufen im selben Abstand weiter, kein Eingangsbogen.
+            int length = job.endless() ? FOLLOW_SEGMENT : Math.min(job.rest(), settings.maxExtent());
             Job next = new Job(job.request(), job.order(), job.kind(), job.frame(), job.half(), job.height(),
-                    FOLLOW_SEGMENT, result.last() + 1, job.anchor() != TunnelShape.NO_ANCHOR ? job.anchor()
-                            : result.first(), false, job.style(), job.chest(), job.free(), true, true, job.ownIds(),
-                    true);
+                    length, result.last() + 1, job.anchor() != TunnelShape.NO_ANCHOR ? job.anchor() : result.first(),
+                    false, job.style(), job.chest(), job.free(), job.follow(), job.endless(), job.ownIds(),
+                    job.resumed(), job.endless() ? 0 : job.rest() - length, job.builtBefore() + result.slices());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (service.busy()) {
                     say(job.request(), "Ich mache hier eine Pause – sag „bau weiter“, wenn's weitergehen soll.");
                     return;
                 }
                 LOG.info(() -> "tunnel | nächstes_stück | besitzer=" + job.request().ownerName() + " ab="
-                        + next.start());
+                        + next.start() + " länge=" + next.length() + " rest=" + next.rest());
                 prepare(next, false);
             });
         }
@@ -407,10 +474,17 @@ final class TunnelService {
         String look = " (" + job.style().name() + ")";
         String stop = result.stop() == TunnelShape.Stop.LENGTH || result.stop() == TunnelShape.Stop.SURFACE ? ""
                 : " " + stopText(job, result, result.slices());
+        String toward = " nach " + german(job.frame().orientation().forward());
+        String blocks = job.rest() > 0 ? job.length() + job.rest() + " Blöcke Stück für Stück"
+                : result.slices() + " Blöcke";
         String head = switch (job.kind()) {
-            case TUNNEL -> job.resumed() ? "Ich grabe den Tunnel weiter" + look + "."
-                    : job.follow() ? "Los geht's: Ich grabe vor dir her" + look + " – geh einfach mit, „stopp“ beendet."
-                            : "Ich grabe dir einen Tunnel, " + result.slices() + " Blöcke"
+            case TUNNEL -> job.resumed()
+                    ? (job.order().resume() ? "Ich grabe den Tunnel geradeaus weiter"
+                            : "Du stehst in einem Tunnel – ich grabe ihn geradeaus weiter") + toward
+                            + (job.follow() ? "" : ", " + blocks) + look + "."
+                    : job.follow() ? "Los geht's: Ich grabe vor dir her" + toward + look
+                            + " – geh einfach mit, „stopp“ beendet."
+                            : "Ich grabe dir einen Tunnel" + toward + ", " + blocks
                                     + (job.order().fast() ? ", im Schnellgang" : "") + look + ".";
             case STAIRS_UP -> "Ich baue " + (job.resumed() ? "die Treppe weiter" : "dir eine Treppe nach oben") + " – "
                     + Math.max(0, result.slices() - (job.start() == 0 ? 1 : 0)) + " Stufen"
@@ -424,6 +498,9 @@ final class TunnelService {
         if (job.resumed() && job.follow()) {
             head += " Geh einfach mit.";
         }
+        if (job.kind() == TunnelOrder.Kind.TUNNEL && result.openFrom() >= 0) {
+            head += " Über Tal und Wasser geht er als Röhre mit Fenstern weiter.";
+        }
         return head + stop + where;
     }
 
@@ -433,8 +510,11 @@ final class TunnelService {
         String what = result.stopId() == null ? "" : TunnelStyle.german(result.stopId());
         return switch (result.stop()) {
             case BUILT -> "Nach " + n + " Blöcken steht etwas Gebautes (" + what + at + ") – davor höre ich auf.";
-            case FORBIDDEN -> "Nach " + n + " Blöcken kommt Grundgestein – weiter geht es nicht.";
-            case THROUGH -> "Nach " + n + " Blöcken bin ich durch – dort geht es ins Freie.";
+            case FORBIDDEN -> TunnelSite.BORDER.equals(result.stopId())
+                    ? "Nach " + n + " Blöcken ist der Rand der Welt erreicht – weiter geht es nicht."
+                    : "Nach " + n + " Blöcken kommt Grundgestein – weiter geht es nicht.";
+            case THROUGH -> "Nach " + n + " Blöcken bin ich durch – dort geht es ins Freie. Soll er als Röhre "
+                    + "geradeaus weiter, sag dort „bau weiter“.";
             case WATER -> job.kind() == TunnelOrder.Kind.BRIDGE
                     ? "Nach " + n + " Blöcken steht das Wasser höher als der Weg – dort höre ich auf."
                     : "Nach " + n + " Blöcken käme Wasser von oben – dort höre ich auf.";
@@ -475,7 +555,40 @@ final class TunnelService {
         return l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ();
     }
 
+    private static String german(Cardinal c) {
+        return switch (c) {
+            case NORTH -> "Norden";
+            case EAST -> "Osten";
+            case SOUTH -> "Süden";
+            case WEST -> "Westen";
+        };
+    }
+
     // ---------------------------------------------------------------- Hilfen
+
+    /**
+     * Erkennen (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen“): „bau weiter“ ohne Richtungsangabe sucht in allen
+     * vier Richtungen – der Gang bestimmt, wohin es geht, nicht der Blick. Ein neuer Auftrag erkennt nur in der
+     * angesagten Richtung, nur dieselbe Art und nur mit Fels am Ende: Wer im Tunnel steht und ihn entlangschaut,
+     * meint ihn; wer zur Wand schaut, will abzweigen. Ein offenes Ende (Mündung ins Freie) setzt nur „bau weiter“
+     * fort – sonst grübe „grab einen Tunnel“ mit Blick zum Eingang eine Röhre in die Wiese.
+     */
+    private static TunnelScan.Directed recognise(TunnelOrder order, Location feet, Cardinal asked) {
+        if (order.resume()) {
+            if (order.turn() == TunnelOrder.Turn.AHEAD) {
+                return TunnelScan.around(asked, d -> look(frameAt(feet, d))).orElse(null);
+            }
+            return TunnelScan.scan(look(frameAt(feet, asked))).map(f -> new TunnelScan.Directed(asked, f))
+                    .orElse(null);
+        }
+        return TunnelScan.scan(look(frameAt(feet, asked))).filter(f -> f.kind() == order.kind() && !f.open())
+                .map(f -> new TunnelScan.Directed(asked, f)).orElse(null);
+    }
+
+    private static SiteFrame frameAt(Location feet, Cardinal dir) {
+        return new SiteFrame(feet.getWorld(), feet.getBlockX(), feet.getBlockY(), feet.getBlockZ(),
+                new Orientation(dir), 0);
+    }
 
     /** Richtung aus dem Auftrag: geradeaus, links/rechts von der Blickrichtung oder eine Himmelsrichtung. */
     static Cardinal direction(TunnelOrder.Turn turn, Cardinal facing) {
@@ -523,7 +636,7 @@ final class TunnelService {
                 f.arch() != null ? BlockSpec.of(f.arch()) : null,
                 f.step() != null ? BlockSpec.of(f.step()) : base.step(), light,
                 f.chain() != null ? BlockSpec.of(f.chain()) : base.chain(),
-                f.railing() != null ? BlockSpec.of(f.railing()) : base.railing());
+                f.railing() != null ? BlockSpec.of(f.railing()) : base.railing(), base.window());
     }
 
     /**
@@ -543,19 +656,36 @@ final class TunnelService {
         return style;
     }
 
-    /** Was TunnelScan sieht: Block an der lokalen Stelle mit lokalen Zuständen (facing=back = vorwärts). */
+    /**
+     * Was TunnelScan sieht: Block an der lokalen Stelle mit lokalen Zuständen (facing=back = vorwärts), und ob die
+     * Stelle über der Oberfläche liegt (offenes Ende eines Gangs, TunnelScan.Found.open).
+     */
     private static TunnelScan.Look look(SiteFrame frame) {
         Orientation o = frame.orientation();
-        return p -> {
-            Block b = frame.blockAt(p);
-            String text = b.getBlockData().getAsString();
-            try {
-                return o.toLocal(BlockSpec.parseTrusted(text));
-            } catch (PlanException | RuntimeException e) {
-                // Zustände, die der Leser nicht kennt: ohne Zustände genügt für Wand, Boden und Licht.
-                return BlockSpec.of(b.getType().getKey().getKey());
+        TunnelSite site = new TunnelSite(frame, Set.of(), Set.of(), null);
+        return new TunnelScan.Look() {
+            @Override
+            public BlockSpec at(Pos p) {
+                Block b = frame.blockAt(p);
+                String text = b.getBlockData().getAsString();
+                try {
+                    return o.toLocal(BlockSpec.parseTrusted(text));
+                } catch (PlanException | RuntimeException e) {
+                    // Zustände, die der Leser nicht kennt: ohne Zustände genügt für Wand, Boden und Licht.
+                    return BlockSpec.of(b.getType().getKey().getKey());
+                }
+            }
+
+            @Override
+            public boolean sky(Pos p) {
+                return site.sky(p);
             }
         };
+    }
+
+    /** Ein Block als Zahl (wie BlockPos.asLong: x und z je 26 Bit, y 12 Bit). */
+    private static long blockKey(Block b) {
+        return ((long) b.getX() & 0x3FFFFFFL) << 38 | ((long) b.getZ() & 0x3FFFFFFL) << 12 | b.getY() & 0xFFFL;
     }
 
     /** Innen des ersten neuen Abschnitts – dort darf der Abschluss des fertigen Stücks weg (TunnelSite.ownFace). */

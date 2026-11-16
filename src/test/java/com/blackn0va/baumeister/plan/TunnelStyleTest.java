@@ -156,4 +156,26 @@ class TunnelStyleTest {
                 TunnelOrder.Kind.STAIRS_UP, TunnelOrder.Size.NORMAL, null).style();
         assertEquals("cobblestone_stairs", steps.step().id(), "irgendeine Treppe, wenn die passende fehlt");
     }
+
+    /**
+     * Fenster der Röhre über Tal und Wasser (Wunsch 2026-11-16, quer über die Karte): frei klares Glas, aus der Kiste
+     * nur volles Glas, das dort liegt – Scheiben nie (sie schließen nicht dicht), ohne Glas bleibt die Wand zu.
+     */
+    @Test
+    void windowsAreFullGlassFromThePaletteOrTheChest() {
+        for (TunnelStyle.Realm realm : TunnelStyle.Realm.values()) {
+            assertEquals("glass", TunnelStyle.forPlace(realm, 10, null, TunnelOrder.Size.NORMAL).window().id(),
+                    realm.name());
+            assertNull(TunnelStyle.forPlace(realm, 10, null, TunnelOrder.Kind.BRIDGE, TunnelOrder.Size.NORMAL)
+                    .window(), "Brücke ohne Fenster");
+        }
+        assertEquals("glass", TunnelStyle.forPlace(TunnelStyle.Realm.OVERWORLD, 10, "oak_planks",
+                TunnelOrder.Size.NORMAL).window().id(), "auch mit „aus Holz“");
+        assertEquals("tinted_glass", TunnelStyle.fromChest(Map.of("stone_bricks", 100, "lantern", 2, "tinted_glass",
+                8, "glass_pane", 64), TunnelOrder.Kind.TUNNEL, TunnelOrder.Size.NORMAL, null).style().window().id());
+        assertNull(TunnelStyle.fromChest(Map.of("stone_bricks", 100, "lantern", 2, "glass_pane", 64),
+                TunnelOrder.Kind.TUNNEL, TunnelOrder.Size.NORMAL, null).style().window(), "Scheiben schließen nicht");
+        assertTrue(TunnelStyle.isWindowBlock("light_blue_stained_glass"));
+        assertFalse(TunnelStyle.isWindowBlock("light_blue_stained_glass_pane"));
+    }
 }

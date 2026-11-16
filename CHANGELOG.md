@@ -11,6 +11,15 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Boden, alle 6 Blöcke ein Gurtbogen mit Laterne – keine Fackeln. Jeder Abschnitt bekommt erst die Hülle, dann wird
   ausgeräumt; Lava, Wasser und Kies kommen so nicht in den Gang, Höhlen werden zur Röhre. Gebautes reißt er nie ab –
   davor hört er auf und sagt, wo.
+- **Tunnel schnurgerade quer über die Karte:** Weiterbauen („bau weiter“, „grab den Tunnel weiter“, oder „grab einen
+  Tunnel“ mitten im Gang) nimmt Richtung, Mitte und Höhe vom Gang, nicht von deinem Blick – wer beim Sagen zur Seite
+  schaut, bekommt keinen Tunnel mehr quer zum alten. Über Täler, Schluchten, Seen und Meere läuft er auf derselben Höhe
+  als geschlossene Röhre weiter, mit Fenstern in Augenhöhe und Pfeilern bis zum Grund, statt dort aufzuhören;
+  „durch den Berg“ oder „bis ins Freie“ endet wie bisher am Durchbruch. Längen bis 10 000 Blöcke (auch „10.000“),
+  Stück für Stück auf derselben Linie; „durch die ganze Karte“ im Schnellgang. Mineschächte gräbt er durch – nur ihre
+  eigenen Bretter, Zäune, Stämme, Schienen, Spinnweben und Fackeln, was ein Spieler hineingebaut hat, bleibt. Am
+  Weltrand ist
+  Schluss.
 - **Treppe bis zur Oberfläche:** „bau mir eine Treppe nach oben“ (`/bm treppe`) gräbt eine Stufe je Block bis ans
   Tageslicht, mit Laternen und Bogen wie der Tunnel. Unter einem See macht sie keinen Ausgang.
 - **Brücke ohne Ende, auch übers Meer:** „bau eine Brücke übers Meer“ (`/bm brücke`) baut auf deiner Höhe vor dir her:

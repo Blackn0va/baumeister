@@ -25,10 +25,14 @@ import java.util.function.Predicate;
  * Pfeiler, rib der Querbalken unter dem Deck an jedem Pfeiler, railing das Geländer (Mauer oder Zaun) mit einer Laterne
  * obenauf. Ein Leuchtblock statt Laterne wird selbst zum Geländerpfosten.
  *
+ * window (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette Karte gehen“):
+ * Wo der Tunnel über ein Tal oder durch einen See läuft, bleibt er als dichte Röhre geschlossen; in Augenhöhe sitzen
+ * dort Fenster. Frei Glas, aus der Kiste nur, wenn Glas darin liegt – sonst bleibt die Wand zu (null).
+ *
  * Threads: unveränderlich. Fehler: keine (fehlendes Material steht in {@link Choice#missing}).
  */
 public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpec rib, BlockSpec arch,
-        BlockSpec step, BlockSpec light, BlockSpec chain, BlockSpec railing) {
+        BlockSpec step, BlockSpec light, BlockSpec chain, BlockSpec railing, BlockSpec window) {
 
     /** Welt, in der gegraben wird – ohne Bukkit (World.Environment ordnet TunnelService zu). */
     public enum Realm {
@@ -68,6 +72,8 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
 
     /** Kette erst ab dieser Innenhöhe – darunter hinge die Laterne zu tief. */
     private static final int CHAIN_FROM_HEIGHT = 4;
+    /** Fenster der Röhre, wenn frei gebaut wird: klares Glas – getöntes ließe kein Licht durch. */
+    static final String WINDOW = "glass";
 
     /** Tunnel und Treppe: Palette zum Ort, siehe die Fassung mit TunnelOrder.Kind. */
     public static TunnelStyle forPlace(Realm realm, int y, String material, TunnelOrder.Size size) {
@@ -109,7 +115,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
         BlockSpec chain = !bridge && size.height >= CHAIN_FROM_HEIGHT ? BlockSpec.of("iron_chain") : null;
         if (material == null || !isWallBlock(material)) {
             return new TunnelStyle(base.name, base.wall, base.floor, base.rib, base.arch, base.step, base.light, chain,
-                    base.railing);
+                    base.railing, base.window);
         }
         BlockSpec m = BlockSpec.of(material);
         if (bridge) {
@@ -118,23 +124,23 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
                     ? material.substring(0, material.length() - "_planks".length()) + "_log" : null;
             BlockSpec pillar = log != null && BlockTiers.knownBlock(log) ? BlockSpec.of(log) : m;
             return new TunnelStyle(german(material), pillar, m, base.rib, null, null, base.light, null,
-                    railing == null ? base.railing : BlockSpec.of(railing));
+                    railing == null ? base.railing : BlockSpec.of(railing), null);
         }
         String stairs = stairsOf(material, BlockTiers::knownBlock);
         return new TunnelStyle(german(material), m, m, base.rib, stairs == null ? base.arch : BlockSpec.of(stairs),
-                stairs == null ? base.step : BlockSpec.of(stairs), base.light, chain, null);
+                stairs == null ? base.step : BlockSpec.of(stairs), base.light, chain, null, base.window);
     }
 
     private static TunnelStyle of(String name, String wall, String floor, String rib, String arch, String step,
             String light) {
         return new TunnelStyle(name, BlockSpec.of(wall), BlockSpec.of(floor), BlockSpec.of(rib), BlockSpec.of(arch),
-                BlockSpec.of(step), BlockSpec.of(light), null, null);
+                BlockSpec.of(step), BlockSpec.of(light), null, null, BlockSpec.of(WINDOW));
     }
 
     private static TunnelStyle bridgeOf(String name, String pillar, String deck, String beam, String railing,
             String light) {
         return new TunnelStyle(name, BlockSpec.of(pillar), BlockSpec.of(deck), BlockSpec.of(beam), null, null,
-                BlockSpec.of(light), null, BlockSpec.of(railing));
+                BlockSpec.of(light), null, BlockSpec.of(railing), null);
     }
 
     /** Palette aus der Kiste, oder was fehlt (deutscher Satzteil „Bausteine (z. B. …)“). */
@@ -189,7 +195,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
             String w = wall;
             String beam = best(items, id -> isWallBlock(id) && !id.equals(w) && ribbish(id), 4).orElse(wall);
             return new Choice(new TunnelStyle(german(wall), BlockSpec.of(wall), BlockSpec.of(wall), BlockSpec.of(beam),
-                    null, null, BlockSpec.of(light), null, BlockSpec.of(railing)), null);
+                    null, null, BlockSpec.of(light), null, BlockSpec.of(railing), null), null);
         }
         String w = wall;
         String floor = best(items, id -> isWallBlock(id) && !id.equals(w) && !RAW.contains(id) && floorish(id), 16)
@@ -201,9 +207,18 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
         String arch = stairsIn(items, wall);
         String chain = size.height >= CHAIN_FROM_HEIGHT && HANGING_LIGHTS.contains(light)
                 ? best(items, CHAINS::contains, 1).orElse(null) : null;
+        // Fenster nur aus vollem Glas (Scheiben verbinden sich mit den Nachbarn und schließen nicht dicht).
+        String window = best(items, TunnelStyle::isWindowBlock, 1).orElse(null);
         return new Choice(new TunnelStyle(german(wall), BlockSpec.of(wall), BlockSpec.of(floor), BlockSpec.of(rib),
                 arch == null ? null : BlockSpec.of(arch), step == null ? null : BlockSpec.of(step),
-                BlockSpec.of(light), chain == null ? null : BlockSpec.of(chain), null), null);
+                BlockSpec.of(light), chain == null ? null : BlockSpec.of(chain), null,
+                window == null ? null : BlockSpec.of(window)), null);
+    }
+
+    /** Volles Glas für die Fenster der Röhre: klar, getönt oder gefärbt – keine Scheiben. */
+    public static boolean isWindowBlock(String id) {
+        return id != null && (id.equals("glass") || id.equals("tinted_glass") || id.endsWith("_stained_glass"))
+                && BlockTiers.knownBlock(id);
     }
 
     /**
@@ -243,7 +258,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
     /** Alle Block-IDs der Palette – TunnelService prüft sie gegen den laufenden Server. */
     public List<String> ids() {
         List<String> out = new ArrayList<>();
-        for (BlockSpec b : new BlockSpec[] {wall, floor, rib, arch, step, light, chain, railing}) {
+        for (BlockSpec b : new BlockSpec[] {wall, floor, rib, arch, step, light, chain, railing, window}) {
             if (b != null) {
                 out.add(b.id());
             }
@@ -348,7 +363,8 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
             Map.entry("cobblestone_stairs", "Bruchsteintreppen"), Map.entry("stone", "Stein"),
             Map.entry("deepslate", "Tiefenschiefer"), Map.entry("tuff_bricks", "Tuffsteinziegel"),
             Map.entry("smooth_stone", "glatter Stein"), Map.entry("oak_planks", "Eichenbretter"),
-            Map.entry("spruce_planks", "Fichtenbretter"));
+            Map.entry("spruce_planks", "Fichtenbretter"), Map.entry("glass", "Glas"),
+            Map.entry("world_border", "Rand der Welt"));
 
     /** Deutscher Name für Ansagen; ohne Eintrag ItemNames, sonst die ID mit Leerzeichen. */
     public static String german(String id) {

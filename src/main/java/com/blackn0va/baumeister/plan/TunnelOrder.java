@@ -27,10 +27,16 @@ import java.util.Set;
  * weiter“ allein gehört nur dann hierher, wenn am Spieler wirklich etwas erkannt wird; sonst geht er den gewohnten Weg
  * (Gedächtnis, LLM).
  *
+ * Quer über die Karte (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette
+ * Karte gehen“): Längen bis {@link #MAX_LENGTH}, auch „10.000“ (TunnelService baut sie Stück für Stück). „durch die
+ * ganze Karte“ im Schnellgang heißt {@link #MAX_LENGTH}; ohne „schnell“ gräbt er ohnehin mit, solange der Spieler
+ * mitgeht. daylight („durch den Berg“, „bis ins Freie“, „auf die andere Seite“): Der Tunnel endet, wo er ins Freie
+ * bricht – sonst läuft er dort als Röhre geradeaus weiter (TunnelShape).
+ *
  * Threads: zustandslos. Fehler: keine – kein Treffer heißt leer.
  */
 public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolean together, Turn turn,
-        String material, boolean fromChest, boolean resume) {
+        String material, boolean fromChest, boolean resume, boolean daylight) {
 
     public enum Kind {
         TUNNEL, STAIRS_UP, BRIDGE
@@ -55,8 +61,12 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         AHEAD, LEFT, RIGHT, NORTH, EAST, SOUTH, WEST
     }
 
-    /** Höchste Länge, die der Auftrag nennen darf – darüber hinaus kappt BuildService bei bau.max-ausdehnung. */
-    public static final int MAX_LENGTH = 256;
+    /**
+     * Höchste Länge, die der Auftrag nennen darf. Vorher 256 (ein Stück bis bau.max-ausdehnung) – zu kurz für einen
+     * Tunnel quer über die Karte; TunnelService baut längere Aufträge jetzt Stück für Stück. Größer nicht: Im
+     * Schnellgang lädt und erzeugt jedes Stück die Chunks entlang des Wegs.
+     */
+    public static final int MAX_LENGTH = 10_000;
 
     private static final Set<String> TUNNEL = Set.of("tunnel", "tunnels", "stollen");
     private static final Set<String> STAIRS = Set.of("treppe", "treppen", "aufgang", "treppenaufgang", "ausgang");
@@ -101,6 +111,17 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
     private static final Set<String> CROSSING = Set.of("ueber", "uebers", "meer", "meere", "wasser", "see", // umlaut-ok
             "ozean", "fluss", "tal", "schlucht", "drueber", "hinueber", "rueber"); // umlaut-ok
     private static final Set<String> WITH_WHOM = Set.of("mir", "uns");
+    /** „bis ins Freie“, „im Freien“: dort aufhören statt als Röhre weiter (daylight). */
+    private static final Set<String> DAYLIGHT = Set.of("freie", "freien");
+    /** „durch den Berg“: Wörter nach „durch“ (Artikel übersprungen), die einen Berg meinen – daylight. */
+    private static final Set<String> MOUNTAIN = Set.of("berg", "berge", "huegel", "hang", "fels", "felsen", // umlaut-ok
+            "felswand", "bergwand");
+    private static final Set<String> ARTICLES = Set.of("den", "die", "das", "dem", "einen", "ein", "eine");
+    /** „durch die ganze Karte“, „bis ans Ende der Welt“, „quer über die Map“. */
+    private static final Set<String> ACROSS = Set.of("karte", "welt", "weltrand", "map");
+    private static final Set<String> ACROSS_FILLER = Set.of("ganze", "ganzen", "komplette", "kompletten", "gesamte",
+            "gesamten", "ins", "auf", "andere", "anderen", "seite", "felswand", "bergwand", "hang", "berge",
+            "quer", "huegel"); // umlaut-ok
 
     /**
      * Mitbauen: kein „schnell“, und entweder „mit mir/zusammen/endlos“ oder keine Länge. Treppen nie – die Treppe läuft
@@ -126,6 +147,8 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         boolean chest = false;
         boolean resume = false;
         boolean crossing = false;
+        boolean daylight = false;
+        boolean across = false;
         Size size = null;
         Integer length = null;
         Turn turn = Turn.AHEAD;
@@ -133,7 +156,22 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         for (int i = 0; i < t.size(); i++) {
             String w = t.get(i);
             String next = i + 1 < t.size() ? t.get(i + 1) : "";
-            OptionalInt n = RequestHints.number(w);
+            OptionalInt n = w.matches("\\d{5}") ? OptionalInt.of(Integer.parseInt(w)) : RequestHints.number(w);
+            // „10.000“ bzw. „10 000“: RequestHints.normalize macht aus dem Punkt ein Leerzeichen.
+            boolean thousands = n.isPresent() && w.matches("\\d{1,3}") && next.matches("\\d{3}");
+            if (thousands) {
+                n = OptionalInt.of(Integer.parseInt(w) * 1000 + Integer.parseInt(next));
+            }
+            if (w.equals("durch")) {
+                int j = i + 1;
+                while (j < t.size() && ARTICLES.contains(t.get(j))) {
+                    j++;
+                }
+                daylight |= j < t.size() && MOUNTAIN.contains(t.get(j));
+            }
+            if (w.equals("seite") && i > 0 && (t.get(i - 1).equals("andere") || t.get(i - 1).equals("anderen"))) {
+                daylight = true;
+            }
             if (TUNNEL.contains(w)) {
                 tunnel = true;
             } else if (STAIRS.contains(w)) {
@@ -165,6 +203,9 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
                     return Optional.empty();  // zwei Zahlen: welche ist die Länge?
                 }
                 length = n.getAsInt();
+                if (thousands) {
+                    i++;
+                }
             } else if (TOGETHER.contains(w)) {
                 together = true;
             } else if ((w.equals("lass") || w.equals("lasst")) && next.equals("uns")
@@ -172,6 +213,10 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
                 together = true;
             } else if (CHEST.contains(w)) {
                 chest = true;
+            } else if (DAYLIGHT.contains(w)) {
+                daylight = true;
+            } else if (ACROSS.contains(w)) {
+                across = true;
             } else if (CROSSING.contains(w)) {
                 crossing = true;
             } else if (w.equals("aus") && i + 1 < t.size()) {
@@ -190,7 +235,7 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
                     return Optional.empty();
                 }
                 turn = tw;
-            } else if (!FILLER.contains(w) && !UNITS.contains(w) && !w.equals("aus")) {
+            } else if (!FILLER.contains(w) && !UNITS.contains(w) && !ACROSS_FILLER.contains(w) && !w.equals("aus")) {
                 return Optional.empty();
             }
         }
@@ -222,7 +267,11 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         if (length != null && (len < 1 || len > MAX_LENGTH)) {
             return Optional.empty();
         }
-        return Optional.of(new TunnelOrder(kind, size, len, fast, together, turn, material, chest, resume));
+        if (across && fast && length == null && kind != Kind.STAIRS_UP) {
+            len = MAX_LENGTH;  // „durch die ganze Karte, schnell“ – bis zum Rand der Welt oder MAX_LENGTH
+        }
+        return Optional.of(new TunnelOrder(kind, size, len, fast, together, turn, material, chest, resume,
+                daylight));
     }
 
     private static Turn turnOf(String w) {

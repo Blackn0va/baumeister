@@ -288,10 +288,12 @@ Ohne KI und Abschnitt für Abschnitt, so wie man gräbt – an den Baumeister im
 | „grab mit mir einen Tunnel“, „lass uns einen Tunnel graben“, `/bm tunnel` | Er gräbt vor dir her, nie mehr als 3 Blöcke voraus. Gehst du mit, geht es ohne Ende weiter; „stopp“ beendet. |
 | „grab einen Tunnel, 40 Blöcke“ | 40 Blöcke allein, sichtbar Block für Block |
 | „grab schnell einen Tunnel, 40 Blöcke“, `/bm tunnel 40 schnell` | im Schnellgang, in wenigen Sekunden |
+| „grab einen Tunnel 5000 Blöcke schnell“, „… durch die ganze Karte im Schnellgang“ | lange Tunnel bis 10 000 Blöcke (auch „10.000“), Stück für Stück auf derselben Linie |
+| „grab einen Tunnel durch den Berg“, „… bis ins Freie“, „… auf die andere Seite“ | endet, wo er ins Freie bricht – sonst läuft er dort als Röhre geradeaus weiter |
 | „… großen“ / „… kleinen“, „… nach Norden“, „… nach links“ | 5 × 4 bzw. 1 × 2 statt 3 × 3 innen, andere Richtung |
 | „bau mir eine Treppe nach oben“, `/bm treppe` | Treppe bis zur Oberfläche, eine Stufe je Block, oben offen |
 | „bau eine Brücke übers Meer“, `/bm brücke` | Brücke auf deiner Höhe vor dir her, ohne Ende, solange du mitgehst |
-| „bau die Brücke weiter“, „grab den Tunnel weiter“, `/bm weiterbauen` | erkennt, was dasteht – auch alte und selbst gegrabene Gänge –, und baut am Ende genauso weiter: Breite, Steine, Bogen und Lichtabstand |
+| „bau die Brücke weiter“, „grab den Tunnel weiter“, `/bm weiterbauen` | erkennt, was dasteht – auch alte und selbst gegrabene Gänge –, und baut am Ende genauso weiter: Breite, Steine, Bogen und Lichtabstand, in der Richtung des Gangs, egal wohin du schaust. „grab einen Tunnel“ mitten in einem Gang (den Gang entlang geschaut) setzt ihn ebenso fort |
 | „schneller“, „langsamer“ im Chat | laufenden Bau in den Schnellgang bzw. zurück |
 
 **Aussehen.** Der Tunnel ist ausgemauert, oben in den Ecken ein Bogen aus Treppen, der Boden abgesetzt, alle 6 Blöcke
@@ -301,8 +303,19 @@ im Auftrag wählt den Stein. Kleine Tunnel tragen ihre Laternen in Nischen, gro�
 deiner Höhe, ein Geländer aus Mauer, Laternen alle 6 Blöcke und alle 12 Blöcke Pfeiler bis zum Grund – im Meer bis 48
 Blöcke tief, darunter ohne.
 
+**Gerade über die Karte.** Ein Tunnel hält Linie und Höhe – über viele Aufträge hinweg: Weiterbauen sucht den Gang
+in allen vier Richtungen und folgt ihm, nicht deinem Blick (das nächste Ende am Fels zuerst, ein offener Eingang zuletzt).
+Bricht er ins Freie (Tal, Schlucht) oder läuft er in einen See oder ins Meer, geht er auf derselben Höhe als geschlossene
+Röhre weiter: gleiche Hülle und gleiches Licht wie im Fels, in Augenhöhe Fenster aus Glas (nicht im Gurtbogen; aus der
+Kiste nur, wenn Glas darin liegt), unter jedem zweiten Licht Pfeiler bis zum Grund (bis 48 tief). Wer mitgeht, hört
+es beim ersten Fenster. Lange Aufträge baut er in Stücken von `bau.max-ausdehnung` (192) im selben Rahmen. Am Ende
+jedes Stücks steht ein Abschluss – auch im Freien –, daran erkennt „bau weiter“ das Ende. Am Weltrand ist Schluss.
+
 **Was er nicht tut.** Gegraben wird nur durch Natur: Gestein, Erde, Erz, Kies, Eis, Höhlenbewuchs, Wasser und Lava.
-Steht Gebautes im Weg (Bretter, Bruchstein, Fackeln, Schienen, Baumstämme), hört er davor auf und sagt, wo. Jeder
+Steht Gebautes im Weg (Bretter, Bruchstein, Fackeln, Schienen, Baumstämme), hört er davor auf und sagt, wo. Einzige
+Ausnahme: Mineschächte, die die Welt erzeugt hat – ihre eigenen Bretter, Zäune, Stämme, Schienen, Spinnweben,
+Ketten und Fackeln gräbt er durch (erkannt an den Bauwerksgrenzen der Welt, je Schachtteil). Was ein Spieler sonst in
+einen Schacht gebaut hat, bleibt Gebautes; Festungen, Antike Städte, Prüfungskammern und Dörfer bleiben ganz. Jeder
 Abschnitt bekommt zuerst seine Hülle und die Front zum nächsten wird zugesetzt, erst dann wird ausgeräumt – so kommen
 Lava, Wasser und Kies nie in den Gang, und eine Höhle wird zur geschlossenen Röhre. Grundstücke (WorldGuard,
 PlotSquared) gelten wie beim Bauen; an einer Grenze hört er davor auf, statt abzusagen. Einen Spieler mauert er nie
@@ -880,8 +893,14 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
   Lichttakt; aus der Kiste genau verrechnet (144 Steinziegel, 24 Treppen, 2 Laternen verbaut, 252 Bruchstein in der
   Kiste), Warten auf fehlende Treppen; Halt vor Brettern; Treppe mit 36 Stufen bis oben; Brücke über 40 Blöcke mit
   Pfeilern bis zum Grund und Weiterbauen. Längster Tick 26 ms
-- ⏳ Mitbauen mit einem echten Spieler (vorausgraben, warten, nächstes Stück ohne Ende), Kürzen an einer
-  Grundstücksgrenze und Vera als Auftraggeberin nur per Unit-Test geprüft, nicht im Spiel
+- ✅ Tunnel gerade über die Karte (2026-11-16) auf Paper 26.2 und Spigot 1.21.11 je 36/36 Prüfungen über die
+  Konsole: Berg – Tal – Berg – See – Berg auf einer Linie (160 Abschnitte in 2,9 s; Röhre geschlossen, Fenster nur im
+  Freien und nicht im Gurtbogen, Pfeiler bis zum Grund, unter Wasser trocken), Weiterbauen mit Blick quer und von
+  versetztem Standplatz auf derselben Linie und im selben Stil, „durch den Berg“ endet am Durchbruch, 250 Blöcke als
+  192 + 58, 200 Blöcke Röhre im Freien über eine Stückgrenze, Halt am Weltrand. In einer frisch erzeugten Welt je 5/5:
+  42 Tunnel quer durch einen Mineschacht, kein Schachtblock im Gang. Längster Tick 26 ms
+- ⏳ Mitbauen mit einem echten Spieler (vorausgraben, warten, nächstes Stück ohne Ende, Ansage beim Übergang in die
+  Röhre), Kürzen an einer Grundstücksgrenze und Vera als Auftraggeberin nur per Unit-Test geprüft, nicht im Spiel
 - ✅ Plan → Blöcke → Reihenfolge; Plugin gesamt 677 Unit-Tests grün (2026-10-29)
 - ✅ Stadtbau über zwei Neustarts (Testserver 2026-10-29): pausiert bei Etappe 6/13 gesichert und pausiert fortgesetzt,
   laufend bei 9/13 gesichert und laufend fortgesetzt (Etappe 9 nur geprüft, 0 Blöcke doppelt), `/bm stop` löscht den Stand
