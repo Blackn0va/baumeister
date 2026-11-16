@@ -55,6 +55,26 @@ TEST_CASE("Aussprache: Minecraft-Englisch, Namen mit Ziffern, Abkürzungen und E
     CHECK(for_speech("Server, okay") == "Server, okay");
 }
 
+// Gemessen 2026-11-16 mit probes/piper_aussprache_probe.py (Thorsten medium), gleich wie SpeechText.java auf dev01.
+TEST_CASE("Aussprache: Mobs und Lag englisch, Einheiten, Verhältnisse, Klammern und &") {
+    CHECK(for_speech("Zwei Mobs und ein Mob") == "Zwei Mobbs und ein Mobb");
+    CHECK(for_speech("Lag-Maschinen machen Lags") == "Läg-Maschinen machen Lägs");
+    // Das deutsche „lag“ (von liegen) bleibt, ebenso Wörter, die nur so anfangen.
+    CHECK(for_speech("Der Stein lag dort im Lager.") == "Der Stein lag dort im Lager.");
+    CHECK(for_speech("Mobil und mobben") == "Mobil und mobben");
+    CHECK(for_speech("440 Blöcke/s") == "440 Blöcke pro Sekunde");
+    CHECK(for_speech("12 Stück/min, 80 km/h, 5 Runden/Tag, 300/s") ==
+          "12 Stück pro Minute, 80 km pro Stunde, 5 Runden pro Tag, 300 pro Sekunde");
+    CHECK(for_speech("und/oder") == "und/oder");  // kein Maß dahinter
+    CHECK(for_speech("Verhältnis 1:1 und 2:3") == "Verhältnis 1 zu 1 und 2 zu 3");
+    CHECK(for_speech("Es ist 6:00 Uhr.") == "Es ist 6 Uhr.");  // zwei Ziffern bleiben eine Uhrzeit
+    CHECK(for_speech("Rechnung (Quelle: Wiki) fertig") == "Rechnung, Quelle: Wiki, fertig");
+    CHECK(for_speech("Ein Turm (aus Stein).") == "Ein Turm, aus Stein.");
+    CHECK(for_speech("(Hinweis) Gleich geht es los") == "Hinweis, Gleich geht es los");
+    CHECK(for_speech("Stein & Holz") == "Stein und Holz");
+    CHECK(for_speech("3,5 Herzen (voll)") == "3,5 Herzen, voll");
+}
+
 TEST_CASE("Stimme: Wahl aus der Einstellung, Vorgabe Piper Thorsten wie in kraken") {
     CHECK(parse_voice_choice("").piper);
     CHECK(parse_voice_choice("").key == "thorsten-medium");

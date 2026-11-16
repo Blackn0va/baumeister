@@ -18,7 +18,11 @@ import java.util.regex.Pattern;
  */
 final class SpeechText {
 
-    private record Spelling(String key, String say, boolean prefix) {
+    /** capital: nur mit großem Anfangsbuchstaben (Substantiv) – „Lag“ ja, das deutsche „lag“ nicht. */
+    private record Spelling(String key, String say, boolean prefix, boolean capital) {
+        Spelling(String key, String say, boolean prefix) {
+            this(key, say, prefix, false);
+        }
     }
 
     /** Wie kSpellings im Host; Reihenfolge zählt (netherite vor nether). */
@@ -43,16 +47,20 @@ final class SpeechText {
             new Spelling("enderauge", "Ender-Auge", true));
 
     /**
-     * Nur auf dem Server (LocalVoice), im Host (speech_text.cpp) noch nicht: gemessen 2026-11-15 auf dev01 mit
-     * aussprache_dev01.py (piper --debug, espeak-ng deutsch). „Mobs“ wurde „moːps“ (langes o), „Lag“ wie das deutsche
-     * „lag“ (lɑːk). Getrennt von SPELLINGS, damit die Tabelle dort weiter genau der des Hosts entspricht.
+     * Gemessen 2026-11-15 auf dev01 mit aussprache_dev01.py (piper --debug, espeak-ng deutsch): „Mobs“ wurde „moːps“
+     * (langes o), „Lag“ wie das deutsche „lag“ (lɑːk). Im Host (speech_text.cpp) seit 2026-11-16 ebenso, dort mit dem
+     * Piper der App nachgemessen. „Lag“ nur großgeschrieben: Vorher wurde auch das Verb („der Stein lag dort“) zu
+     * „Läg“ (LocalVoiceTest.theGermanVerbLagStaysAndUnitsFollowDigits).
      */
     private static final List<Spelling> SERVER_SPELLINGS = List.of(
             new Spelling("mobs", "Mobbs", false), new Spelling("mob", "Mobb", false),
-            new Spelling("lags", "Lägs", false), new Spelling("lag", "Läg", false));
+            new Spelling("lags", "Lägs", false, true), new Spelling("lag", "Läg", false, true));
 
-    /** Einheit hinter Schrägstrich („440 Blöcke/s“ wurde „Blöcke Es“, gemessen 2026-11-15). */
-    private static final Pattern PER_UNIT = Pattern.compile("(?<=\\p{L})/(s|sek|min|h|std|tag)\\b");
+    /**
+     * Einheit hinter Schrägstrich („440 Blöcke/s“ wurde „Blöcke Es“, gemessen 2026-11-15), auch nach einer Ziffer
+     * („300/s“) und „/Tag“ – wie im Host.
+     */
+    private static final Pattern PER_UNIT = Pattern.compile("(?<=[\\p{L}\\d])/(s|sek|min|h|std|tag|Tag)\\b");
     /** Verhältnis „1:1“, „2:3“ (keine Uhrzeit: CLOCK verlangt zweistellige Minuten). Vorher „eins eins“. */
     private static final Pattern RATIO = Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d)(?!\\d)");
 
@@ -154,7 +162,7 @@ final class SpeechText {
 
     private static String spell(String word, String low, List<Spelling> table) {
         for (Spelling sp : table) {
-            if (low.startsWith(sp.key())) {
+            if (low.startsWith(sp.key()) && (!sp.capital() || Character.isUpperCase(word.charAt(0)))) {
                 String rest = word.substring(sp.key().length());
                 if (rest.isEmpty() || sp.prefix() || rest.equals("s") || rest.equals("S")) {
                     return sp.say() + rest;

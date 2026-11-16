@@ -125,6 +125,17 @@ class LocalVoiceTest {
         assertEquals("Stein und Holz, 3 plus 4", LocalVoice.speakable("Stein & Holz, 3 + 4", 400));
     }
 
+    /**
+     * 2026-11-16: „lag“ als Verb (von liegen) wurde seit 2026-11-15 zu „Läg“ – nur das großgeschriebene Substantiv
+     * „Lag“ ist das Server-Lag. Einheiten auch nach einer Ziffer und „/Tag“, wie im Host (speech_text.cpp).
+     */
+    @Test
+    void theGermanVerbLagStaysAndUnitsFollowDigits() {
+        assertEquals("Der Stein lag dort.", LocalVoice.speakable("Der Stein lag dort.", 400));
+        assertEquals("Läg-Maschinen machen Lägs.", LocalVoice.speakable("Lag-Maschinen machen Lags.", 400));
+        assertEquals("300 pro Sekunde, 5 Runden pro Tag", LocalVoice.speakable("300/s, 5 Runden/Tag", 400));
+    }
+
     @Test
     void spokenTextHasNoColorCodesCommandsOrLinks() {
         assertEquals("Klar! Tippe dann und los geht's.", LocalVoice.speakable(

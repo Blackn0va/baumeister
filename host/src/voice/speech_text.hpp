@@ -5,6 +5,8 @@
 // deutsch („Creeper“ → kɾˈeːpɜ, „Redstone“ → reːtstˈoːnə), „6:00 Uhr“ als „sechs Uhr null null Uhr“, „17*23 = 391“
 // ohne „mal“, „5 - 3“ als „fünf drei“, „3.5“ als „drei Punkt fünf“, ein Emoji als „grinsendes Gesicht“ – und „z.B.“
 // oder „ca.“ beenden den Satz mitten im Wort. Die Wortliste unten ist jeweils die gemessene bessere Umschreibung.
+// Seit 2026-11-16 (dieselbe Probe) auch „Mobs“/„Lag“, „Blöcke/s“ (las „Es“), „1:1“ (las „eins eins“), Klammern (ohne
+// Pause) und „&“ – damit gleich wie SpeechText.java im Plugin, wo dev01 am 2026-11-15 dasselbe gemessen hat.
 //
 // Nur für das Ohr: Chat und Log zeigen weiter den Originaltext.
 //

@@ -14,11 +14,13 @@ struct Spelling {
     std::string_view key;  // klein, ASCII
     std::string_view say;
     bool prefix;  // auch als Wortanfang („Spawner“, „Chunks“); false = nur ganzes Wort oder Plural-s
+    // Nur mit großem Anfangsbuchstaben (Substantiv): „Lag“ ja, das deutsche „lag“ (von liegen) nicht.
+    bool capital = false;
 };
 
 // Gemessen 2026-11-04 (probes/piper_aussprache_probe.py, Thorsten medium): links das Wort, rechts die Umschreibung,
 // deren Phoneme der üblichen Aussprache deutscher Spieler entsprechen. Nicht aufgenommen, weil espeak sie schon richtig
-// liest: Server, okay, Hey, Golem, Mob, Elytra, Shulker, Piglin, Stronghold, Craftingtisch. Gemessene Fehlgriffe, die
+// liest: Server, okay, Hey, Golem, Elytra, Shulker, Piglin, Stronghold, Craftingtisch. Gemessene Fehlgriffe, die
 // NICHT wieder hinein dürfen: „S-pohn“ (liest den Buchstaben S), „Redstoun“ (ou → uː), „Kri-eitiv“.
 // Reihenfolge: längere Schlüssel mit gleichem Anfang zuerst (respawn vor spawn ist unnötig – eigener Wortanfang).
 constexpr std::array kSpellings{
@@ -44,6 +46,12 @@ constexpr std::array kSpellings{
     // sonst würde Netherite zu „Nätherite“.
     Spelling{"nether", "Näther", true},         Spelling{"hardcore", "Haadkohr", true},
     Spelling{"enderauge", "Ender-Auge", true},
+    // Gemessen 2026-11-16 (dieselbe Probe, Thorsten medium; vorher stand „Mob“ oben bei „liest espeak richtig“ –
+    // falsch): Mob mˈoːp, Mobs mˈoːps (langes o) → Mobb mˈɔpp, Mobbs mˈɔps; Lag lˈɑːk (wie das deutsche „lag“) →
+    // Läg lˈɛːk.
+    // Auf dev01 am 2026-11-15 genauso (SpeechText.java). „Lag“ nur großgeschrieben: „der Stein lag dort“ bleibt.
+    Spelling{"mobs", "Mobbs", false},           Spelling{"mob", "Mobb", false},
+    Spelling{"lags", "Lägs", false, true},      Spelling{"lag", "Läg", false, true},
 };
 
 // Abkürzungen mit Punkt: piper teilt Sätze am Punkt – „ca. 20 Blöcke“ wurde zu „ca“ und Pause (gemessen).
@@ -163,6 +171,50 @@ std::string clock_times(const std::string& s) {
                 continue;
             }
         }
+        // Verhältnis „1:1“, „2:3“: eine Ziffer hinter dem Doppelpunkt ist keine Uhrzeit. Gemessen 2026-11-16 (Thorsten
+        // medium): „Verhältnis 1:1“ → „ˈaɪns ˈaɪns“, mit „zu“ → „ˈaɪns tsuː ˈaɪns“. Wie SpeechText.java (RATIO).
+        if (start_ok && (hours == 1 || hours == 2) && h + 1 < s.size() && s[h] == ':' && is_digit(s[h + 1]) &&
+            (h + 2 >= s.size() || !is_digit(s[h + 2]))) {
+            out += s.substr(i, hours) + " zu " + s[h + 1];
+            i = h + 2;
+            continue;
+        }
+        out += s[i];
+        ++i;
+    }
+    return out;
+}
+
+// Einheit hinter Schrägstrich: „440 Blöcke/s“ → „440 Blöcke pro Sekunde“, „km/h“ → „km pro Stunde“. Gemessen
+// 2026-11-16 (Thorsten medium): „Blöcke/s“ → „blˈœkə ˈɛs“ („Es“), „Stück/min“ → „ʃtˈyk mˈiːn“. Wie SpeechText.java
+// (PER_UNIT), dazu nach einer Ziffer („440/s“).
+std::string per_unit(const std::string& s) {
+    struct Unit {
+        std::string_view key;
+        std::string_view say;
+    };
+    constexpr std::array kUnits{Unit{"sek", " pro Sekunde"}, Unit{"s", " pro Sekunde"}, Unit{"min", " pro Minute"},
+                                Unit{"std", " pro Stunde"},  Unit{"h", " pro Stunde"},   Unit{"tag", " pro Tag"},
+                                Unit{"Tag", " pro Tag"}};
+    std::string out;
+    std::size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] == '/' && i > 0 && (is_word_byte(s[i - 1]) || is_digit(s[i - 1]))) {
+            bool done = false;
+            for (const Unit& u : kUnits) {
+                const std::size_t end = i + 1 + u.key.size();
+                if (s.compare(i + 1, u.key.size(), u.key) == 0 &&
+                    (end >= s.size() || (!is_word_byte(s[end]) && !is_digit(s[end])))) {
+                    out += u.say;
+                    i = end;
+                    done = true;
+                    break;
+                }
+            }
+            if (done) {
+                continue;
+            }
+        }
         out += s[i];
         ++i;
     }
@@ -200,6 +252,12 @@ std::string arithmetic(const std::string& s) {
             // „16x Fackel“ → „16 Fackel“ (gemessen: sonst „sechzehn iks“)
         } else if (c == '_') {
             out += ' ';  // „redstone_block“ → „redstone block“
+        } else if (c == '(' || c == ')') {
+            // Klammern liest espeak nicht und macht keine Pause (gemessen 2026-11-16: „Rechnung (Quelle: Wiki) fertig“
+            // ohne Pause, mit Kommas mit). squeeze_spaces räumt doppelte Kommas weg.
+            out += ", ";
+        } else if (c == '&') {
+            out += " und ";  // espeak sagt „&“ betont (ˈʊnt), als Wort unbetont wie im Satz (gemessen 2026-11-16)
         } else if (c == '*' || c == '#' || c == '`' || c == '~') {
             // Markdown-Reste aus dem Modell: nicht mitsprechen
         } else {
@@ -259,7 +317,8 @@ std::string spellings(const std::string& s) {
             }
             const std::string_view rest = word.substr(sp.key.size());
             const bool fits = rest.empty() || (sp.prefix ? true : (rest == "s" || rest == "S"));
-            if (same && fits) {
+            const bool case_ok = !sp.capital || (word[0] >= 'A' && word[0] <= 'Z');
+            if (same && fits && case_ok) {
                 out += sp.say;
                 out += rest;
                 done = true;
@@ -283,9 +342,16 @@ std::string squeeze_spaces(const std::string& s) {
         if ((c == ',' || c == '.' || c == '!' || c == '?') && !out.empty() && out.back() == ' ') {
             out.pop_back();
         }
+        // Aus Klammern entstehen Kommas am Anfang, doppelt („a (b), c“) oder vor dem Satzende („a (b).“).
+        if (c == ',' && (out.empty() || out.back() == ',')) {
+            continue;
+        }
+        if ((c == '.' || c == '!' || c == '?') && !out.empty() && out.back() == ',') {
+            out.pop_back();
+        }
         out += c;
     }
-    while (!out.empty() && out.back() == ' ') {
+    while (!out.empty() && (out.back() == ' ' || out.back() == ',')) {
         out.pop_back();
     }
     return out;
@@ -316,6 +382,7 @@ std::string for_speech(std::string_view text) {
         }
     }
     s = clock_times(s);
+    s = per_unit(s);
     s = arithmetic(s);
     s = leet_names(std::move(s));
     s = spellings(s);
