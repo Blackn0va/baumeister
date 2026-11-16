@@ -164,6 +164,12 @@ class LobbyTest {
                 }
             });
             assertEquals(portalsOf(p), openings.size(), prompt);
+            // /bm portal alle findet vom Platz aus (Mitte, Bodenhöhe) genau dieselben Rahmen (PortalScan, 2026-11-16).
+            CompiledBuild b = COMPILER.compile(p);
+            int cz = (b.min().z() + b.max().z()) / 2;
+            Set<PortalFrame.Opening> scanned = new HashSet<>(com.blackn0va.baumeister.portal.PortalScan.openings(view,
+                    -48, -8, cz - 48, 48, 12, cz + 48));
+            assertEquals(openings, scanned, prompt);
         }
     }
 

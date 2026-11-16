@@ -2,6 +2,7 @@ package com.blackn0va.baumeister;
 
 import com.blackn0va.baumeister.portal.PortalBook;
 import com.blackn0va.baumeister.portal.PortalFrame;
+import com.blackn0va.baumeister.portal.PortalScan;
 import com.blackn0va.baumeister.warp.WarpBook;
 
 import java.io.IOException;
@@ -129,6 +130,10 @@ final class PortalService implements Listener {
             list(sender);
             return;
         }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("alle")) {
+            connectAll(sender, label, args);
+            return;
+        }
         boolean remove = args.length >= 2 && args[1].equalsIgnoreCase("entfernen");
         if (sender instanceof Player p) {
             if (args.length < 2) {
@@ -184,8 +189,8 @@ final class PortalService implements Listener {
 
     private static void usage(CommandSender to, String label) {
         Texts.info(to, "Stell dich in einen leeren Obsidianrahmen oder schau hindurch: /" + label
-                + " portal <warp|welt|spawn> [Anzeige]. Weg damit: /" + label + " portal entfernen. Alle: /" + label
-                + " portal liste");
+                + " portal <warp|welt|spawn> [Anzeige]. Alle Rahmen im Umkreis auf einmal: /" + label
+                + " portal alle. Weg damit: /" + label + " portal entfernen. Übersicht: /" + label + " portal liste");
     }
 
     private static String rest(String[] args, int from) {
@@ -261,20 +266,130 @@ final class PortalService implements Listener {
             return;
         }
         String text = Texts.clean(shown.isBlank() ? niceName(target.get()) : shown, PortalBook.MAX_LABEL);
+        int replaced = place(by, w, o, target.get(), text);
+        boolean saved = save();
+        Texts.info(by, "Portal entzündet: → " + text + " (" + describe(target.get()) + "). Wer hineingeht, landet "
+                + "dort." + (replaced == 0 ? "" : " Das alte Ziel dieses Rahmens ist ersetzt.")
+                + (saved ? "" : " Achtung: portale.json ließ sich nicht schreiben – nach einem Neustart ist es weg."));
+    }
+
+    /** Entzündet o und trägt es samt Schild ein; speichert nicht. Rückgabe: Zahl der ersetzten alten Einträge. */
+    private int place(CommandSender by, World w, PortalFrame.Opening o, String target, String text) {
         UUID owner = by instanceof Player p ? p.getUniqueId() : new UUID(0, 0);
-        PortalBook.Portal portal = new PortalBook.Portal(w.getName(), o, target.get(), text, owner, "");
+        PortalBook.Portal portal = new PortalBook.Portal(w.getName(), o, target, text, owner, "");
         List<PortalBook.Portal> replaced = book.put(portal);
         replaced.forEach(this::removeLabel);
         light(w, o);
         String labelId = spawnLabel(w, o, text, portal.id());
         book.put(portal.withLabelEntity(labelId));
-        boolean saved = save();
         LOG.info(() -> String.format("portal | verbunden | welt=%s x=%d y=%d z=%d achse=%s größe=%dx%d ziel=%s "
-                + "ersetzt=%d gespeichert=%s", w.getName(), o.x0(), o.y0(), o.z0(), o.axis(), o.width(), o.height(),
-                target.get(), replaced.size(), saved));
-        Texts.info(by, "Portal entzündet: → " + text + " (" + describe(target.get()) + "). Wer hineingeht, landet "
-                + "dort." + (replaced.isEmpty() ? "" : " Das alte Ziel dieses Rahmens ist ersetzt.")
+                + "ersetzt=%d", w.getName(), o.x0(), o.y0(), o.z0(), o.axis(), o.width(), o.height(), target,
+                replaced.size()));
+        return replaced.size();
+    }
+
+    // ---------------------------------------------------------------- Alle verbinden
+
+    /** Suchbereich von „alle“: die riesige Lobby (81 × 81) von ihrem Platz aus, mit Rand, dazu etwas Höhe. */
+    static final int ALL_RADIUS = 48;
+    private static final int ALL_BELOW = 8;
+    private static final int ALL_ABOVE = 12;
+
+    /**
+     * /bm portal alle (Konsole: /bm portal alle &lt;welt&gt; &lt;x&gt; &lt;y&gt; &lt;z&gt;): jeder leere Rahmen im
+     * Umkreis bekommt ein Ziel – Warps zuerst (meistbesucht vorn), dann die übrigen Welten; nur Ziele mit sicherem
+     * Landeplatz, keines doppelt. Schon verbundene Portale bleiben, ihre Ziele fallen aus der Verteilung. Reichen die
+     * Ziele nicht, bleiben Rahmen leer – lieber leer als zweimal dasselbe Ziel.
+     */
+    private void connectAll(CommandSender sender, String label, String[] args) {
+        World w;
+        int x;
+        int y;
+        int z;
+        float yaw;
+        if (sender instanceof Player p) {
+            Location l = p.getLocation();
+            w = p.getWorld();
+            x = l.getBlockX();
+            y = l.getBlockY();
+            z = l.getBlockZ();
+            yaw = l.getYaw();
+        } else {
+            if (args.length < 6) {
+                Texts.info(sender, "Von der Konsole: /" + label + " portal alle <welt> <x> <y> <z>");
+                return;
+            }
+            w = Bukkit.getWorld(args[2]);
+            if (w == null) {
+                Texts.info(sender, "Welt „" + Texts.clean(args[2], 32) + "“ gibt es nicht.");
+                return;
+            }
+            try {
+                x = Integer.parseInt(args[3]);
+                y = Integer.parseInt(args[4]);
+                z = Integer.parseInt(args[5]);
+            } catch (NumberFormatException e) {
+                Texts.info(sender, "x, y und z müssen ganze Zahlen sein.");
+                return;
+            }
+            yaw = 0;
+        }
+        List<PortalFrame.Opening> found = PortalScan.order(PortalScan.openings(blocks(w), x - ALL_RADIUS,
+                y - ALL_BELOW, z - ALL_RADIUS, x + ALL_RADIUS, y + ALL_ABOVE, z + ALL_RADIUS), x + 0.5, z + 0.5, yaw);
+        if (found.isEmpty()) {
+            Texts.info(sender, "Im Umkreis von " + ALL_RADIUS + " Blöcken finde ich keinen leeren Portalrahmen aus "
+                    + "Obsidian. Stell dich in die Lobby oder Portalhalle.");
+            return;
+        }
+        List<PortalFrame.Opening> free = new ArrayList<>();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (PortalFrame.Opening o : found) {
+            int[] c = o.cells().getFirst();
+            Optional<PortalBook.Portal> existing = book.at(w.getName(), c[0], c[1], c[2]);
+            if (existing.isPresent()) {
+                used.add(existing.get().target());
+            } else {
+                free.add(o);
+            }
+        }
+        List<String> targets = new ArrayList<>(candidates(w));
+        targets.removeIf(used::contains);
+        int n = Math.min(free.size(), targets.size());
+        for (int i = 0; i < n; i++) {
+            PortalFrame.Opening o = free.get(i);
+            String target = targets.get(i);
+            String text = Texts.clean(niceName(target), PortalBook.MAX_LABEL);
+            place(sender, w, o, target, text);
+            Texts.info(sender, "→ " + text + " (" + describe(target) + ") bei " + o.x0() + " " + o.y0() + " "
+                    + o.z0());
+        }
+        boolean saved = n == 0 || save();
+        int kept = found.size() - free.size();
+        int empty = free.size() - n;
+        LOG.info(() -> "portal | alle | welt=" + w.getName() + " rahmen=" + found.size() + " verbunden=" + n
+                + " behalten=" + kept + " ohne_ziel=" + empty + " gespeichert=" + saved);
+        Texts.info(sender, n + " Portal(e) verbunden" + (kept > 0 ? ", " + kept + " schon verbundene behalten" : "")
+                + (empty > 0 ? ", " + empty + " Rahmen ohne Ziel – setz mit /setwarp weitere Ziele und ruf "
+                        + "/" + label + " portal alle noch einmal auf" : "") + "."
                 + (saved ? "" : " Achtung: portale.json ließ sich nicht schreiben – nach einem Neustart ist es weg."));
+    }
+
+    /** Ziele für „alle“: Warps (meistbesucht zuerst), dann die übrigen Welten – nur mit sicherem Landeplatz. */
+    private List<String> candidates(World here) {
+        List<String> out = new ArrayList<>();
+        WarpService warps = plugin.warps();
+        if (warps != null) {
+            for (String name : warps.names()) {
+                out.add(PortalBook.WARP + WarpBook.key(name));
+            }
+        }
+        for (World w : Bukkit.getWorlds()) {
+            if (!w.equals(here)) {
+                out.add(PortalBook.WORLD + w.getName());
+            }
+        }
+        return out.stream().filter(PortalBook::validTarget)
+                .filter(t -> resolve(t).flatMap(PortalService::safe).isPresent()).toList();
     }
 
     private void remove(CommandSender by, World w, PortalFrame.Opening o) {
@@ -389,14 +504,36 @@ final class PortalService implements Listener {
         return "Spawn der Welt " + target.substring(PortalBook.WORLD.length());
     }
 
-    /** Anzeige ohne eigene Angabe: „Lobby“, der Warpname mit großem Anfang, oder der Weltname. */
+    /**
+     * Anzeige ohne eigene Angabe: „Lobby“, Nether und End der Weltnamen, sonst der Name mit Leerzeichen statt _ und -
+     * und großen Wortanfängen. Vorher nur der erste Buchstabe groß – auf dem Probeserver standen „Vera_nether“ und
+     * „Vera_the_end“ über den Portalen (2026-11-16), auf dev01 wären es „World_nether“ und „World_the_end“.
+     */
     static String niceName(String target) {
         if (target.equals(PortalBook.SPAWN)) {
             return "Lobby";
         }
-        String n = target.startsWith(PortalBook.WARP) ? target.substring(PortalBook.WARP.length())
-                : target.substring(PortalBook.WORLD.length());
-        return n.isEmpty() ? n : n.substring(0, 1).toUpperCase(Locale.ROOT) + n.substring(1);
+        boolean world = target.startsWith(PortalBook.WORLD);
+        String n = world ? target.substring(PortalBook.WORLD.length()) : target.substring(PortalBook.WARP.length());
+        String low = n.toLowerCase(Locale.ROOT);
+        if (world && (low.endsWith("_nether") || low.equals("nether"))) {
+            return "Nether";
+        }
+        if (world && (low.endsWith("_the_end") || low.equals("the_end") || low.equals("end"))) {
+            return "End";
+        }
+        StringBuilder out = new StringBuilder(n.length());
+        boolean start = true;
+        for (char c : n.toCharArray()) {
+            if (c == '_' || c == '-') {
+                out.append(' ');
+                start = true;
+            } else {
+                out.append(start ? Character.toUpperCase(c) : c);
+                start = false;
+            }
+        }
+        return out.toString().strip();
     }
 
     // ---------------------------------------------------------------- Welt
@@ -540,7 +677,7 @@ final class PortalService implements Listener {
 
     /** Für die Vervollständigung: Ziele, die es gerade gibt. */
     List<String> targets() {
-        List<String> out = new ArrayList<>(List.of("spawn", "entfernen", "liste"));
+        List<String> out = new ArrayList<>(List.of("spawn", "alle", "entfernen", "liste"));
         WarpService warps = plugin.warps();
         if (warps != null) {
             out.addAll(warps.names());

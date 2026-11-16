@@ -492,6 +492,8 @@ public final class HelpBook {
                     Part.run("Portalhalle", "/bm bau eine Portalhalle"),
                     Part.run("Weltspawn hier", "/bm einrichten spawn"),
                     Part.text("\n"),
+                    // „Alle verbinden“ (2026-11-16): alle leeren Rahmen im Umkreis, Warps zuerst (PortalService).
+                    Part.run("Alle verbinden", "/bm portal alle"),
                     Part.text("Im leeren Rahmen:\n"),
                     Part.type("Portal …", "/bm portal "),
                     Part.run("Portale", "/bm portal liste"))));

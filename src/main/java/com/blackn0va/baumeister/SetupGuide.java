@@ -43,9 +43,11 @@ final class SetupGuide {
                 new Step(" ← 2. auf dem Platz in der Mitte stehen und klicken", List.of(
                         new Texts.Choice("Weltspawn hierher", bm + " einrichten spawn",
                                 "Neue Spieler und alle ohne Bett landen genau hier"))),
-                new Step(" ← 3. in einen leeren Rahmen stellen: " + bm + " portal <Ziel>", List.of(
-                        new Texts.Choice("Ziele und Portale", bm + " portal liste",
-                                "Verbundene Portale; Ziele sind spawn, jede Welt und jeder Warp"))),
+                new Step(" ← 3. in der Lobby: alle Rahmen auf einmal, oder je Rahmen " + bm + " portal <Ziel>",
+                        List.of(new Texts.Choice("Alle Rahmen verbinden", bm + " portal alle",
+                                        "Warps zuerst, dann die übrigen Welten – je Rahmen ein Ziel"),
+                                new Texts.Choice("Ziele und Portale", bm + " portal liste",
+                                        "Verbundene Portale; Ziele sind spawn, jede Welt und jeder Warp"))),
                 new Step(" ← 4. mehr bauen", List.of(
                         new Texts.Choice("Portalhalle", bm + " bau eine Portalhalle", "Halle mit 7 Portalrahmen"),
                         new Texts.Choice("Burg", bm + " bau eine Burg", "Burg mit Türmen, Wehrgang und Tor"),
@@ -118,12 +120,13 @@ final class SetupGuide {
     }
 
     /**
-     * Die Spielregel per Reflexion – kein Feld- und kein Methodenzugriff auf GameRule im Bytecode. Gemessen 2026-11-15
-     * auf Paper 26.2 mit dem gegen Spigot 1.21.11 übersetzten Jar: GameRule.RESPAWN_RADIUS warf NoSuchFieldError (Paper
-     * nennt das Feld SPAWN_RADIUS), GameRule.values() dann IncompatibleClassChangeError – GameRule ist in der
-     * Spigot-API ein Interface, in der Paper-API eine abstrakte Klasse, also bricht jeder direkte Aufruf eine der beiden
-     * Fassungen. Reflexion kennt den Unterschied nicht; World#setGameRule ist in beiden eine Interface-Methode mit
-     * gleicher Signatur. Gesucht wird nach dem Namen: respawn_radius (seit 1.21.11), davor spawnRadius.
+     * Die Spielregel per Reflexion – kein Feld- und kein Methodenzugriff auf GameRule im Bytecode. Gemessen
+     * 2026-11-15 auf Paper 26.2 mit dem gegen Spigot 1.21.11 übersetzten Jar: GameRule.RESPAWN_RADIUS warf
+     * NoSuchFieldError (Paper nennt das Feld SPAWN_RADIUS), GameRule.values() dann IncompatibleClassChangeError –
+     * GameRule ist in der Spigot-API ein Interface, in der Paper-API eine abstrakte Klasse, also bricht jeder direkte
+     * Aufruf eine der beiden Fassungen. Reflexion kennt den Unterschied nicht; World#setGameRule ist in beiden eine
+     * Interface-Methode mit gleicher Signatur. Gesucht wird nach dem Namen: respawn_radius (seit 1.21.11), davor
+     * spawnRadius.
      *
      * Bewusst fail-open: Ohne die Regel steht der Weltspawn trotzdem, nur landen neue Spieler bis 10 Blöcke daneben –
      * das sagt die Meldung. null = nicht gefunden.

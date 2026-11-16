@@ -21,6 +21,11 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   und Portalhalle mit Feuer selbst, mit derselben Achse wie `/bm portal`; die Portale überstehen einen Neustart, und ein
   herausgebrochener Rahmenblock löscht das Portal wie im Spiel. Der Sprung mit einem echten Spieler ist noch nicht
   im Spiel geprüft.
+- **Alle Portale auf einmal verbinden:** `/bm portal alle` sucht im Umkreis von 48 Blöcken jeden leeren
+  Obsidianrahmen und gibt jedem ein Ziel – Warps zuerst (meistbesucht vorn), dann die übrigen Welten, nur mit sicherem
+  Landeplatz und keines doppelt. Das Hauptportal der Rückwand bekommt das erste Ziel, die übrigen folgen im
+  Uhrzeigersinn ab deiner Blickrichtung. Schon verbundene Portale bleiben. Vorher musste man sich in jeden der 9 Rahmen
+  der riesigen Lobby einzeln stellen. Auch als Knopf in `/bm einrichten` und im Hilfebuch.
 - **Frischen Server einrichten:** `/bm einrichten` führt in vier Schritten mit Knöpfen im Chat durch: Lobby bauen
   (vier Größen), Weltspawn auf den Platz in der Mitte setzen, Portale verbinden, Portalhalle und Burgen dazu.
   `/bm einrichten spawn` setzt den Weltspawn genau auf deinen Stand und `respawn_radius` auf 0 – sonst landen neue
@@ -203,6 +208,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **Vera sagt „lag“ wieder deutsch:** Seit der Aussprache-Regel für „Lag“ (Server-Lag) wurde auch das Verb zu „Läg“
+  („der Stein Läg dort“). Jetzt nur das großgeschriebene Substantiv. „300/s“ und „/Tag“ werden ebenfalls vorgelesen.
 - **Große Bauten frieren den Server beim Planen nicht mehr ein:** Bei „bau eine riesige Lobby“ stand dev01 zweimal
   über 10 s, bevor der erste Block kam. Die Reihenfolge innerhalb einer Schicht suchte für jeden Block alle übrigen
   ab. Jetzt sucht sie nur in der Nähe, mit Block für Block derselben Reihenfolge wie vorher. Gemessen an der größten
