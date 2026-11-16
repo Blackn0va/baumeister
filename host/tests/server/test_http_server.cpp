@@ -11,7 +11,10 @@
 
 #include <windows.h>
 
+#include <chrono>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -95,4 +98,70 @@ TEST_CASE("Server: /health und Chat über einen echten Socket, Host-Prüfung gre
     server.stop();
     CHECK_FALSE(server.running());
     CHECK(lines.size() >= 3);  // erfolgreiche /health-Abfragen protokolliert er nicht
+}
+
+TEST_CASE("Server: Wer Byte für Byte tröpfelt, bekommt nach der Gesamtfrist 408 (Slowloris)") {
+    swbh::test::FakeBackend backend;
+    swbh::server::ChatApi api(backend, nullptr);
+    std::mutex lines_mutex;
+    std::vector<std::string> lines;
+    // 800 ms statt 60 s, damit der Test nicht eine Minute wartet; die Regel ist dieselbe.
+    swbh::server::HttpServer server(
+        [&](const swbh::server::HttpRequest& r, const std::function<bool()>& gone) { return api.handle(r, gone); },
+        [&](const std::string& l) {
+            std::lock_guard<std::mutex> g(lines_mutex);
+            lines.push_back(l);
+        },
+        std::chrono::milliseconds(800));
+    const std::uint16_t port = free_port();
+    std::string error;
+    REQUIRE(server.start(port, error));
+
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    REQUIRE(connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) == 0);
+    // Kopf ohne Ende, dann alle 200 ms ein Byte – kürzer als kReadTimeoutMs, die Frist je recv läuft so nie ab.
+    const std::string head = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Tropfen: ";
+    send(s, head.data(), static_cast<int>(head.size()), 0);
+    const auto t0 = std::chrono::steady_clock::now();
+    std::string answer;
+    bool closed = false;
+    for (int i = 0; i < 20 && !closed; ++i) {
+        if (send(s, "a", 1, 0) == SOCKET_ERROR) {
+            closed = true;
+            break;
+        }
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(s, &readable);
+        timeval tv{0, 200000};
+        if (select(0, &readable, nullptr, nullptr, &tv) > 0) {
+            char buf[4096];
+            int n = 0;
+            while ((n = recv(s, buf, sizeof buf, 0)) > 0) {
+                answer.append(buf, static_cast<std::size_t>(n));
+            }
+            closed = true;  // 0 = sauber geschlossen, SOCKET_ERROR = RST (siehe unten)
+        }
+    }
+    const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+    closesocket(s);
+    // Entscheidend: Der Server gibt die Verbindung innerhalb der Frist frei. Das 408 kommt meist an; schickt der Client
+    // beim Schließen gerade noch ein Byte, antwortet Windows mit RST und verwirft es beim Client (im vollen Lauf
+    // 2026-11-16 einmal gesehen) – deshalb gilt die Logzeile des Servers, nicht die Antwort.
+    CHECK(closed);
+    CHECK(waited.count() < 3000);
+    if (!answer.empty()) {
+        CHECK(answer.starts_with("HTTP/1.1 408"));
+    }
+    server.stop();
+    std::lock_guard<std::mutex> g(lines_mutex);
+    bool logged = false;
+    for (const std::string& l : lines) {
+        logged = logged || l.find("lesen_gesamtfrist") != std::string::npos;
+    }
+    CHECK(logged);
 }

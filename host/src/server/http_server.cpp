@@ -73,7 +73,13 @@ struct HttpServer::Connection {
 };
 
 HttpServer::HttpServer(Handler handler, LogFn log)
-    : handler_(std::move(handler)), log_(std::move(log)), listen_socket_(kInvalid) {}
+    : HttpServer(std::move(handler), std::move(log), std::chrono::milliseconds(kRequestDeadlineMs)) {}
+
+HttpServer::HttpServer(Handler handler, LogFn log, std::chrono::milliseconds request_deadline)
+    : handler_(std::move(handler)),
+      log_(std::move(log)),
+      request_deadline_(request_deadline),
+      listen_socket_(kInvalid) {}
 
 HttpServer::~HttpServer() { stop(); }
 
@@ -191,8 +197,7 @@ void HttpServer::accept_loop() {
 void HttpServer::serve(const std::shared_ptr<Connection>& conn) {
     const SOCKET s = conn->socket;
     const auto started = std::chrono::steady_clock::now();
-    DWORD timeout = kReadTimeoutMs;
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
+    const auto deadline = started + request_deadline_;
     std::string buffer;
     ParseResult parsed;
     char chunk[16 * 1024];
@@ -201,11 +206,24 @@ void HttpServer::serve(const std::shared_ptr<Connection>& conn) {
         if (parsed.status != ParseStatus::Incomplete) {
             break;
         }
+        // Je recv höchstens kReadTimeoutMs, aber nie über die Gesamtfrist hinaus (siehe kRequestDeadlineMs).
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
+                                                                               std::chrono::steady_clock::now());
+        if (left.count() <= 0) {
+            parsed.status = ParseStatus::Error;
+            parsed.http_status = 408;
+            parsed.error = "lesen_gesamtfrist";
+            break;
+        }
+        DWORD timeout = static_cast<DWORD>(std::min<long long>(left.count(), kReadTimeoutMs));
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
         const int n = recv(s, chunk, sizeof chunk, 0);
         if (n <= 0) {
             parsed.status = ParseStatus::Error;
             parsed.http_status = n == 0 ? 0 : 408;  // 0 = Gegenseite weg, keine Antwort nötig
-            parsed.error = n == 0 ? "verbindung_geschlossen" : "lesen_zeitgrenze";
+            parsed.error = n == 0 ? "verbindung_geschlossen"
+                           : std::chrono::steady_clock::now() >= deadline ? "lesen_gesamtfrist"
+                                                                          : "lesen_zeitgrenze";
             break;
         }
         buffer.append(chunk, static_cast<std::size_t>(n));

@@ -23,6 +23,14 @@ namespace swbh::win {
 // false = Härtung nicht möglich; der Aufrufer bricht fail-closed mit Exit 1 ab.
 bool harden_dll_search();
 
+// Ladesperre für Bibliotheken (ProcessImageLoadPolicy, 2026-11-16): keine DLL von einem Netzlaufwerk
+// (NoRemoteImages) und keine mit niedriger Integritätsstufe (NoLowMandatoryLabelImages) – etwa eine, die ein Browser
+// im Sandkasten abgelegt hat. Vorher regelte harden_dll_search nur, WO gesucht wird, nicht WAS geladen werden darf.
+// Bestehende Bits (Exploit-Schutz von Windows) bleiben gesetzt, die Funktion schaltet nur zu. Keine
+// PreferSystem32Images: Die App bringt ihre VC-Laufzeit mit, eine ältere aus System32 ginge sonst vor.
+// false = Richtlinie nicht gesetzt (GetLastError); der Aufrufer bricht fail-closed ab.
+bool harden_image_loads();
+
 // Kennung eines per AddDllDirectory freigegebenen Ordners.
 struct DllDirectoryCookie {
     void* cookie = nullptr;

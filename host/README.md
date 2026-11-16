@@ -97,8 +97,10 @@ Kleine Modelle (1.5B, 3B) verwechselten im Spiel Geben und Suchen (Log 2026-11-0
 - Host-Kopf muss `127.0.0.1`/`localhost`/`[::1]` sein (DNS-Rebinding), Anfragen mit `Origin` oder `Sec-Fetch-Site`
   → 403 (Browser), POST nur `application/json`.
 - Body ≤ 256 KiB, Kopf ≤ 16 KiB, `Content-Length` Pflicht, kein `Transfer-Encoding`, ein Auftrag gleichzeitig (503).
+- Je Anfrage höchstens 60 s zum Lesen (sonst 408), auch wenn Byte für Byte etwas kommt – gegen Slowloris.
 - plink nur über absoluten Pfad, Ziel/Ports/Fingerabdruck streng geprüft, Kind im Job-Objekt (endet mit der App).
-- Modelle und CUDA nur mit festgenagelten Prüfsummen aus `deps.lock.json`; DLL-Suche gehärtet; startet nicht erhöht.
+- Modelle und CUDA nur mit festgenagelten Prüfsummen aus `deps.lock.json`; DLL-Suche gehärtet; keine DLL von
+  Netzlaufwerken oder mit niedriger Integritätsstufe (ProcessImageLoadPolicy); startet nicht erhöht.
 
 ## Bauen
 

@@ -4,6 +4,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Sicherheit (2026-11-16)
+- Gesamtfrist von 60 s für das Lesen einer Anfrage. Vorher galt nur die Frist von 15 s je Lesevorgang, und sie
+  begann mit jedem Byte neu: Wer alle 14 s ein Byte schickte, hielt eine Verbindung beliebig lange, acht solche
+  sperrten den Server (503) und damit das Plugin aus. Antwort jetzt 408 `lesen_gesamtfrist`.
+- Ladesperre für Bibliotheken beim Start: keine DLL von einem Netzlaufwerk und keine mit niedriger Integritätsstufe
+  (ProcessImageLoadPolicy). Vorher regelte die App nur, wo sie DLLs sucht, nicht, was geladen werden darf. Schlägt das
+  Setzen fehl, startet die App nicht (wie bei der DLL-Suche).
+
+### Geändert (2026-11-16, Aussprache)
+- Gleich wie das Plugin und mit dem Piper der App nachgemessen: „Mobs“ (las langes o) → „Mobbs“, das Substantiv „Lag“
+  (las wie deutsch „lag“) → „Läg“, das Verb „lag“ bleibt; „440 Blöcke/s“ (las „Es“) → „pro Sekunde“, ebenso „/min“,
+  „/h“, „/Tag“; „1:1“ (las „eins eins“) → „1 zu 1“; Klammern werden zur Pause; „&“ wird ein unbetontes „und“.
+
 ### Geändert (2026-11-09)
 - Vorgabe der Fernadresse ist ein Platzhalter (`wss://dein-server.example.net:25580/kanal/v1`) statt der Adresse
   eines bestimmten Servers. Eingerichtete Installationen behalten ihre gespeicherte Adresse.

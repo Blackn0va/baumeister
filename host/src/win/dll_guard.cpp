@@ -12,6 +12,16 @@ bool harden_dll_search() {
     return SetDllDirectoryW(L"") != FALSE;
 }
 
+bool harden_image_loads() {
+    PROCESS_MITIGATION_IMAGE_LOAD_POLICY policy{};
+    if (!GetProcessMitigationPolicy(GetCurrentProcess(), ProcessImageLoadPolicy, &policy, sizeof policy)) {
+        return false;
+    }
+    policy.NoRemoteImages = 1;
+    policy.NoLowMandatoryLabelImages = 1;
+    return SetProcessMitigationPolicy(ProcessImageLoadPolicy, &policy, sizeof policy) != FALSE;
+}
+
 std::optional<DllDirectoryCookie> add_dll_directory(const std::filesystem::path& absolute_dir) {
     if (!absolute_dir.is_absolute()) {
         return std::nullopt;

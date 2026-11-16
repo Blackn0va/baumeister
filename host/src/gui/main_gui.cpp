@@ -235,6 +235,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         error_box("Der DLL-Suchpfad ließ sich nicht absichern.");
         return 1;
     }
+    if (!swbh::win::harden_image_loads()) {
+        error_box("Die Ladesperre für fremde DLLs ließ sich nicht setzen (Fehler " + std::to_string(GetLastError())
+                  + ").");
+        return 1;
+    }
     try {
         return run_gui();
     } catch (const std::exception& e) {

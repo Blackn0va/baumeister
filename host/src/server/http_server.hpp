@@ -19,6 +19,7 @@
 #include "server/http.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -33,6 +34,11 @@ namespace swbh::server {
 // mit 4 blieben neben LLM-Auftrag, Stadtfortschritt und Ergebnis keine frei, und das Plugin bekäme 503.
 inline constexpr int kMaxConnections = 8;
 inline constexpr int kReadTimeoutMs = 15000;
+// Gesamtfrist für das Lesen einer Anfrage (2026-11-16). kReadTimeoutMs gilt je recv und beginnt mit jedem Byte neu:
+// Wer alle 14 s ein Byte schickte, hielt eine Verbindung beliebig lange, acht solche sperrten den Server (503) und
+// damit das Plugin aus. 60 s reichen weit: 1 MiB Ton braucht selbst über einen Tunnel mit 1 Mbit/s 8 s. Wer die Frist
+// entfernt, öffnet die Slowloris-Lücke wieder (OWASP A05, ASVS V12.1.1 sinngemäß für Anfragegrößen und -dauer).
+inline constexpr int kRequestDeadlineMs = 60000;
 
 class HttpServer final {
 public:
@@ -41,6 +47,8 @@ public:
     using LogFn = std::function<void(const std::string&)>;
 
     HttpServer(Handler handler, LogFn log);
+    // request_deadline: Gesamtfrist fürs Lesen einer Anfrage; Tests setzen sie kurz, sonst kRequestDeadlineMs.
+    HttpServer(Handler handler, LogFn log, std::chrono::milliseconds request_deadline);
     ~HttpServer();
     HttpServer(const HttpServer&) = delete;
     HttpServer& operator=(const HttpServer&) = delete;
@@ -60,6 +68,7 @@ private:
 
     Handler handler_;
     LogFn log_;
+    std::chrono::milliseconds request_deadline_;
     std::atomic<bool> running_{false};
     std::uintptr_t listen_socket_;
     std::uint16_t port_ = 0;
