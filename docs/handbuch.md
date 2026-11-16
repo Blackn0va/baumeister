@@ -291,17 +291,22 @@ Ohne KI und Abschnitt für Abschnitt, so wie man gräbt – an den Baumeister im
 | „grab einen Tunnel 5000 Blöcke schnell“, „… durch die ganze Karte im Schnellgang“ | lange Tunnel bis 10 000 Blöcke (auch „10.000“), Stück für Stück auf derselben Linie |
 | „grab einen Tunnel durch den Berg“, „… bis ins Freie“, „… auf die andere Seite“ | endet, wo er ins Freie bricht – sonst läuft er dort als Röhre geradeaus weiter |
 | „… großen“ / „… kleinen“, „… nach Norden“, „… nach links“ | 5 × 4 bzw. 1 × 2 statt 3 × 3 innen, andere Richtung |
-| „bau mir eine Treppe nach oben“, `/bm treppe` | Treppe bis zur Oberfläche, eine Stufe je Block, oben offen |
+| „bau mir eine Treppe nach oben“, `/bm treppe` | Treppe bis zur Oberfläche, eine Stufe je Block, oben offen. Im Gang zur Seitenwand geschaut: durch die Wand hinauf, der Gang bleibt frei |
+| „bau eine Treppe nach unten“, `/bm treppe runter`, „… 20 Stufen“, „… bis y -40“ | Treppe hinab, eine Stufe je Block: so viele Stufen, bis zu der Höhe oder bis zur letzten Schicht Grundgestein |
+| „stopp“, „tunnel stopp“, `/bm stop` | hält an – auch in der Pause zwischen zwei Stücken eines langen Tunnels; ein neuer Grabauftrag löst den laufenden ab |
+| „bau weiter trotzdem“ (nur Admins) | gräbt durch Gebautes, an dem er sonst aufhört; einen anderen Gang kreuzt der Tunnel (Kreuzung statt Mauer) |
 | „bau eine Brücke übers Meer“, `/bm brücke` | Brücke auf deiner Höhe vor dir her, ohne Ende, solange du mitgehst |
 | „bau die Brücke weiter“, „grab den Tunnel weiter“, `/bm weiterbauen` | erkennt, was dasteht – auch alte und selbst gegrabene Gänge –, und baut am Ende genauso weiter: Breite, Steine, Bogen und Lichtabstand, in der Richtung des Gangs, egal wohin du schaust. „grab einen Tunnel“ mitten in einem Gang (den Gang entlang geschaut) setzt ihn ebenso fort |
 | „schneller“, „langsamer“ im Chat | laufenden Bau in den Schnellgang bzw. zurück |
 
-**Aussehen.** Der Tunnel ist ausgemauert, oben in den Ecken ein Bogen aus Treppen, der Boden abgesetzt, alle 6 Blöcke
-ein Gurtbogen mit einer Laterne darunter – nie Fackeln. Über y 0 Steinziegel mit poliertem Andesit, darunter
-Tiefenschiefer, im Nether poliertes Schwarzgestein mit Seelenlaternen, im End Endstein mit Purpur; „aus Tiefenschiefer“
-im Auftrag wählt den Stein. Kleine Tunnel tragen ihre Laternen in Nischen, große an Ketten. Die Brücke hat ein Deck auf
-deiner Höhe, ein Geländer aus Mauer, Laternen alle 6 Blöcke und alle 12 Blöcke Pfeiler bis zum Grund – im Meer bis 48
-Blöcke tief, darunter ohne.
+**Aussehen.** Der Tunnel ist ausgemauert, unten an der Wand ein Sockel, in der Mitte des Bodens ein Streifen, oben in
+den Ecken ein Bogen aus Treppen, alle 6 Blöcke ein Gurtbogen aus gemeißeltem Stein mit einer Laterne darunter – nie
+Fackeln. Über y 0 Steinziegel mit poliertem Andesit, darunter Tiefenschiefer, im Nether poliertes Schwarzgestein mit
+Seelenlaternen und einem Streifen aus vergoldetem Schwarzstein, im End Endstein mit Purpur; „aus Tiefenschiefer“ im
+Auftrag wählt den Stein. Kleine Tunnel tragen ihre Laternen in Nischen, große an Ketten. Die Brücke hat ein Deck auf
+deiner Höhe mit Mittelstreifen, eine Balustrade – Mauer, alle 3 Blöcke ein gemauerter Pfosten, auf jedem zweiten eine
+Laterne – und alle 12 Blöcke Pfeiler mit Kapitell bis zum Grund, im Meer bis 48 Blöcke tief, darunter ohne. Ein
+vorhandener Tunnel geht beim Weiterbauen in seinem Stil weiter, auch ohne Sockel und Streifen.
 
 **Gerade über die Karte.** Ein Tunnel hält Linie und Höhe – über viele Aufträge hinweg: Weiterbauen sucht den Gang
 in allen vier Richtungen und folgt ihm, nicht deinem Blick (das nächste Ende am Fels zuerst, ein offener Eingang zuletzt).
@@ -312,8 +317,14 @@ es beim ersten Fenster. Lange Aufträge baut er in Stücken von `bau.max-ausdehn
 jedes Stücks steht ein Abschluss – auch im Freien –, daran erkennt „bau weiter“ das Ende. Am Weltrand ist Schluss.
 
 **Was er nicht tut.** Gegraben wird nur durch Natur: Gestein, Erde, Erz, Kies, Eis, Höhlenbewuchs, Wasser und Lava.
-Steht Gebautes im Weg (Bretter, Bruchstein, Fackeln, Schienen, Baumstämme), hört er davor auf und sagt, wo. Einzige
-Ausnahme: Mineschächte, die die Welt erzeugt hat – ihre eigenen Bretter, Zäune, Stämme, Schienen, Spinnweben,
+Steht Gebautes im Weg (Bretter, Bruchstein, Fackeln, Schienen, Baumstämme), hört er davor auf und sagt, wo; Admins
+können mit „bau weiter trotzdem“ hindurch. Ist es ein anderer Gang, sagt er das: Ein Tunnel quer dazu wird mit
+„trotzdem“ zur Kreuzung (der andere Gang bleibt frei), einen Gang in derselben Richtung setzt man in ihm mit „bau
+weiter“ fort, und eine Treppe geht nie quer durch einen Gang – hinein kommt man aus dem Gang mit „Treppe nach oben“.
+Gefüllte Kisten, Spawner und Endportalrahmen bleiben auch mit „trotzdem“. Grundgestein über der untersten Schicht
+gräbt er für Admins (Stufe „gefährlich“) ab, damit der Tunnel eben bleibt; die unterste Schicht und das Netherdach
+bleiben. Ausnahme ohne „trotzdem“: Mineschächte, die die Welt erzeugt hat – ihre eigenen Bretter, Zäune, Stämme,
+Schienen, Spinnweben,
 Ketten und Fackeln gräbt er durch (erkannt an den Bauwerksgrenzen der Welt, je Schachtteil). Was ein Spieler sonst in
 einen Schacht gebaut hat, bleibt Gebautes; Festungen, Antike Städte, Prüfungskammern und Dörfer bleiben ganz. Jeder
 Abschnitt bekommt zuerst seine Hülle und die Front zum nächsten wird zugesetzt, erst dann wird ausgeräumt – so kommen
@@ -326,8 +337,15 @@ dort weiter) und dort, wo das Wasser höher steht als der Weg.
 (bis 5 Blöcke, am liebsten die, auf die sie schauen) mit Bausteinen und Laternen (oder Seelenlaternen, Seelaternen,
 Froschlichtern), für den Bogen passenden Treppen, für eine Treppe Treppenstufen und für die Brücke einer Mauer oder einem
 Zaun. Was in der Kiste liegt, bestimmt das Aussehen, bezahlt wird je gesetztem Block. Geht etwas aus, wartet er und sagt,
-was fehlt. Alles Abgebaute kommt in die Kiste – auch bei Admins, wenn eine danebensteht; ist sie voll, fällt der Rest
-daneben. Ein Bau aus der Kiste lässt sich nicht rückgängig machen: Das Abgebaute liegt schon darin, ein Rückgängig
+was fehlt.
+
+**Abraum.** Alles Abgebaute kommt erst in die Kiste, wenn eine danebensteht. Der Rest sammelt sich, und sobald 27
+Stapel beisammen sind, steht ein volles Fass in einer Nische der Tunnelwand auf Fußhöhe, die Öffnung zum Gang; am Ende
+des Auftrags kommt der Rest in ein letztes Fass. Nischen sucht er nur in Wandsteinen mit Fels dahinter, nie über einem
+Tal oder im Wasser. Admins bekommen die Fässer frei; wer aus der Kiste baut, bezahlt jedes mit einem Fass oder einer
+Kiste aus der Materialkiste. Ohne beides kommt der Rest am Ende neben die Kiste. Eine Brücke ohne Kiste sammelt nichts
+– sie hat keine Wand. Ein Bau aus der Kiste lässt sich nicht rückgängig machen: Das Abgebaute liegt schon darin,
+ein Rückgängig
 stellte den Fels wieder her. „aus der Kiste“ im Auftrag lässt auch Admins aus der Kiste bauen.
 
 ## Logik-Schaltungen aus Formeln
@@ -899,6 +917,15 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
   versetztem Standplatz auf derselben Linie und im selben Stil, „durch den Berg“ endet am Durchbruch, 250 Blöcke als
   192 + 58, 200 Blöcke Röhre im Freien über eine Stückgrenze, Halt am Weltrand. In einer frisch erzeugten Welt je 5/5:
   42 Tunnel quer durch einen Mineschacht, kein Schachtblock im Gang. Längster Tick 26 ms
+- ✅ Stopp, Treppen hinauf und hinab, „trotzdem“, Grundgestein, edles Aussehen und Abraum (2026-11-16) auf Paper 26.2
+  und Spigot 1.21.11 je 40/40 Prüfungen über die Konsole: 300 Blöcke in zwei Stücken mit 4 Fässern Abraum in der
+  Wand, Sockel, Mittelstreifen und gemeißelten Gurtbögen; Treppe aus der Mitte des 300er-Gangs bis oben, der Gang
+  daneben frei; Kreuzung mit „trotzdem“ (auch hinter Brettern), der alte Gang bleibt frei; Treppe nach unten bis
+  y −40, vor einem Gang Halt (auch mit „trotzdem“); Bretter mit „trotzdem“ durch; Grundgestein im Weg weg, die
+  unterste Schicht bleibt; Brücke mit Balustrade und Kapitellen; zu lange Länge, Stopp nach dem ersten Stück, Ablösen
+  und „tunnel stopp“ ohne KI. Längster Tick 35 ms
+- ⏳ Fässer aus der Kiste bezahlt (Spieler ohne Admin), Stopp mit wartenden Aufträgen und die Treppe aus dem Gang mit
+  einem echten Spieler nur per Unit-Test bzw. über die Konsole geprüft, nicht im Spiel
 - ⏳ Mitbauen mit einem echten Spieler (vorausgraben, warten, nächstes Stück ohne Ende, Ansage beim Übergang in die
   Röhre), Kürzen an einer Grundstücksgrenze und Vera als Auftraggeberin nur per Unit-Test geprüft, nicht im Spiel
 - ✅ Plan → Blöcke → Reihenfolge; Plugin gesamt 677 Unit-Tests grün (2026-10-29)

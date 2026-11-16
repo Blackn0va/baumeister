@@ -152,4 +152,61 @@ class TunnelOrderTest {
         assertEquals(null, order("grab einen Tunnel").size(), "ohne Angabe gilt beim Weiterbauen die erkannte Größe");
         assertEquals(TunnelOrder.Size.NORMAL, order("grab einen Tunnel").sizeOrNormal());
     }
+
+    /**
+     * Vorfall 2026-11-16 auf dev01: „/bm tunnel stopp“ und „/bm tunnel 20000 schnell“ gingen ans LLM (Redstone-Block,
+     * 49 × 43 × 4 Blöcke Fels ausgehöhlt). Ein Satz mit Grabwort, der anhalten meint oder zu lang ist, wird erkannt.
+     */
+    @Test
+    void stopAndTooLongAreRecognisedInsteadOfGoingToTheLlm() {
+        for (String p : List.of("tunnel stopp", "stopp den Tunnel", "tunnel stop", "Treppe abbrechen",
+                "hör auf mit dem Tunnel", "bau nicht weiter, stopp")) {
+            assertTrue(TunnelOrder.parse(p).isEmpty(), p);
+            assertEquals(TunnelOrder.Problem.STOP, TunnelOrder.problem(p), p);
+        }
+        for (String p : List.of("tunnel 20000 schnell", "grab einen Tunnel 100000 Blöcke", "tunnel 20.000",
+                "bau eine Brücke 12 000 lang")) {
+            assertTrue(TunnelOrder.parse(p).isEmpty(), p);
+            assertEquals(TunnelOrder.Problem.TOO_LONG, TunnelOrder.problem(p), p);
+        }
+        assertEquals(TunnelOrder.Problem.NONE, TunnelOrder.problem("stopp"), "ohne Grabwort: ChatIntent");
+        assertEquals(TunnelOrder.Problem.NONE, TunnelOrder.problem("bau ein Haus mit 20000 Blöcken"));
+        assertEquals(TunnelOrder.Problem.NONE, TunnelOrder.problem("tunnel 10.000 schnell"), "erlaubt");
+    }
+
+    /** „trotzdem“ (Wunsch 2026-11-16, „ich will auch override machen können“): auch durch Gebautes. */
+    @Test
+    void anOverrideWordDigsThroughBuiltThings() {
+        for (String p : List.of("bau weiter trotzdem", "tunnel 40 schnell trotzdem", "grab einen Tunnel durch alles",
+                "grab einen Tunnel auch durch Gebautes", "tunnel override", "grab den Tunnel weiter, egal")) {
+            assertTrue(order(p).force(), p);
+        }
+        assertTrue(order("bau weiter trotzdem").resume());
+        assertFalse(order("grab einen Tunnel").force());
+    }
+
+    /** Treppe nach unten (Wunsch 2026-11-16, „die Treppe muss auch von oben nach unten gebaut werden können“). */
+    @Test
+    void stairsDownWithStepsOrATargetHeight() {
+        for (String p : List.of("bau eine Treppe nach unten", "treppe runter", "grab einen Tunnel nach unten",
+                "bau mir eine Treppe hinab", "Treppe abwärts")) {
+            assertEquals(TunnelOrder.Kind.STAIRS_DOWN, order(p).kind(), p);
+            assertFalse(order(p).follow(), "Treppen laufen durch: " + p);
+        }
+        assertEquals(40, order("bau eine Treppe nach unten, 40 Stufen").length());
+        assertEquals(-59, order("Treppe nach unten bis Höhe -59").targetY());
+        assertEquals(-59, order("treppe runter bis y -59").targetY());
+        assertEquals(12, order("treppe runter bis y=12").targetY());
+        assertEquals(80, order("bau eine Treppe nach oben bis Höhe 80").targetY());
+        assertEquals(TunnelOrder.NO_TARGET, order("treppe runter").targetY());
+        TunnelOrder more = order("bau weiter runter");
+        assertEquals(TunnelOrder.Kind.STAIRS_DOWN, more.kind());
+        assertTrue(more.resume());
+        assertTrue(TunnelOrder.mentionsDown("runter bis y -40"));
+        assertFalse(TunnelOrder.mentionsDown("40 schnell"));
+        for (String p : List.of("bau eine Treppe rauf und runter", "grab einen Tunnel bis Höhe 20",
+                "treppe runter bis y -99")) {
+            assertTrue(TunnelOrder.parse(p).isEmpty(), p);
+        }
+    }
 }

@@ -29,10 +29,18 @@ import java.util.function.Predicate;
  * Wo der Tunnel über ein Tal oder durch einen See läuft, bleibt er als dichte Röhre geschlossen; in Augenhöhe sitzen
  * dort Fenster. Frei Glas, aus der Kiste nur, wenn Glas darin liegt – sonst bleibt die Wand zu (null).
  *
+ * Edel (Wunsch 2026-11-16, „das Tunnel-Design muss ein edles sein, ein wirklich schönes Design für einen Tunnel und
+ * Brücken“): trim ist der Sockel – die unterste Wandreihe aus dem polierten Stein der Gegend, wie eine Fußleiste –,
+ * runner der Mittelstreifen im Boden bzw. im Deck (im Nether Goldschwarzstein). Gurtbögen sind Ringe aus
+ * Gemeißeltem, Brückengeländer haben alle 3 Blöcke einen gemauerten Pfosten (rib) mit der Laterne obenauf, und jeder
+ * Pfeiler trägt oben ein Kapitell (rib). Aus der Kiste und mit eigenem Material ohne Sockel und Streifen (null) – dort
+ * bestimmt allein, was der Spieler mitbringt.
+ *
  * Threads: unveränderlich. Fehler: keine (fehlendes Material steht in {@link Choice#missing}).
  */
 public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpec rib, BlockSpec arch,
-        BlockSpec step, BlockSpec light, BlockSpec chain, BlockSpec railing, BlockSpec window) {
+        BlockSpec step, BlockSpec light, BlockSpec chain, BlockSpec railing, BlockSpec window, BlockSpec trim,
+        BlockSpec runner) {
 
     /** Welt, in der gegraben wird – ohne Bukkit (World.Environment ordnet TunnelService zu). */
     public enum Realm {
@@ -91,31 +99,34 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
         TunnelStyle base = switch (realm) {
             case NETHER -> bridge
                     ? bridgeOf("Schwarzsteinbrücke", "polished_blackstone_bricks", "polished_blackstone_bricks",
-                            "chiseled_polished_blackstone", "polished_blackstone_brick_wall", "soul_lantern")
+                            "chiseled_polished_blackstone", "polished_blackstone_brick_wall", "soul_lantern",
+                            "gilded_blackstone")
                     : of("Schwarzstein", "polished_blackstone_bricks", "polished_blackstone",
                             "chiseled_polished_blackstone", "polished_blackstone_brick_stairs",
-                            "polished_blackstone_stairs", "soul_lantern");
+                            "polished_blackstone_stairs", "soul_lantern", "polished_blackstone", "gilded_blackstone");
             case END -> bridge
                     ? bridgeOf("Endsteinbrücke", "purpur_pillar", "end_stone_bricks", "purpur_block",
-                            "end_stone_brick_wall", "lantern")
+                            "end_stone_brick_wall", "lantern", "purpur_block")
                     : of("Endstein", "end_stone_bricks", "purpur_block", "purpur_pillar", "end_stone_brick_stairs",
-                            "purpur_stairs", "lantern");
+                            "purpur_stairs", "lantern", "purpur_block", "end_stone_bricks");
             case OVERWORLD -> y < 0
                     ? bridge
                             ? bridgeOf("Tiefenschieferbrücke", "deepslate_bricks", "deepslate_tiles",
-                                    "chiseled_deepslate", "deepslate_brick_wall", "lantern")
-                            : of("Tiefenschiefer", "deepslate_bricks", "deepslate_tiles", "polished_deepslate",
-                                    "deepslate_brick_stairs", "deepslate_tile_stairs", "lantern")
+                                    "chiseled_deepslate", "deepslate_brick_wall", "lantern", "polished_deepslate")
+                            : of("Tiefenschiefer", "deepslate_bricks", "deepslate_tiles", "chiseled_deepslate",
+                                    "deepslate_brick_stairs", "deepslate_tile_stairs", "lantern", "polished_deepslate",
+                                    "polished_deepslate")
                     : bridge
                             ? bridgeOf("Steinbrücke", "stone_bricks", "stone_bricks", "chiseled_stone_bricks",
-                                    "stone_brick_wall", "lantern")
+                                    "stone_brick_wall", "lantern", "polished_andesite")
                             : of("Steinziegel", "stone_bricks", "polished_andesite", "chiseled_stone_bricks",
-                                    "stone_brick_stairs", "polished_andesite_stairs", "lantern");
+                                    "stone_brick_stairs", "polished_andesite_stairs", "lantern", "polished_andesite",
+                                    "smooth_stone");
         };
         BlockSpec chain = !bridge && size.height >= CHAIN_FROM_HEIGHT ? BlockSpec.of("iron_chain") : null;
         if (material == null || !isWallBlock(material)) {
             return new TunnelStyle(base.name, base.wall, base.floor, base.rib, base.arch, base.step, base.light, chain,
-                    base.railing, base.window);
+                    base.railing, base.window, base.trim, base.runner);
         }
         BlockSpec m = BlockSpec.of(material);
         if (bridge) {
@@ -124,23 +135,24 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
                     ? material.substring(0, material.length() - "_planks".length()) + "_log" : null;
             BlockSpec pillar = log != null && BlockTiers.knownBlock(log) ? BlockSpec.of(log) : m;
             return new TunnelStyle(german(material), pillar, m, base.rib, null, null, base.light, null,
-                    railing == null ? base.railing : BlockSpec.of(railing), null);
+                    railing == null ? base.railing : BlockSpec.of(railing), null, null, null);
         }
         String stairs = stairsOf(material, BlockTiers::knownBlock);
         return new TunnelStyle(german(material), m, m, base.rib, stairs == null ? base.arch : BlockSpec.of(stairs),
-                stairs == null ? base.step : BlockSpec.of(stairs), base.light, chain, null, base.window);
+                stairs == null ? base.step : BlockSpec.of(stairs), base.light, chain, null, base.window, null, null);
     }
 
     private static TunnelStyle of(String name, String wall, String floor, String rib, String arch, String step,
-            String light) {
+            String light, String trim, String runner) {
         return new TunnelStyle(name, BlockSpec.of(wall), BlockSpec.of(floor), BlockSpec.of(rib), BlockSpec.of(arch),
-                BlockSpec.of(step), BlockSpec.of(light), null, null, BlockSpec.of(WINDOW));
+                BlockSpec.of(step), BlockSpec.of(light), null, null, BlockSpec.of(WINDOW), BlockSpec.of(trim),
+                BlockSpec.of(runner));
     }
 
     private static TunnelStyle bridgeOf(String name, String pillar, String deck, String beam, String railing,
-            String light) {
+            String light, String runner) {
         return new TunnelStyle(name, BlockSpec.of(pillar), BlockSpec.of(deck), BlockSpec.of(beam), null, null,
-                BlockSpec.of(light), null, BlockSpec.of(railing), null);
+                BlockSpec.of(light), null, BlockSpec.of(railing), null, null, BlockSpec.of(runner));
     }
 
     /** Palette aus der Kiste, oder was fehlt (deutscher Satzteil „Bausteine (z. B. …)“). */
@@ -173,7 +185,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
             missing.add("Licht (Laternen, Seelenlaternen, Seelaternen oder Froschlichter – Fackeln nehme ich nicht)");
         }
         String step = null;
-        if (kind == TunnelOrder.Kind.STAIRS_UP) {
+        if (kind.stairs()) {
             step = wall == null ? null : stairsIn(items, wall);
             if (step == null) {
                 step = best(items, id -> id.endsWith("_stairs"), 1).orElse(null);
@@ -195,7 +207,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
             String w = wall;
             String beam = best(items, id -> isWallBlock(id) && !id.equals(w) && ribbish(id), 4).orElse(wall);
             return new Choice(new TunnelStyle(german(wall), BlockSpec.of(wall), BlockSpec.of(wall), BlockSpec.of(beam),
-                    null, null, BlockSpec.of(light), null, BlockSpec.of(railing), null), null);
+                    null, null, BlockSpec.of(light), null, BlockSpec.of(railing), null, null, null), null);
         }
         String w = wall;
         String floor = best(items, id -> isWallBlock(id) && !id.equals(w) && !RAW.contains(id) && floorish(id), 16)
@@ -212,7 +224,7 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
         return new Choice(new TunnelStyle(german(wall), BlockSpec.of(wall), BlockSpec.of(floor), BlockSpec.of(rib),
                 arch == null ? null : BlockSpec.of(arch), step == null ? null : BlockSpec.of(step),
                 BlockSpec.of(light), chain == null ? null : BlockSpec.of(chain), null,
-                window == null ? null : BlockSpec.of(window)), null);
+                window == null ? null : BlockSpec.of(window), null, null), null);
     }
 
     /** Volles Glas für die Fenster der Röhre: klar, getönt oder gefärbt – keine Scheiben. */
@@ -258,7 +270,8 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
     /** Alle Block-IDs der Palette – TunnelService prüft sie gegen den laufenden Server. */
     public List<String> ids() {
         List<String> out = new ArrayList<>();
-        for (BlockSpec b : new BlockSpec[] {wall, floor, rib, arch, step, light, chain, railing, window}) {
+        for (BlockSpec b : new BlockSpec[] {wall, floor, rib, arch, step, light, chain, railing, window, trim,
+            runner}) {
             if (b != null) {
                 out.add(b.id());
             }
@@ -364,6 +377,8 @@ public record TunnelStyle(String name, BlockSpec wall, BlockSpec floor, BlockSpe
             Map.entry("deepslate", "Tiefenschiefer"), Map.entry("tuff_bricks", "Tuffsteinziegel"),
             Map.entry("smooth_stone", "glatter Stein"), Map.entry("oak_planks", "Eichenbretter"),
             Map.entry("spruce_planks", "Fichtenbretter"), Map.entry("glass", "Glas"),
+            Map.entry("chiseled_deepslate", "gemeißelter Tiefenschiefer"),
+            Map.entry("gilded_blackstone", "Goldschwarzstein"),
             Map.entry("world_border", "Rand der Welt"));
 
     /** Deutscher Name für Ansagen; ohne Eintrag ItemNames, sonst die ID mit Leerzeichen. */

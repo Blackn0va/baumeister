@@ -1,7 +1,9 @@
 package com.blackn0va.baumeister;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -141,6 +143,22 @@ final class MaterialChest {
             }
         }
         return false;
+    }
+
+    /**
+     * Abgebautes hinein; was nicht passt, kommt zurück (TunnelService stellt es in Fässern in die Tunnelwand).
+     */
+    List<ItemStack> store(Collection<ItemStack> items) {
+        List<ItemStack> left = new ArrayList<>();
+        Inventory inv = inventory();
+        for (ItemStack s : items) {
+            if (inv == null) {
+                left.add(s);
+            } else {
+                left.addAll(inv.addItem(s).values());
+            }
+        }
+        return left;
     }
 
     /**

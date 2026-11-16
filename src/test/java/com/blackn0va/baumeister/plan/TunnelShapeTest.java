@@ -91,7 +91,7 @@ class TunnelShapeTest {
     /** „bis ins Freie“: das alte Ende am Durchbruch und vor Wasser von oben. */
     private static TunnelShape.Result daylight(TunnelTestSite site, int length) {
         return TunnelShape.plan(new TunnelShape.Spec(TunnelOrder.Kind.TUNNEL, 1, 3, length, 192, 0,
-                TunnelShape.NO_ANCHOR, true, STONE, true), site);
+                TunnelShape.NO_ANCHOR, true, STONE, true, TunnelShape.NO_DEPTH), site);
     }
 
     @Test
@@ -110,9 +110,13 @@ class TunnelShapeTest {
             }
             assertEquals("stone_brick_stairs", at(w, site, 1, 2, z));
             assertEquals("stone_brick_stairs", at(w, site, -1, 2, z));
-            assertEquals("polished_andesite", at(w, site, 0, -1, z), "Boden");
-            String wall = at(w, site, 2, 1, z);
-            assertTrue(wall.equals("stone_bricks") || wall.equals("chiseled_stone_bricks"), wall);
+            // Edel (Wunsch 2026-11-16): Boden mit Mittelstreifen, Wand mit Sockel – außer im Gurtbogen.
+            assertEquals("smooth_stone", at(w, site, 0, -1, z), "Mittelstreifen");
+            assertEquals("polished_andesite", at(w, site, 1, -1, z), "Boden");
+            assertEquals("polished_andesite", at(w, site, -1, -1, z), "Boden");
+            boolean ring = z == 0 || z % 6 == 2;
+            assertEquals(ring ? "chiseled_stone_bricks" : "polished_andesite", at(w, site, 2, 0, z), "Sockel " + z);
+            assertEquals(ring ? "chiseled_stone_bricks" : "stone_bricks", at(w, site, -2, 1, z), "Wand " + z);
             assertEquals("stone", at(w, site, 0, 0, 12), "dahinter bleibt der Fels");
         }
         BlockSpec arch = specAt(r, new Pos(1, 2, 5));
@@ -267,7 +271,8 @@ class TunnelShapeTest {
         assertEquals(10, r.openFrom(), "erster Abschnitt im Freien");
         Map<Pos, String> w = simulate(site, r);
         for (int z = 10; z < 30; z++) {
-            assertEquals("polished_andesite", at(w, site, 0, -1, z), "Boden der Röhre bei " + z);
+            assertEquals("smooth_stone", at(w, site, 0, -1, z), "Mittelstreifen der Röhre bei " + z);
+            assertEquals("polished_andesite", at(w, site, 1, -1, z), "Boden der Röhre bei " + z);
             for (int x = -1; x <= 1; x++) {
                 assertNotEquals("air", at(w, site, x, 3, z), "Decke " + x + " " + z);
                 for (int y = 0; y <= 1; y++) {
@@ -282,16 +287,17 @@ class TunnelShapeTest {
         }
         assertEquals("glass", at(w, site, 2, 1, 12), "Fenster in Augenhöhe");
         assertEquals("glass", at(w, site, -2, 1, 12));
-        assertEquals("stone_bricks", at(w, site, 2, 0, 12), "unten Wand");
+        assertEquals("polished_andesite", at(w, site, 2, 0, 12), "unten der Sockel");
         assertEquals("stone_bricks", at(w, site, 2, 2, 12), "oben Wand");
         assertEquals("chiseled_stone_bricks", at(w, site, 2, 1, 14), "kein Fenster im Gurtbogen");
         assertEquals("lantern", at(w, site, 0, 2, 14), "Licht auch in der Röhre");
         assertEquals("stone_bricks", at(w, site, 2, 1, 5), "im Fels keine Fenster");
         // Pfeiler unter dem Licht bei 20 (jedes zweite: 8, 20, 32 – nur 20 liegt im Tal) bis zum Talboden (-12).
-        for (int y = -11; y <= -1; y++) {
+        for (int y = -11; y <= -2; y++) {
             assertEquals("stone_bricks", at(w, site, 2, y, 20), "Pfeiler rechts bei y " + y);
             assertEquals("stone_bricks", at(w, site, -2, y, 20), "Pfeiler links bei y " + y);
         }
+        assertEquals("chiseled_stone_bricks", at(w, site, 2, -1, 20), "Kapitell oben auf dem Pfeiler");
         assertEquals("chiseled_stone_bricks", at(w, site, 0, -2, 20), "Querbalken unter dem Boden");
         assertEquals("air", at(w, site, 2, -5, 19), "zwischen den Pfeilern frei");
         // Gerade: nichts weicht seitlich oder in der Höhe ab (außer den Pfeilern nach unten).
@@ -319,7 +325,8 @@ class TunnelShapeTest {
             }
         }
         assertEquals("glass", at(w, site, 2, 1, 12), "Fenster unter Wasser");
-        assertEquals("stone_bricks", at(w, site, 2, 0, 12));
+        assertEquals("polished_andesite", at(w, site, 2, 0, 12), "Sockel");
+        assertEquals("stone_bricks", at(w, site, 2, 2, 12));
         assertNotEquals("water", at(w, site, 0, 3, 12), "Decke");
         assertEquals("stone_bricks", at(w, site, -2, -6, 20), "Pfeiler durchs Wasser bis zum Grund");
     }
@@ -373,7 +380,8 @@ class TunnelShapeTest {
         assertEquals(0, r.first());
         assertEquals(10, r.last(), "auf Stufe 10 steht man über der Oberfläche (9)");
         Map<Pos, String> w = simulate(site, r);
-        assertEquals("polished_andesite", at(w, site, 0, -1, 0), "Absatz");
+        assertEquals("smooth_stone", at(w, site, 0, -1, 0), "Absatz mit Mittelstreifen");
+        assertEquals("polished_andesite", at(w, site, 1, -1, 0), "Absatz");
         for (int k = 1; k <= 10; k++) {
             BlockSpec step = specAt(r, new Pos(0, k - 1, k));
             assertEquals("polished_andesite_stairs", step.id(), "Stufe " + k);
@@ -439,10 +447,13 @@ class TunnelShapeTest {
         Map<Pos, BlockSpec> w = site.built(r);
         for (int z = 0; z <= 29; z++) {
             for (int x = -2; x <= 2; x++) {
-                assertEquals("stone_bricks", site.block(w, new Pos(x, -1, z)).id(), "Deck " + x + " " + z);
+                assertEquals(x == 0 ? "polished_andesite" : "stone_bricks", site.block(w, new Pos(x, -1, z)).id(),
+                        "Deck mit Mittelstreifen " + x + " " + z);
             }
-            assertEquals("stone_brick_wall", site.block(w, new Pos(2, 0, z)).id(), "Geländer rechts " + z);
-            assertEquals("stone_brick_wall", site.block(w, new Pos(-2, 0, z)).id(), "Geländer links " + z);
+            // Balustrade (Wunsch 2026-11-16, „edel“): alle 3 Blöcke ein Pfosten, die Laternen stehen darauf.
+            String rail = z % 3 == 2 ? "chiseled_stone_bricks" : "stone_brick_wall";
+            assertEquals(rail, site.block(w, new Pos(2, 0, z)).id(), "Geländer rechts " + z);
+            assertEquals(rail, site.block(w, new Pos(-2, 0, z)).id(), "Geländer links " + z);
             assertTrue(site.block(w, new Pos(0, 0, z)).isAir() && site.block(w, new Pos(0, 1, z)).isAir(),
                     "Gehweg " + z);
             boolean light = z % 6 == 2;
@@ -452,6 +463,8 @@ class TunnelShapeTest {
             assertEquals(pillar ? "stone_bricks" : "water", site.block(w, new Pos(-2, -11, z)).id(), "Pfeilerfuß " + z);
             assertEquals(pillar ? "chiseled_stone_bricks" : "water", site.block(w, new Pos(0, -2, z)).id(),
                     "Querbalken " + z);
+            assertEquals(pillar ? "chiseled_stone_bricks" : "water", site.block(w, new Pos(2, -2, z)).id(),
+                    "Kapitell " + z);
         }
         assertEquals("false", w.get(new Pos(2, 1, 8)).props().get("hanging"), "Laterne steht auf dem Geländer");
         assertEquals(10, r.lights());
@@ -465,7 +478,7 @@ class TunnelShapeTest {
         TunnelTestSite deep = new TunnelTestSite().sea(-10, 10, 0, 60, -70, -2);
         Map<Pos, BlockSpec> dw = deep.built(bridge(deep, 30));
         assertEquals("water", deep.block(dw, new Pos(2, -5, 8)).id(), "68 tief: kein Pfeiler");
-        assertEquals("stone_bricks", deep.block(dw, new Pos(0, -1, 8)).id(), "das Deck trotzdem");
+        assertEquals("stone_bricks", deep.block(dw, new Pos(1, -1, 8)).id(), "das Deck trotzdem");
 
         TunnelTestSite hill = new TunnelTestSite();
         hill.top = z -> z < 15 ? -2 : 5;
@@ -495,7 +508,7 @@ class TunnelShapeTest {
     @Test
     void continuingKeepsTheLightRhythmAndBuildsNoEntranceFrame() {
         TunnelShape.Spec next = new TunnelShape.Spec(TunnelOrder.Kind.TUNNEL, 1, 3, 10, 192, 1, -5, false, STONE,
-                false);
+                false, TunnelShape.NO_DEPTH);
         TunnelShape.Result r = TunnelShape.plan(next, new TunnelTestSite());
         assertEquals(1, r.first());
         assertEquals(10, r.last());
@@ -506,5 +519,61 @@ class TunnelShapeTest {
         for (Action a : r.build().actions()) {
             assertTrue(a.step() >= 1 && a.anchor().z() >= 1, "das fertige Stück bleibt unberührt: " + a.anchor());
         }
+    }
+
+    private static TunnelShape.Result down(TunnelTestSite site, int length, int depth) {
+        return TunnelShape.plan(new TunnelShape.Spec(TunnelOrder.Kind.STAIRS_DOWN, 1, 3, length, 192, 0,
+                TunnelShape.NO_ANCHOR, true, STONE, false, depth), site);
+    }
+
+    /**
+     * Treppe nach unten (Wunsch 2026-11-16): je Abschnitt eine Stufe tiefer, die volle Seite zum Spieler
+     * (facing=front), Kopfhöhe frei, bis zur gewünschten Höhe.
+     */
+    @Test
+    void stairsDownGoOneStepLowerPerSliceToTheTargetHeight() {
+        TunnelTestSite site = new TunnelTestSite();
+        TunnelShape.Result r = down(site, 0, -10);
+        assertEquals(TunnelShape.Stop.DEPTH, r.stop());
+        assertEquals(10, r.last(), "Füße auf Stufe 10 bei -10");
+        Map<Pos, String> w = simulate(site, r);
+        for (int k = 1; k <= 10; k++) {
+            BlockSpec step = specAt(r, new Pos(0, -k - 1, k));
+            assertEquals("polished_andesite_stairs", step.id(), "Stufe " + k);
+            assertEquals("front", step.props().get("facing"), "fällt nach vorn " + k);
+            assertEquals("bottom", step.props().get("half"));
+            for (int y = -k; y <= -k + 1; y++) {
+                assertEquals("air", at(w, site, 0, y, k), "Kopfhöhe " + k + " bei " + y);
+            }
+            String top = at(w, site, 0, -k + 2, k);
+            assertTrue(top.equals("air") || top.equals("lantern"), "oben frei oder Laterne: " + top);
+            assertNotEquals("air", at(w, site, 2, -k, k), "Wand " + k);
+        }
+        TunnelShape.Result steps = down(site, 6, TunnelShape.NO_DEPTH);
+        assertEquals(TunnelShape.Stop.LENGTH, steps.stop());
+        assertEquals(6, steps.last(), "6 Stufen");
+    }
+
+    /**
+     * Höhle unterwegs: abgedichtet durchquert wie im Tunnel (kein Halt davor – ein erster Entwurf ließ die Treppe dort
+     * über der Höhlendecke enden). Ende auf der letzten Schicht Grundgestein.
+     */
+    @Test
+    void stairsDownSealACaveOnTheWayAndEndAtTheLastBedrockLayer() {
+        TunnelTestSite cave = new TunnelTestSite();
+        cave.box(-3, 3, -8, -6, 5, 12, Ground.OPEN, "cave_air");
+        cave.set(new Pos(-2, -7, 6), Ground.FLUID, "lava");
+        TunnelShape.Result r = down(cave, 20, TunnelShape.NO_DEPTH);
+        assertEquals(TunnelShape.Stop.LENGTH, r.stop());
+        assertEquals(20, r.last());
+        Map<Pos, String> w = simulate(cave, r);
+        assertEquals("polished_andesite", at(w, cave, -2, -7, 6), "Sockel statt Lava neben der Stufe");
+        assertEquals("stone_bricks", at(w, cave, 2, -6, 6), "Wand in der Höhle zu");
+        assertEquals("polished_andesite_stairs", at(w, cave, 0, -7, 6), "Stufe über der Höhle");
+        TunnelTestSite bottom = new TunnelTestSite();
+        bottom.box(-6, 6, -40, -20, 0, 60, Ground.FORBIDDEN, "bedrock");
+        TunnelShape.Result b = down(bottom, 0, TunnelShape.NO_DEPTH);
+        assertEquals(TunnelShape.Stop.FORBIDDEN, b.stop());
+        assertTrue(b.last() < 19, "vor dem Grundgestein: " + b.last());
     }
 }

@@ -70,11 +70,12 @@ class HelpBookControlsTest {
     @Test
     void digButtonsReachTheTunnelPath() {
         List<String> dig = chapterCommands("Graben");
-        assertEquals(6, dig.size(), dig.toString());
+        assertEquals(7, dig.size(), dig.toString());
         for (String c : dig) {
             // So setzt BaumeisterCommand die Befehle in einen Satz um.
             String rest = c.replaceFirst("^/bm \\S+ ?", "");
-            String head = c.startsWith("/bm treppe") ? "treppe nach oben " : c.startsWith("/bm brücke") ? "brücke "
+            String stairs = TunnelOrder.mentionsDown(rest) ? "treppe " : "treppe nach oben ";
+            String head = c.startsWith("/bm treppe") ? stairs : c.startsWith("/bm brücke") ? "brücke "
                     : c.startsWith("/bm weiterbauen") ? "bau weiter " : "tunnel ";
             assertTrue(TunnelOrder.parse((head + rest).strip()).isPresent(), "kein Grabauftrag: " + c);
         }

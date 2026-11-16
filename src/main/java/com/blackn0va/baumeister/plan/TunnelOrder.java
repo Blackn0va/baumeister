@@ -1,9 +1,12 @@
 package com.blackn0va.baumeister.plan;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Grab- und Brückenaufträge ohne LLM (Wunsch 2026-11-16): „grab mit mir einen Tunnel“, „bau einen Tunnel 40 Blöcke
@@ -33,14 +36,29 @@ import java.util.Set;
  * mitgeht. daylight („durch den Berg“, „bis ins Freie“, „auf die andere Seite“): Der Tunnel endet, wo er ins Freie
  * bricht – sonst läuft er dort als Röhre geradeaus weiter (TunnelShape).
  *
+ * force („trotzdem“, „erzwingen“, „durch alles“, „auch durch Gebautes“, „override“; Wunsch 2026-11-16: „ich will auch
+ * override machen können“): auch durch Gebautes graben – nur für Admins (TunnelService prüft das).
+ *
+ * Treppe nach unten (Wunsch 2026-11-16, „die Treppe muss auch von oben nach unten gebaut werden können“):
+ * „Treppe nach unten“, „runter“, „hinab“ … – bis zur Stufenzahl, bis zur Höhe („bis Höhe -59“, „bis y -59“, targetY)
+ * oder bis sie unten in einen Hohlraum kommt. targetY gilt auch nach oben („Treppe nach oben bis Höhe 80“).
+ *
  * Threads: zustandslos. Fehler: keine – kein Treffer heißt leer.
  */
 public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolean together, Turn turn,
-        String material, boolean fromChest, boolean resume, boolean daylight) {
+        String material, boolean fromChest, boolean resume, boolean daylight, boolean force, int targetY) {
 
     public enum Kind {
-        TUNNEL, STAIRS_UP, BRIDGE
+        TUNNEL, STAIRS_UP, STAIRS_DOWN, BRIDGE;
+
+        /** Treppe nach oben oder unten. */
+        public boolean stairs() {
+            return this == STAIRS_UP || this == STAIRS_DOWN;
+        }
     }
+
+    /** targetY ohne Angabe. */
+    public static final int NO_TARGET = Integer.MIN_VALUE;
 
     /** Innenmaß: SMALL 1 breit × 2 hoch, NORMAL 3 × 3, LARGE 5 × 4 (Brücke: Gehweg und lichte Höhe). */
     public enum Size {
@@ -54,6 +72,15 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
             this.half = half;
             this.height = height;
         }
+    }
+
+    /** Warum ein Satz mit Grab- oder Weiter-Wort kein Auftrag ist ({@link #problem}). */
+    public enum Problem {
+        NONE,
+        /** „tunnel stopp“, „stopp den Tunnel“, „Treppe abbrechen“: gemeint ist anhalten. */
+        STOP,
+        /** Länge über {@link #MAX_LENGTH}. */
+        TOO_LONG
     }
 
     /** Wohin, bezogen auf die Blickrichtung (AHEAD/LEFT/RIGHT) oder als Himmelsrichtung. */
@@ -75,6 +102,15 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
             "holzbruecke", "steinbruecke", "brueckenweg"); // umlaut-ok
     private static final Set<String> UP = Set.of("oben", "hoch", "rauf", "herauf", "hinauf", "aufwaerts", // umlaut-ok
             "oberflaeche", "tageslicht", "draussen", "raus"); // umlaut-ok
+    private static final Set<String> DOWN = Set.of("unten", "runter", "herunter", "hinunter", "hinab", "tiefer",
+            "abwaerts"); // umlaut-ok
+    /**
+     * Zielhöhe auf dem rohen Text: RequestHints.normalize machte aus „-59“ ein „59“. Nur mit „y“, „Höhe“ oder „Ebene“
+     * davor – eine Zahl allein ist die Stufenzahl.
+     */
+    private static final Pattern TARGET = Pattern.compile(
+            "(?<![\\p{L}\\d])(?:y|h(?:ö|oe)he|ebene)\\s*[=:]?\\s*(-?\\d{1,3})(?![\\d])", // umlaut-ok
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> RESUME = Set.of("weiter", "weiterbauen", "weitergraben", "weitermachen",
             "verlaengern", "verlaengere", "verlaengert", "fortsetzen", "fort"); // umlaut-ok
     private static final Set<String> FAST = Set.of("schnell", "schnelle", "schnellen", "schneller",
@@ -111,6 +147,12 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
     private static final Set<String> CROSSING = Set.of("ueber", "uebers", "meer", "meere", "wasser", "see", // umlaut-ok
             "ozean", "fluss", "tal", "schlucht", "drueber", "hinueber", "rueber"); // umlaut-ok
     private static final Set<String> WITH_WHOM = Set.of("mir", "uns");
+    /** Auch durch Gebautes (force) – „durch alles“, „auch durch Gebautes“. */
+    private static final Set<String> FORCE = Set.of("trotzdem", "erzwingen", "erzwinge", "erzwungen", "egal",
+            "override", "alles", "gebautes");
+    /** Anhalten – „ende“ fehlt bewusst: „ohne Ende“ heißt mitbauen (TOGETHER). */
+    private static final Set<String> STOP = Set.of("stopp", "stop", "halt", "anhalten", "abbrechen", "abbruch",
+            "beenden", "beende", "schluss", "aufhoeren", "hoer"); // umlaut-ok: „hör auf“
     /** „bis ins Freie“, „im Freien“: dort aufhören statt als Röhre weiter (daylight). */
     private static final Set<String> DAYLIGHT = Set.of("freie", "freien");
     /** „durch den Berg“: Wörter nach „durch“ (Artikel übersprungen), die einen Berg meinen – daylight. */
@@ -120,7 +162,7 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
     /** „durch die ganze Karte“, „bis ans Ende der Welt“, „quer über die Map“. */
     private static final Set<String> ACROSS = Set.of("karte", "welt", "weltrand", "map");
     private static final Set<String> ACROSS_FILLER = Set.of("ganze", "ganzen", "komplette", "kompletten", "gesamte",
-            "gesamten", "ins", "auf", "andere", "anderen", "seite", "felswand", "bergwand", "hang", "berge",
+            "gesamten", "ins", "auf", "auch", "andere", "anderen", "seite", "felswand", "bergwand", "hang", "berge",
             "quer", "huegel"); // umlaut-ok
 
     /**
@@ -128,7 +170,17 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
      * bis zur Oberfläche durch, Abschnitte vor dem Spieler zu halten ergäbe dort nichts.
      */
     public boolean follow() {
-        return kind != Kind.STAIRS_UP && !fast && (together || length == 0);
+        return (kind == null || !kind.stairs()) && !fast && (together || length == 0);
+    }
+
+    /** Sagt der Text „nach unten“, „runter“ …? (/bm treppe runter → keine Treppe nach oben davorsetzen) */
+    public static boolean mentionsDown(String text) {
+        for (String w : RequestHints.tokens(RequestHints.normalize(text))) {
+            if (DOWN.contains(w)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Größe, wie gesagt, sonst NORMAL (beim Weiterbauen gilt die erkannte). */
@@ -137,11 +189,21 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
     }
 
     public static Optional<TunnelOrder> parse(String prompt) {
+        int targetY = NO_TARGET;
+        Matcher target = TARGET.matcher(prompt == null ? "" : prompt.toLowerCase(Locale.ROOT));
+        if (target.find()) {
+            targetY = Integer.parseInt(target.group(1));
+            if (targetY < -64 || targetY > 320) {
+                return Optional.empty();
+            }
+            prompt = prompt.substring(0, target.start()) + " " + prompt.substring(target.end());
+        }
         List<String> t = RequestHints.tokens(RequestHints.sizes(RequestHints.normalize(prompt)));
         boolean tunnel = false;
         boolean stairs = false;
         boolean bridge = false;
         boolean up = false;
+        boolean down = false;
         boolean fast = false;
         boolean together = false;
         boolean chest = false;
@@ -149,6 +211,7 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         boolean crossing = false;
         boolean daylight = false;
         boolean across = false;
+        boolean force = false;
         Size size = null;
         Integer length = null;
         Turn turn = Turn.AHEAD;
@@ -187,6 +250,8 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
                 }
             } else if (UP.contains(w)) {
                 up = true;
+            } else if (DOWN.contains(w)) {
+                down = true;
             } else if (RESUME.contains(w)) {
                 resume = true;
             } else if (FAST.contains(w)) {
@@ -215,6 +280,8 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
                 chest = true;
             } else if (DAYLIGHT.contains(w)) {
                 daylight = true;
+            } else if (FORCE.contains(w)) {
+                force = true;
             } else if (ACROSS.contains(w)) {
                 across = true;
             } else if (CROSSING.contains(w)) {
@@ -242,23 +309,30 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         if (tunnel && bridge || stairs && bridge) {
             return Optional.empty();  // „Tunnel und Brücke“: zwei Bauwerke, das LLM soll fragen
         }
+        if (up && down) {
+            return Optional.empty();  // „rauf und runter“: unklar
+        }
         Kind kind;
         if (stairs) {
-            if (!up) {
+            if (!up && !down) {
                 return Optional.empty();
             }
-            kind = Kind.STAIRS_UP;
+            kind = up ? Kind.STAIRS_UP : Kind.STAIRS_DOWN;
         } else if (tunnel) {
-            kind = up ? Kind.STAIRS_UP : Kind.TUNNEL;
+            kind = up ? Kind.STAIRS_UP : down ? Kind.STAIRS_DOWN : Kind.TUNNEL;
         } else if (bridge) {
-            if (up) {
+            if (up || down) {
                 return Optional.empty();
             }
             kind = Kind.BRIDGE;
-        } else if (resume && !up) {
-            kind = null;  // „bau weiter“: was, sagt erst der Blick auf die Stelle (TunnelScan)
+        } else if (resume) {
+            // „bau weiter“: was, sagt erst der Blick auf die Stelle (TunnelScan); „bau weiter runter“ meint die Treppe.
+            kind = up ? Kind.STAIRS_UP : down ? Kind.STAIRS_DOWN : null;
         } else {
             return Optional.empty();
+        }
+        if (targetY != NO_TARGET && (kind == null || !kind.stairs())) {
+            return Optional.empty();  // „Tunnel bis Höhe 20“: ein Tunnel hält seine Höhe
         }
         if (crossing && kind != Kind.BRIDGE) {
             return Optional.empty();
@@ -267,11 +341,43 @@ public record TunnelOrder(Kind kind, Size size, int length, boolean fast, boolea
         if (length != null && (len < 1 || len > MAX_LENGTH)) {
             return Optional.empty();
         }
-        if (across && fast && length == null && kind != Kind.STAIRS_UP) {
+        if (across && fast && length == null && (kind == null || !kind.stairs())) {
             len = MAX_LENGTH;  // „durch die ganze Karte, schnell“ – bis zum Rand der Welt oder MAX_LENGTH
         }
         return Optional.of(new TunnelOrder(kind, size, len, fast, together, turn, material, chest, resume,
-                daylight));
+                daylight, force, targetY));
+    }
+
+    /**
+     * Vorfall 2026-11-16 auf dev01: „/bm tunnel stopp“ und „/bm tunnel 20000 schnell“ waren keine Grabaufträge und
+     * gingen ans LLM – das setzte einen Redstone-Block bzw. höhlte 49 × 43 × 4 Blöcke Fels aus. Ein Satz mit Tunnel-,
+     * Treppen-, Brücken- oder Weiter-Wort bekommt deshalb eine Antwort ohne LLM, wenn er anhalten meint (STOP) oder
+     * die Länge zu groß ist (TOO_LONG, auch „100 000“ oder „20.000“).
+     */
+    public static Problem problem(String prompt) {
+        List<String> t = RequestHints.tokens(RequestHints.sizes(RequestHints.normalize(prompt)));
+        boolean dig = false;
+        boolean stop = false;
+        boolean tooLong = false;
+        for (int i = 0; i < t.size(); i++) {
+            String w = t.get(i);
+            String next = i + 1 < t.size() ? t.get(i + 1) : "";
+            dig |= TUNNEL.contains(w) || STAIRS.contains(w) || BRIDGE.contains(w) || RESUME.contains(w);
+            stop |= STOP.contains(w);
+            if (w.matches("\\d{6,}")) {
+                tooLong = true;
+            } else if (w.matches("\\d{1,5}")) {
+                long n = Long.parseLong(w);
+                if (w.length() <= 3 && next.matches("\\d{3}")) {
+                    n = n * 1000 + Long.parseLong(next);
+                }
+                tooLong |= n > MAX_LENGTH;
+            }
+        }
+        if (!dig) {
+            return Problem.NONE;
+        }
+        return stop ? Problem.STOP : tooLong ? Problem.TOO_LONG : Problem.NONE;
     }
 
     private static Turn turnOf(String w) {

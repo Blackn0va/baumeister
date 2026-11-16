@@ -60,6 +60,25 @@ public final class TunnelNature {
     private TunnelNature() {
     }
 
+    /**
+     * „trotzdem“ (Wunsch 2026-11-16, „ich will auch override machen können“, nur Admins): Gebautes wird wie Fels
+     * gegraben bzw. ausgemauert. Grundgestein, Weltrand, Spawner und Portalrahmen (FORBIDDEN) bleiben tabu, Behälter
+     * mit Inhalt schont der Bau ohnehin (BuildJob), Grundstücke prüft er wie immer.
+     */
+    public static TunnelShape.Ground forced(TunnelShape.Ground g, boolean force) {
+        return force && g == TunnelShape.Ground.BUILT ? TunnelShape.Ground.SOLID : g;
+    }
+
+    /**
+     * Grundgestein im Weg (Wunsch 2026-11-16, „der Tunnel soll bis auf die letzte Schicht Grundgestein gehen … baut er
+     * aber auch ab, wenn's im Weg ist, damit der Tunnel plan ist“): abbaubar bis auf die unterste Schicht der Welt –
+     * die bleibt immer und trägt dann als Boden – und im Nether das Dach ab y 127 (darüber ist nur noch Leere). Nur für
+     * wer gefährliche Blöcke ändern darf (TunnelService, Stufe „gefährlich“).
+     */
+    public static boolean bedrockDiggable(String id, int y, int minY, boolean nether) {
+        return "bedrock".equals(id) && y > minY && !(nether && y >= 127);
+    }
+
     /** Bauwerk der Welt (Schlüssel ohne „minecraft:“), dessen eigene Steine der Tunnel abbauen darf. */
     public static boolean diggableStructure(String structure) {
         return DIGGABLE_STRUCTURES.contains(structure);

@@ -4,6 +4,7 @@ import com.blackn0va.baumeister.plan.ModuleLibrary;
 import com.blackn0va.baumeister.plan.Orientation;
 import com.blackn0va.baumeister.plan.Orientation.Cardinal;
 import com.blackn0va.baumeister.plan.Pos;
+import com.blackn0va.baumeister.plan.TunnelOrder;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -221,12 +222,24 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 String head = switch (sub) {
-                    case "treppe" -> "treppe nach oben ";
+                    case "treppe" -> TunnelOrder.mentionsDown(rest) ? "treppe " : "treppe nach oben ";
                     case "brücke", "bruecke", "steg" -> "brücke "; // umlaut-ok: Alias
                     case "weiterbauen" -> "bau weiter ";
                     default -> "tunnel ";
                 };
-                plugin.service().requestFromPlayer(p, (head + rest).strip());
+                String prompt = (head + rest).strip();
+                // Ein Grabbefehl geht nie ans LLM (Vorfall 2026-11-16 auf dev01: „/bm tunnel stopp“ setzte einen
+                // Redstone-Block). Was TunnelOrder nicht versteht, bekommt Beispiele; „bau weiter“ ohne erkannten
+                // Gang darf weiter den gewohnten Weg nehmen (Gedächtnis).
+                if (!sub.equals("weiterbauen") && TunnelOrder.parse(prompt).isEmpty()
+                        && TunnelOrder.problem(prompt) == TunnelOrder.Problem.NONE) {
+                    Texts.info(p, "So verstehe ich das nicht. Zum Beispiel: /" + label + " tunnel 40 schnell, /"
+                            + label + " tunnel groß nach norden, /" + label + " tunnel durch den berg, /" + label
+                            + " treppe, /" + label + " treppe runter, /" + label + " brücke – anhalten: /" + label
+                            + " stop");
+                    return true;
+                }
+                plugin.service().requestFromPlayer(p, prompt);
             }
             case "stadt", "dorf", "city" -> city(sender, label, args);
             case "stadtwelt" -> cityWorld(sender);

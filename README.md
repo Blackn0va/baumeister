@@ -31,9 +31,10 @@ und mit Vera, einer Begleiterin, die mit dir spricht.**
   (`Q = A und (B oder nicht C)`).
 - **Tunnel, Treppen und Brücken.** „Grab mit mir einen Tunnel“ – der Baumeister gräbt vor dir her, solange du
   mitgehst, ausgemauert und mit Laternen statt Fackeln; auf Wunsch im Schnellgang. Schnurgerade quer über die Karte:
-  über Täler und Meere als Röhre mit Fenstern, bis 10 000 Blöcke am Stück. Treppe bis zur Oberfläche, Brücke übers
-  Meer mit Pfeilern bis zum Grund. Vorhandenes erkennt er und baut es in seiner Richtung weiter; wer kein Admin ist,
-  gibt das Material aus einer Kiste.
+  über Täler und Meere als Röhre mit Fenstern, bis 10 000 Blöcke am Stück. Treppen hinauf bis zur Oberfläche (auch
+  aus dem Gang heraus) und hinab bis zu einer Höhe, Brücke übers Meer mit Balustrade und Pfeilern bis zum Grund. Was er
+  abgräbt, steht in vollen Fässern in der Tunnelwand. Vorhandenes erkennt er und baut es in seiner Richtung weiter;
+  wer kein Admin ist, gibt das Material aus einer Kiste.
 - **Vera, die Begleiterin.** Folgt dir, findet Erze und Dörfer, führt durch ein Abenteuer bis zum Enderdrachen,
   repariert, erzählt Witze – und spricht im Voice Chat mit eigener Cartoon-Stimme, gerechnet auf dem Server.
 - **Die Welt 1:1.** Gelände, Städte und ganze Erdkacheln aus Höhendaten und OpenStreetMap.
@@ -90,7 +91,7 @@ Alles in einem Paket: `pwsh -File tools\paket\Paket-Erstellen.ps1`.
 | `/bm vorschau <auftrag>` · `/bm rückgängig` · `/bm stop` | Umriss zeigen · zurückbauen · anhalten |
 | `/bm katalog [suchwort]` | Schematics durchklicken und bauen |
 | `/bm logik Q = A und B` | Redstone-Schaltung aus einer Formel |
-| `Baumeister, grab mit mir einen Tunnel` · `/bm tunnel` · `/bm treppe` · `/bm brücke` | Tunnel, Treppe nach oben, Brücke – mitbauen oder im Schnellgang |
+| `Baumeister, grab mit mir einen Tunnel` · `/bm tunnel` · `/bm treppe` · `/bm treppe runter` · `/bm brücke` | Tunnel, Treppe nach oben und unten, Brücke – mitbauen oder im Schnellgang |
 | `/vera` · `Vera, wo finde ich Diamanten?` | Begleiterin rufen und fragen |
 | `/hilfe` | Hilfebuch – alles per Klick |
 | `/rucksack` · `/warp` · `/aufgaben` · `/mods` | Rucksack, Warps, Tagesaufgaben, Mods |

@@ -22,6 +22,24 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Schluss.
 - **Treppe bis zur Oberfläche:** „bau mir eine Treppe nach oben“ (`/bm treppe`) gräbt eine Stufe je Block bis ans
   Tageslicht, mit Laternen und Bogen wie der Tunnel. Unter einem See macht sie keinen Ausgang.
+- **Treppe aus dem Gang heraus:** Wer in einem Tunnel zur Seitenwand schaut und „Treppe nach oben“ sagt, bekommt eine
+  Treppe durch die Wand bis zur Oberfläche; der Gang bleibt frei. Vorher hielt sie sofort an der eigenen Laterne oder
+  Decke des Gangs („Gebautes“), mitten in einem langen Tunnel erst recht – dort fand die Erkennung kein Ende in
+  Reichweite.
+- **Treppe nach unten:** „bau eine Treppe nach unten“ (`/bm treppe runter`) gräbt je Block eine Stufe tiefer: so viele
+  Stufen wie genannt, bis zu einer Höhe („bis y -40“, „bis Höhe -40“) oder bis zur letzten Schicht Grundgestein.
+  Höhlen unterwegs dichtet sie ab wie der Tunnel. Quer durch einen Gang baut sie nicht: Sie hält davor und sagt, wie es
+  hineingeht (im Gang „Treppe nach oben“).
+- **„trotzdem“ für Admins:** „bau weiter trotzdem“ gräbt durch Gebautes, an dem er sonst aufhört. Kreuzt der Tunnel
+  dabei einen anderen Gang, wird es eine Kreuzung – dessen Innenraum bleibt frei, statt dass eine Mauer quer
+  hindurchgeht. Gefüllte Kisten, Spawner, Endportalrahmen, die unterste Schicht Grundgestein und der Weltrand bleiben,
+  Grundstücke gelten weiter.
+- **Grundgestein im Weg:** Wer gefährliche Blöcke ändern darf (Admins), dem gräbt er Grundgestein über der untersten
+  Schicht ab, damit der Tunnel eben bleibt. Die unterste Schicht und das Netherdach (ab y 127) bleiben.
+- **Abraum in vollen Fässern:** Was beim Graben anfällt, sammelt sich; sind 27 Stapel beisammen, steht ein volles Fass
+  in einer Nische der Tunnelwand (Öffnung zum Gang), am Ende kommt der Rest in ein letztes. Für alle: Admins bekommen
+  die Fässer frei; wer aus der Kiste baut, füllt erst die Materialkiste, dann kostet jedes Fass ein Fass oder eine
+  Kiste daraus. Ohne beides kommt der Rest am Ende neben die Kiste – verloren geht nichts.
 - **Brücke ohne Ende, auch übers Meer:** „bau eine Brücke übers Meer“ (`/bm brücke`) baut auf deiner Höhe vor dir her:
   Deck, Geländer, Laternen alle 6 Blöcke, alle 12 Blöcke Pfeiler bis zum Meeresgrund (bis 48 tief). Vor einem Berg
   endet sie.
@@ -229,6 +247,11 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   zu und werden nie überschrieben.
 
 ### Geändert
+- **Tunnel und Brücke edler:** Sockel in der untersten Wandreihe, Mittelstreifen im Boden, Gurtbögen als gemeißelte
+  Ringe (im Tiefenschiefer gemeißelter statt polierter), im Nether ein Mittelstreifen aus vergoldetem Schwarzstein. Die
+  Brücke bekommt eine Balustrade – alle 3 Blöcke ein gemauerter Pfosten, die Laternen stehen darauf –, einen
+  Mittelstreifen im Deck und Kapitelle auf den Pfeilern. Vorhandene Tunnel gehen beim Weiterbauen einheitlich in ihrem
+  bisherigen Stil weiter.
 - Im Hilfebuch neues Kapitel „Graben“; der Schnellbau-Knopf „Brücke“ heißt jetzt „Bogenbrücke“ (die Bauform mit
   Bögen), „Brücke“ baut die endlose.
 - Baumeister-Client 0.3.0 (Stand nach den Blockstufen; vorher hießen zwei verschiedene Stände 0.2.0).
@@ -237,6 +260,14 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **„stopp“ hält den Tunnel wirklich an:** Ein „/bm stop“ in der Pause zwischen zwei Stücken eines langen Tunnels
+  verpuffte, das nächste Stück begann trotzdem – auf dev01 zweimal hintereinander. Jetzt endet der ganze Auftrag, auch
+  in der Pause; eigene wartende Aufträge fallen mit weg. „tunnel stopp“ hält ebenso an, und ein neuer Grabauftrag löst
+  den laufenden eigenen ab, statt dahinter zu warten.
+- **Grabbefehle gehen nicht mehr an die KI:** „/bm tunnel stopp“ landete bei der KI und setzte einen Redstone-Block;
+  „/bm tunnel 20000 schnell“ wartete in der Warteschlange und höhlte dann, von der KI als Tunnel gedeutet,
+  49 × 43 × 4 Blöcke Fels aus. Jetzt sagt eine zu lange Länge ab (höchstens 10 000), und `/bm tunnel`, `/bm treppe`
+  und `/bm brücke` gehen nie an die KI – was er nicht versteht, beantwortet er mit einem Beispiel.
 - **Vera sagt „lag“ wieder deutsch:** Seit der Aussprache-Regel für „Lag“ (Server-Lag) wurde auch das Verb zu „Läg“
   („der Stein Läg dort“). Jetzt nur das großgeschriebene Substantiv. „300/s“ und „/Tag“ werden ebenfalls vorgelesen.
 - **Große Bauten frieren den Server beim Planen nicht mehr ein:** Bei „bau eine riesige Lobby“ stand dev01 zweimal

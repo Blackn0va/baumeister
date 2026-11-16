@@ -28,8 +28,11 @@ import org.bukkit.block.data.type.Leaves;
  * Oberfläche (sky): über dem obersten Block, der Bewegung hemmt (ohne Laub), und darunter über Wasser und Bewuchs
  * hinweg bis zum ersten festen – ein See zählt also zum Himmel, sein Grund zum Boden. Je Säule gemerkt.
  *
- * ownFace: Beim Weiterbauen steht vor dem fertigen Stück dessen Abschluss aus eigenen Steinen (TunnelShape setzt ihn,
- * wo Höhle oder Wasser war). Ohne Ausnahme hielte der neue Abschnitt ihn für Gebautes und grübe gar nicht erst.
+ * ownCells: Beim Weiterbauen steht vor dem fertigen Stück dessen Abschluss aus eigenen Steinen (TunnelShape setzt
+ * ihn, wo Höhle oder Wasser war); eine Treppe aus einem Gang heraus durchbricht dessen Hülle (TunnelScan.room). Ohne
+ * Ausnahme hielte der neue Abschnitt sie für Gebautes und grübe gar nicht erst. room: Innenraum dieses Gangs – dort
+ * baut die Treppe nichts hinein (TunnelShape.Site.room). force („trotzdem“, nur Admins): Gebautes wie Fels.
+ * bedrock: Grundgestein über der untersten Schicht wie Fels (TunnelNature.bedrockDiggable).
  *
  * structures: Bretter, Zäune und Schienen eines Mineschachts, den die Welt erzeugt hat, sind Natur (TunnelNature
  * .inStructure) – null = ohne diese Ausnahme (Erkennen eines Gangs braucht sie nicht).
@@ -45,21 +48,34 @@ final class TunnelSite implements TunnelShape.Site {
     private final World world;
     private final WorldBorder border;
     private final boolean nether;
-    private final Set<Pos> ownFace;
+    private final Set<Pos> ownCells;
     private final Set<String> ownIds;
     private final WorldStructures structures;
+    private final Set<Pos> room;
+    private final boolean force;
+    private final boolean bedrock;
     private final Map<Long, Integer> tops = new HashMap<>();
     /** Zellen, die nur als Teil eines Mineschachts Natur sind – für den Plan-Log („schacht=“). */
     private final Set<Pos> mineshaft = new HashSet<>();
+    /** Gebautes, das nur „trotzdem“ zu Fels macht – dort sucht TunnelService einen Gang (Kreuzung). */
+    private final Set<Pos> forced = new HashSet<>();
 
-    TunnelSite(SiteFrame frame, Set<Pos> ownFace, Set<String> ownIds, WorldStructures structures) {
+    TunnelSite(SiteFrame frame, Set<Pos> ownCells, Set<String> ownIds, WorldStructures structures) {
+        this(frame, ownCells, ownIds, structures, Set.of(), false, false);
+    }
+
+    TunnelSite(SiteFrame frame, Set<Pos> ownCells, Set<String> ownIds, WorldStructures structures, Set<Pos> room,
+            boolean force, boolean bedrock) {
         this.frame = frame;
         this.world = frame.world();
         this.border = world.getWorldBorder();
         this.nether = world.getEnvironment() == World.Environment.NETHER;
-        this.ownFace = ownFace;
+        this.ownCells = ownCells;
         this.ownIds = ownIds;
         this.structures = structures;
+        this.room = room;
+        this.force = force;
+        this.bedrock = bedrock;
     }
 
     @Override
@@ -68,7 +84,7 @@ final class TunnelSite implements TunnelShape.Site {
         if (b.getY() <= world.getMinHeight() || b.getY() >= world.getMaxHeight() - 1 || outside(b)) {
             return TunnelShape.Ground.FORBIDDEN;
         }
-        if (ownFace.contains(local) && ownIds.contains(b.getType().getKey().getKey())) {
+        if (ownCells.contains(local) && ownIds.contains(b.getType().getKey().getKey())) {
             return TunnelShape.Ground.SOLID;
         }
         TunnelShape.Ground g = classify(b, nether);
@@ -76,7 +92,29 @@ final class TunnelSite implements TunnelShape.Site {
         if (s != g) {
             mineshaft.add(local);
         }
-        return s;
+        if (s == TunnelShape.Ground.FORBIDDEN && bedrock && TunnelNature.bedrockDiggable(
+                b.getType().getKey().getKey(), b.getY(), world.getMinHeight(), nether)) {
+            return TunnelShape.Ground.SOLID;
+        }
+        TunnelShape.Ground f = TunnelNature.forced(s, force);
+        if (f != s) {
+            forced.add(local);
+        }
+        return f;
+    }
+
+    /** Abschnitte, in denen „trotzdem“ Gebautes zu Fels gemacht hat, aufsteigend. */
+    java.util.SortedSet<Integer> forcedSlices() {
+        java.util.SortedSet<Integer> out = new java.util.TreeSet<>();
+        for (Pos p : forced) {
+            out.add(p.z());
+        }
+        return out;
+    }
+
+    @Override
+    public boolean room(Pos local) {
+        return room.contains(local);
     }
 
     /** So viele Zellen gräbt der Plan nur, weil sie zu einem Mineschacht der Welt gehören. */

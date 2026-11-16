@@ -191,6 +191,19 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         }
     }
 
+    /**
+     * „stopp“ (BuildService.stop, Vorfall 2026-11-16): die eigenen wartenden Aufträge streichen – vorher rückte nach
+     * einem Stopp sofort der nächste eigene Auftrag nach. Anzahl der gestrichenen.
+     */
+    int dropQueued(CommandSender sender) {
+        UUID me = sender instanceof Player p ? p.getUniqueId() : null;
+        int n = flow.queue().cancelAll(me).size();
+        if (n > 0) {
+            LOG.info(() -> "warteschlange | gestoppt | von=" + sender.getName() + " anzahl=" + n);
+        }
+        return n;
+    }
+
     /** /bm warteschlange [abbrechen [platz|alle]]. */
     void queueCommand(CommandSender sender, String[] args) {
         OrderQueue<ComfortFlow.Queued<BuildService.Request, Planned>> queue = flow.queue();

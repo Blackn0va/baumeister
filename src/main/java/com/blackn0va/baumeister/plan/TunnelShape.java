@@ -30,7 +30,12 @@ import java.util.Map;
  * Was im Boden steckt, liest {@link Site}: Gebautes oder Grundgestein innen (wegräumen hieße abreißen) beendet den Bau
  * vor diesem Abschnitt; in der Hülle bleibt es stehen und dient als Wand. Ein neuer Tunnel beginnt beim ersten
  * Abschnitt, in dem es etwas zu graben gibt (Keller, Höhle oder Wiese davor bleiben unberührt). Eine Treppe läuft je
- * Abschnitt einen Block höher, bis der Spieler auf ihr über der Oberfläche steht.
+ * Abschnitt einen Block höher, bis der Spieler auf ihr über der Oberfläche steht. Die Treppe nach unten (Wunsch
+ * 2026-11-16, „die Treppe muss auch von oben nach unten gebaut werden können“) läuft je Abschnitt einen tiefer, bis zur
+ * Stufenzahl, zur Höhe (Spec.depth) oder bis aufs Grundgestein. Höhlen unterwegs dichtet sie ab wie der Tunnel. Ein
+ * erster Entwurf hielt vor jedem Hohlraum an (gerechnet am Abstieg in einen Gang): Die letzte Stufe lag dann über
+ * dessen Decke, oder der Spieler fiel vier Blöcke hinein und kam nicht mehr hinauf. Quer durch einen Gang geht sie nie
+ * (TunnelService, TunnelScan.crossing) – hinein führt eine Treppe nach oben aus dem Gang.
  *
  * Röhre (Wunsch 2026-11-16, „ein Tunnel muss gerade gehen – er wird irgendwann durch ca. die komplette Karte gehen“):
  * Bricht der Tunnel ins Freie (Tal, Schlucht) oder läuft er in einen See oder ins Meer, geht er auf derselben Höhe
@@ -53,6 +58,8 @@ public final class TunnelShape {
     static final int PILLAR_AT = LIGHT_AT + LIGHT_EVERY;
     /** Spec.anchor ohne Vorgabe: Licht und Pfeiler zählen ab dem ersten gebauten Abschnitt. */
     public static final int NO_ANCHOR = Integer.MIN_VALUE;
+    /** Geländerpfosten der Brücke alle so viele Abschnitte (Balustrade). */
+    static final int POST_EVERY = 3;
     /** Tiefer als so viele Blöcke unter dem Deck bekommt eine Stelle keinen Pfeiler (tiefer Ozean, Schlucht). */
     public static final int PILLAR_MAX = 48;
 
@@ -78,6 +85,14 @@ public final class TunnelShape {
 
         /** Block-ID für Ansagen („Eichenbretter bei …“). */
         String id(Pos local);
+
+        /**
+         * Innenraum eines vorhandenen Gangs, aus dem eine Treppe steigt (TunnelScan.room): dort keine Hülle, keine
+         * Front, keine Deko – sonst setzte die Treppe Wände quer in den Gang. Ohne Gang: nie.
+         */
+        default boolean room(Pos local) {
+            return false;
+        }
     }
 
     public enum Stop {
@@ -101,7 +116,9 @@ public final class TunnelShape {
         /** Treppe: in der erlaubten Länge keine Oberfläche. */
         NO_SURFACE,
         /** Treppe: der Spieler steht schon oben. */
-        ALREADY_UP
+        ALREADY_UP,
+        /** Treppe: die gewünschte Höhe ist erreicht (Spec.depth). */
+        DEPTH
     }
 
     /**
@@ -118,15 +135,20 @@ public final class TunnelShape {
      *                  sonst bliebe eine Höhle direkt hinter dem fertigen Stück ohne Hülle.
      * @param daylight  Tunnel endet, wo er ins Freie bricht oder Wasser von oben käme („durch den Berg“, „bis ins
      *                  Freie“) – sonst läuft er dort als Röhre weiter
+     * @param depth     Treppe: lokale Fußhöhe, bei der sie endet („bis Höhe -59“), {@link #NO_DEPTH} ohne
      */
     public record Spec(TunnelOrder.Kind kind, int half, int height, int length, int scanLimit, int start, int anchor,
-            boolean entrance, TunnelStyle style, boolean daylight) {
+            boolean entrance, TunnelStyle style, boolean daylight, int depth) {
 
         public static Spec of(TunnelOrder.Kind kind, TunnelOrder.Size size, int length, int scanLimit,
                 TunnelStyle style) {
-            return new Spec(kind, size.half, size.height, length, scanLimit, 0, NO_ANCHOR, true, style, false);
+            return new Spec(kind, size.half, size.height, length, scanLimit, 0, NO_ANCHOR, true, style, false,
+                    NO_DEPTH);
         }
     }
+
+    /** Spec.depth ohne Zielhöhe. */
+    public static final int NO_DEPTH = Integer.MIN_VALUE;
 
     /**
      * @param first    erster gebauter Abschnitt (-1 = keiner)
@@ -151,9 +173,15 @@ public final class TunnelShape {
     private TunnelShape() {
     }
 
-    /** Boden- bzw. Stufenhöhe des Abschnitts k: Tunnel und Brücke immer -1, Treppe ab k = 1 je Abschnitt höher. */
+    /**
+     * Boden- bzw. Stufenhöhe des Abschnitts k: Tunnel und Brücke immer -1, Treppe ab k = 1 je Abschnitt höher, Treppe
+     * nach unten je Abschnitt tiefer.
+     */
     public static int base(TunnelOrder.Kind kind, int k) {
-        return kind == TunnelOrder.Kind.STAIRS_UP && k >= 1 ? k - 1 : -1;
+        if (k < 1) {
+            return -1;
+        }
+        return kind == TunnelOrder.Kind.STAIRS_UP ? k - 1 : kind == TunnelOrder.Kind.STAIRS_DOWN ? -k - 1 : -1;
     }
 
     /** Wo der Arbeiter steht, während er Abschnitt k baut: mitten im Abschnitt davor, auf dessen Boden. */
@@ -170,11 +198,13 @@ public final class TunnelShape {
     public static Result plan(Spec spec, Site site) {
         Builder b = new Builder(spec, site);
         TunnelOrder.Kind kind = spec.kind();
-        boolean stairs = kind == TunnelOrder.Kind.STAIRS_UP;
+        boolean up = kind == TunnelOrder.Kind.STAIRS_UP;
+        boolean down = kind == TunnelOrder.Kind.STAIRS_DOWN;
+        boolean stairs = up || down;
         boolean bridge = kind == TunnelOrder.Kind.BRIDGE;
         int maxSlices = stairs ? (spec.length() > 0 ? spec.length() + (spec.start() == 0 ? 1 : 0) : spec.scanLimit())
                 : spec.length();
-        if (stairs && spec.start() == 0 && site.sky(new Pos(0, 0, 0))) {
+        if (up && spec.start() == 0 && site.sky(new Pos(0, 0, 0))) {
             return b.result(Stop.ALREADY_UP, new Pos(0, 0, 0));
         }
         for (int k = spec.start(); k < spec.scanLimit() && b.count() < maxSlices; k++) {
@@ -220,11 +250,15 @@ public final class TunnelShape {
                 b.openFrom = k;
             }
             b.emit(k);
-            if (stairs && site.sky(new Pos(0, base + 1, k))) {
+            if (up && site.sky(new Pos(0, base + 1, k))) {
                 return b.result(Stop.SURFACE, null);
             }
+            if (stairs && k >= 1 && spec.depth() != NO_DEPTH
+                    && (up ? base + 1 >= spec.depth() : base + 1 <= spec.depth())) {
+                return b.result(Stop.DEPTH, null);
+            }
         }
-        if (stairs && spec.length() == 0) {
+        if (up && spec.length() == 0 && spec.depth() == NO_DEPTH) {
             return b.result(Stop.NO_SURFACE, null);
         }
         return b.result(Stop.LENGTH, null);
@@ -261,7 +295,7 @@ public final class TunnelShape {
         }
 
         boolean stairs() {
-            return kind == TunnelOrder.Kind.STAIRS_UP;
+            return kind.stairs();
         }
 
         int count() {
@@ -346,7 +380,7 @@ public final class TunnelShape {
                 int side = Math.floorMod(Math.floorDiv(rel(k), LIGHT_EVERY), 2) == 0 ? 1 : -1;
                 Pos support = new Pos(side * (w + 1), base + h + 1, k);
                 Pos at = new Pos(side * (w + 1), base + h, k);
-                if (usable(support) && usable(at)) {
+                if (usable(support) && usable(at) && !site.room(support) && !site.room(at)) {
                     niche = at;
                 }
             }
@@ -359,7 +393,7 @@ public final class TunnelShape {
                 if (left != null && right != null && (!left.isEmpty() || !right.isEmpty())) {
                     for (List<Pos> col : List.of(left, right)) {
                         for (int i = col.size() - 1; i >= 0; i--) {
-                            put(col.get(i), style.wall(), k);
+                            put(col.get(i), i == 0 ? style.rib() : style.wall(), k);  // oben ein Kapitell
                         }
                     }
                     for (int x = -w; x <= w; x++) {
@@ -383,20 +417,26 @@ public final class TunnelShape {
                 for (int side = -1; side <= 1; side += 2) {
                     Pos p = new Pos(side * (w + 1), y, k);
                     if (!p.equals(niche)) {
-                        shellCell(p, window(p, k, base) ? style.window() : shell, k);
+                        shellCell(p, window(p, k, base) ? style.window()
+                                : y == wallBottom && style.trim() != null && !ribSlice(k) ? style.trim() : shell, k);
                     }
                 }
             }
             for (int x = -w; x <= w; x++) {
                 Pos p = new Pos(x, base, k);
                 if (stairs() && k >= 1) {
-                    if (!site.sky(p)) {
+                    // Nach oben über der Oberfläche keine Stufe (dort ist der Ausgang); nach unten auch im Freien
+                    // (ein Hang vor dem Einstieg). Die volle Seite zeigt zur höheren Stufe: hinauf nach vorn
+                    // (back), hinab zum Spieler (front).
+                    boolean down = kind == TunnelOrder.Kind.STAIRS_DOWN;
+                    if (down || !site.sky(p)) {
                         BlockSpec step = style.step() == null ? style.floor()
-                                : style.step().withExplicit("facing", "back").withExplicit("half", "bottom");
+                                : style.step().withExplicit("facing", down ? "front" : "back")
+                                        .withExplicit("half", "bottom");
                         put(p, step, k);  // ersetzt den Boden; Gebautes dort hat plan() schon abgewiesen
                     }
                 } else {
-                    shellCell(p, style.floor(), k);
+                    shellCell(p, x == 0 && w >= 1 && style.runner() != null ? style.runner() : style.floor(), k);
                 }
             }
             // 2. Front des nächsten Abschnitts zu, wo dort Luft oder Flüssigkeit steht – in der Röhre auch über der
@@ -406,7 +446,7 @@ public final class TunnelShape {
                 for (int x = -w; x <= w; x++) {
                     Pos p = new Pos(x, y, k + 1);
                     Ground g = site.at(p);
-                    if ((tube || !site.sky(p)) && (g == Ground.OPEN || g == Ground.FLUID)) {
+                    if ((tube || !site.sky(p)) && !site.room(p) && (g == Ground.OPEN || g == Ground.FLUID)) {
                         put(p, style.wall(), k);
                     }
                 }
@@ -423,7 +463,7 @@ public final class TunnelShape {
             List<Pos> deco = new ArrayList<>();
             List<BlockSpec> decoSpec = new ArrayList<>();
             for (Pos p : inner) {
-                BlockSpec d = decoration(p, k, base, light);
+                BlockSpec d = site.room(p) ? null : decoration(p, k, base, light);
                 if (d != null) {
                     deco.add(p);
                     decoSpec.add(d);
@@ -516,7 +556,7 @@ public final class TunnelShape {
                 if (left != null && right != null && (!left.isEmpty() || !right.isEmpty())) {
                     for (List<Pos> col : List.of(left, right)) {
                         for (int i = col.size() - 1; i >= 0; i--) {
-                            put(col.get(i), style.wall(), k);
+                            put(col.get(i), i == 0 ? style.rib() : style.wall(), k);  // oben ein Kapitell
                         }
                     }
                     for (int x = -w; x <= w; x++) {
@@ -530,7 +570,8 @@ public final class TunnelShape {
             }
             // 2. Deck auf Standhöhe, Kanten unter dem Geländer mit.
             for (int x = -edge; x <= edge; x++) {
-                put(new Pos(x, base, k), style.floor(), k);
+                put(new Pos(x, base, k), x == 0 && w >= 1 && style.runner() != null ? style.runner() : style.floor(),
+                        k);
             }
             // 3. Gehweg frei: Pflanzen weg, ein flacher Hügel wird zum Hohlweg – von oben nach unten.
             for (Pos p : interior(k)) {
@@ -543,7 +584,11 @@ public final class TunnelShape {
                 Pos p = new Pos(side * edge, base + 1, k);
                 Ground g = site.at(p);
                 if (g != Ground.BUILT && g != Ground.FORBIDDEN) {
-                    put(p, post ? style.light() : railing, k);
+                    // Balustrade (Wunsch 2026-11-16, „edel“): alle 3 Blöcke ein gemauerter Pfosten – auf jedem
+                    // zweiten steht die Laterne (Lichtabschnitte fallen auf Pfosten: 6 ist ein Vielfaches von 3).
+                    boolean column = style.railing() != null
+                            && Math.floorMod(rel(k), POST_EVERY) == LIGHT_AT % POST_EVERY;
+                    put(p, post ? style.light() : column ? style.rib() : railing, k);
                     if (post) {
                         lights++;
                     }
@@ -594,9 +639,12 @@ public final class TunnelShape {
             return TunnelStyle.HANGING_LIGHTS.contains(s.id());
         }
 
-        /** Hüllzelle: Gebautes und Grundgestein bleiben als Wand stehen; über der Oberfläche nur in der Röhre. */
+        /**
+         * Hüllzelle: Gebautes und Grundgestein bleiben als Wand stehen; über der Oberfläche nur in der Röhre; im
+         * Innenraum eines Gangs, aus dem eine Treppe steigt, nie.
+         */
         private void shellCell(Pos p, BlockSpec block, int k) {
-            if (usable(p)) {
+            if (usable(p) && !site.room(p)) {
                 put(p, block, k);
             }
         }
@@ -635,7 +683,7 @@ public final class TunnelShape {
             int slices = Math.max(0, last + 1);
             String what = switch (kind) {
                 case TUNNEL -> "tunnel ";
-                case STAIRS_UP -> "treppe ";
+                case STAIRS_UP, STAIRS_DOWN -> "treppe ";
                 case BRIDGE -> "brücke ";
             };
             for (int i = 0; i < slices; i++) {

@@ -51,6 +51,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -533,6 +534,11 @@ final class BuildService {
             Texts.info(p, "Im Abenteuer baust du selbst – der Baumeister macht so lange Pause. "
                     + "(„Vera, beende das Abenteuer“ hebt das auf.)");
             LOG.info(() -> "bau | abgelehnt | besitzer=" + p.getName() + " grund=abenteuer");
+            return;
+        }
+        // Grabwege vor Warteschlange und LLM (TunnelService.early, Vorfall 2026-11-16 auf dev01): „tunnel stopp“ hält
+        // an, eine zu lange Länge wird abgesagt, ein neuer Grabauftrag löst den eigenen laufenden ab.
+        if (tunnels.early(r)) {
             return;
         }
         if (thinking) {
@@ -1898,10 +1904,20 @@ final class BuildService {
     // ---------------------------------------------------------------- Stop, Rückgängig, Status
 
     void stop(CommandSender sender) {
+        // Grabkette und eigene Warteschlange (Vorfall 2026-11-16 auf dev01): „/bm stop“ zwischen zwei Tunnelstücken
+        // fand keinen laufenden Bau („ich plane noch“), und das nächste Stück startete trotzdem; ein Stopp ließ
+        // außerdem den eigenen wartenden Auftrag sofort nachrücken – ein „tunnel 20000 schnell“ ging so später ans
+        // LLM. Jetzt endet beides mit dem Stopp; wartende Aufträge anderer Spieler bleiben.
+        boolean betweenPieces = tunnels.stop(owner -> mayTouch(sender, owner));
+        int dropped = comfort.dropQueued(sender);
+        String extra = (betweenPieces ? " Das nächste Stück baue ich nicht mehr." : "")
+                + (dropped == 0 ? "" : dropped == 1 ? " Deinen wartenden Auftrag habe ich gestrichen."
+                        : " Deine " + dropped + " wartenden Aufträge habe ich gestrichen.");
         // Offene Bestätigung von Befehlen (Plan B5): „stopp“ verwirft den wartenden Plan wie einen vorgemerkten. Läuft
         // daneben ein Bau, geht es unten mit ihm weiter.
         if (commandOffers.drop(sender instanceof Player p ? p.getUniqueId() : null)) {
-            Texts.info(sender, "Der Plan, der auf die Bestätigung seiner Befehle wartete, ist verworfen.");
+            Texts.info(sender, "Der Plan, der auf die Bestätigung seiner Befehle wartete, ist verworfen." + extra);
+            extra = "";
             if (!deferred.waiting() && (active == null || !active.running())) {
                 npc.status("bereit");
                 return;
@@ -1911,22 +1927,34 @@ final class BuildService {
             if (sender.hasPermission("baumeister.admin") || sender.getName().equals(deferred.owner())) {
                 deferred.cancel();
                 npc.status("bereit");
-                Texts.info(sender, "Der vorgemerkte Plan ist verworfen.");
+                Texts.info(sender, "Der vorgemerkte Plan ist verworfen." + extra);
             } else {
-                Texts.info(sender, "Der vorgemerkte Plan gehört " + deferred.owner() + ".");
+                Texts.info(sender, "Der vorgemerkte Plan gehört " + deferred.owner() + "." + extra);
             }
             return;
         }
         if (active == null || !active.running()) {
+            if (!extra.isEmpty()) {
+                npc.status("bereit");
+                Texts.info(sender, "Gut, ich höre auf." + extra);
+                return;
+            }
             Texts.info(sender, thinking ? "Ich plane noch – stoppen geht erst, wenn ich baue." : "Ich baue gerade nichts.");
             return;
         }
         if (!mayTouch(sender, active.ownerId())) {
-            Texts.info(sender, "Das ist nicht dein Bau.");
+            Texts.info(sender, "Das ist nicht dein Bau." + extra);
             return;
         }
-        active.cancel(active.dig() != null && !active.undoable() ? "Gut, ich höre hier auf."
-                : "Gestoppt. Was steht, bleibt stehen – /bm rückgängig räumt es weg.");
+        active.cancel((active.dig() != null && !active.undoable() ? "Gut, ich höre hier auf."
+                : "Gestoppt. Was steht, bleibt stehen – /bm rückgängig räumt es weg.") + extra);
+    }
+
+    /** Den laufenden Grabbau dieses Besitzers beenden (TunnelService.early: ein neuer Grabauftrag löst ihn ab). */
+    void cancelDig(UUID owner, String message) {
+        if (active != null && active.running() && active.dig() != null && Objects.equals(active.ownerId(), owner)) {
+            active.cancel(message);
+        }
     }
 
     /**

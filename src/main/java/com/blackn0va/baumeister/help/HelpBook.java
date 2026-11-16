@@ -456,6 +456,7 @@ public final class HelpBook {
                     Part.run("Tunnel schnell", "/bm tunnel 40 schnell"),
                     Part.run("Großer Tunnel", "/bm tunnel groß"),
                     Part.run("Treppe nach oben", "/bm treppe"),
+                    Part.run("Treppe nach unten", "/bm treppe runter"),
                     Part.run("Brücke", "/bm brücke"),
                     Part.run("Weiterbauen", "/bm weiterbauen"),
                     Part.text("\n"),

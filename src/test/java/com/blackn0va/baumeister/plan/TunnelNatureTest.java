@@ -67,4 +67,28 @@ class TunnelNatureTest {
         assertEquals(Ground.FORBIDDEN, TunnelNature.inStructure("mineshaft", "spawner", false, Ground.FORBIDDEN));
         assertEquals(built, TunnelNature.inStructure("stronghold", "wall_torch", false, built), "nur im Schacht");
     }
+
+    /** „trotzdem“ nur über Gebautes – Grundgestein, Weltrand und Spawner bleiben tabu. */
+    @Test
+    void forceTurnsBuiltIntoRockButNothingElse() {
+        assertEquals(Ground.SOLID, TunnelNature.forced(Ground.BUILT, true));
+        assertEquals(Ground.BUILT, TunnelNature.forced(Ground.BUILT, false));
+        assertEquals(Ground.FORBIDDEN, TunnelNature.forced(Ground.FORBIDDEN, true));
+        assertEquals(Ground.OPEN, TunnelNature.forced(Ground.OPEN, true));
+    }
+
+    /**
+     * Wunsch 2026-11-16, „der Tunnel soll bis auf die letzte Schicht Grundgestein gehen … baut er aber auch ab, wenn's
+     * im Weg ist“: alles Grundgestein über der untersten Schicht; im Nether nicht das Dach ab y 127.
+     */
+    @Test
+    void bedrockAboveTheLastLayerMayBeDug() {
+        assertTrue(TunnelNature.bedrockDiggable("bedrock", -63, -64, false));
+        assertTrue(TunnelNature.bedrockDiggable("bedrock", -60, -64, false));
+        assertFalse(TunnelNature.bedrockDiggable("bedrock", -64, -64, false), "die letzte Schicht bleibt");
+        assertTrue(TunnelNature.bedrockDiggable("bedrock", 1, 0, true));
+        assertTrue(TunnelNature.bedrockDiggable("bedrock", 125, 0, true));
+        assertFalse(TunnelNature.bedrockDiggable("bedrock", 127, 0, true), "Netherdach");
+        assertFalse(TunnelNature.bedrockDiggable("end_portal_frame", -10, -64, false));
+    }
 }
