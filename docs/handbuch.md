@@ -918,8 +918,10 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
 
 - ✅ Rückgängig-Tiefe 50 (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 14/14 über die Konsole (Tiefe 7, 8 Brücken):
   eine Logzeile `aus_dem_stapel`, Status „7 … 2 davon von der Platte“, 7 × rückgängig nimmt Brücke 2–8 weg – auch die
-  beiden von der Platte –, Brücke 1 bleibt; mit dem Jar davor je 12/14 (keine Logzeile, kein Plattenhinweis). Weniger
-  Arbeitsspeicher ist nicht gemessen, nur über die Bauart belegt (alter Eintrag nirgends mehr gehalten, Unit-Test)
+  beiden von der Platte –, Brücke 1 bleibt; mit dem Jar davor je 12/14 (keine Logzeile, kein Plattenhinweis).
+  Arbeitsspeicher gemessen (Paper 26.2, Tiefe 50, 12 Tunnelstücke à 4 032 Blöcke, `jcmd GC.class_histogram`): Das Jar
+  davor hält 48 384 Blöcke im Speicher (alle 12 Einträge), das neue 20 160 (die neuesten 5), je 12/12 zurückgenommen;
+  rund 125 Byte je Block im Speicher
 - ✅ Wiederherstellen beim Start (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 74/74 Blöcke zurück, ein inzwischen
   gesetzter Block bleibt stehen, der Ordner ist danach leer; mit dem Jar davor je 0/74, der Eintrag bleibt liegen.
   Generalprobe mit den Regionsdateien von dev01 auf Paper 26.2: 8 300 von 8 300 Zellen wie erwartet, die übrigen
