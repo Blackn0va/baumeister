@@ -59,8 +59,10 @@ bau:
   # Spielers ausgelöst. So greifen WorldGuard und PlotSquared, als würde er selbst bauen.
   # Ein einziges Nein bricht den Bau ab, bevor ein Block gesetzt ist.
   rechte-prüfen: true
-  # Wie viele Bauten /bm rückgängig zurückdrehen kann (über Neustarts hinweg, siehe komfort:).
-  undo-tiefe: 5
+  # Wie viele Bauten /bm rückgängig zurückdrehen kann (über Neustarts hinweg, siehe komfort:), höchstens 50.
+  # Nur die neuesten 5 halten ihre Daten im Arbeitsspeicher, ältere liest er von der Platte
+  # (komfort.rückgängig-max-mb). Fällt ein Bau heraus, steht das im Log: "rückgängig | aus_dem_stapel".
+  undo-tiefe: 50
   # Steht am Bauplatz schon ein Bauwerk, darf ein Plan höchstens so viele seiner Blöcke verändern
   # (Durchgang = 2, Fenster = 1). Mehr geht zur Nachbesserung zurück ans LLM. Sagt der Spieler
   # "umbauen", "abreißen" oder "ersetzen", gilt die Grenze nicht.

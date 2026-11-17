@@ -361,6 +361,25 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
     }
 
     /**
+     * Eintrag dieser Sitzung auf seine fertige Kopie auf der Platte umziehen (UndoStack.offload): derselbe Eintrag,
+     * gelesen aus der Kopie, ohne Ursprünge im Speicher. Die Kopie gehört danach dem neuen Eintrag (rekey), damit
+     * forget sie weiter findet. Ist sie nicht fertig, kommt rec unverändert zurück.
+     */
+    UndoRecord onDisk(UndoRecord rec) {
+        if (rec.spool() != null || rec.world() == null) {
+            return rec;
+        }
+        java.util.Optional<Path> dir = journal.writtenCopy(rec);
+        if (dir.isEmpty()) {
+            return rec;
+        }
+        UndoRecord disk = new UndoRecord(rec.owner(), rec.ownerName(), rec.world(), List.of(), rec.when(),
+                UndoSpool.existing(dir.get(), rec.size()));
+        journal.rekey(rec, disk);
+        return disk;
+    }
+
+    /**
      * Nach dem Start: Kandidaten aus UndoJournal.sweep im Hintergrund prüfen und in den Stapel nehmen. Das Ergebnis
      * geht an den Dienst, der dann aktiv ist (nach /bm neuladen ein neuer).
      */

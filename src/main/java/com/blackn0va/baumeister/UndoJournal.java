@@ -19,8 +19,10 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -147,6 +149,11 @@ final class UndoJournal {
     private final Set<String> unstorableWorlds = new HashSet<>();
     /** Kopien normaler Bauten: Stapel-Eintrag (Identität) → Ordner. */
     private final Map<Object, Path> copies = new IdentityHashMap<>();
+    /**
+     * Kopien, die fertig auf der Platte liegen (Zettel geschrieben) – erst dann darf UndoStack.offload einen Eintrag
+     * auf sie umziehen (writtenCopy). Schreibt der io-Thread, liest der Hauptthread.
+     */
+    private final Set<Path> written = ConcurrentHashMap.newKeySet();
     private long seq;
 
     UndoJournal(Path root, boolean enabled) {
@@ -570,11 +577,18 @@ final class UndoJournal {
         }
         Path dir = root.resolve("bau-" + m.when() + "-" + (++seq));
         copies.put(key, dir);
-        io.execute(() -> writeCopy(dir, data, m));
+        io.execute(() -> {
+            if (writeCopy(dir, data, m)) {
+                written.add(dir);
+            }
+        });
     }
 
-    /** Synchron schreiben (Hintergrund-Thread, Tests). Bei Fehler: Ordner weg, damit kein halber Eintrag bleibt. */
-    static void writeCopy(Path dir, UndoSpool.Part data, Manifest m) {
+    /**
+     * Synchron schreiben (Hintergrund-Thread, Tests). Bei Fehler: Ordner weg, damit kein halber Eintrag bleibt.
+     * true, wenn die Kopie samt Zettel steht.
+     */
+    static boolean writeCopy(Path dir, UndoSpool.Part data, Manifest m) {
         try {
             Files.createDirectories(dir);
             UndoSpool spool = new UndoSpool(dir);
@@ -583,10 +597,12 @@ final class UndoJournal {
             }
             spool.finish();
             writeManifest(dir, m);
+            return true;
         } catch (IOException | IllegalStateException e) {
             // fail-open wie persistSpool; IllegalStateException ist UndoSpools Meldung für „nicht schreibbar“.
             LOG.log(Level.WARNING, "rückgängig | kopie_fehlgeschlagen | ordner=" + dir.getFileName(), e);
             UndoSpool.deleteDir(dir);
+            return false;
         }
     }
 
@@ -594,7 +610,29 @@ final class UndoJournal {
     void forget(Object key) {
         Path dir = copies.remove(key);
         if (dir != null) {
-            later(() -> deleteEntry(dir));
+            written.remove(dir);
+            // Auch nach dem Löschen: Lief das Schreiben noch, trug es den Ordner danach als fertig ein.
+            later(() -> {
+                deleteEntry(dir);
+                written.remove(dir);
+            });
+        }
+    }
+
+    /** Ordner der fertig geschriebenen Kopie dieses Eintrags – leer, solange sie fehlt oder noch unterwegs ist. */
+    Optional<Path> writtenCopy(Object key) {
+        Path dir = copies.get(key);
+        return dir != null && written.contains(dir) ? Optional.of(dir) : Optional.empty();
+    }
+
+    /**
+     * Die Kopie gehört jetzt newKey (UndoStack.offload ersetzt den Eintrag durch einen, der von der Platte liest).
+     * Ohne Umschlüsseln hielte copies den alten Eintrag samt seinen Ursprüngen fest, und forget(newKey) fände nichts.
+     */
+    void rekey(Object oldKey, Object newKey) {
+        Path dir = copies.remove(oldKey);
+        if (dir != null) {
+            copies.put(newKey, dir);
         }
     }
 
@@ -614,6 +652,8 @@ final class UndoJournal {
     void takeOver(UndoJournal old) {
         copies.putAll(old.copies);
         old.copies.clear();
+        written.addAll(old.written);
+        old.written.clear();
         seq = Math.max(seq, old.seq);
         unstorableWorlds.addAll(old.unstorableWorlds);
         if (old.io == null) {

@@ -56,7 +56,7 @@ record Settings(
                 Math.clamp(c.getInt("bau.abstand-vor-spieler", 3), 1, 16),
                 c.getString("bau.ersatzblock", "stone").toLowerCase(Locale.ROOT),
                 c.getBoolean("bau.rechte-prüfen", true),
-                Math.clamp(c.getInt("bau.undo-tiefe", 5), 1, 50),
+                Math.clamp(c.getInt("bau.undo-tiefe", 50), 1, 50),
                 c.getBoolean("pläne-speichern", true),
                 Math.clamp(c.getInt("bau.max-überbauen", 12), 0, 1000),
                 Math.max(1, c.getInt("helfer.zweiter-ab-blöcken", 300)),

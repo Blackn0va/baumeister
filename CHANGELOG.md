@@ -251,6 +251,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   zu und werden nie überschrieben.
 
 ### Geändert
+- **Rückgängig reicht 50 Bauten zurück statt 5:** Vorher drängten fünf kleine Bauten einen älteren Eintrag still aus
+  dem Stapel – so war am 2026-11-16 der Hohlraum nach zwei Stunden nicht mehr zurückzunehmen. Jetzt steht jedes
+  Herausfallen im Log (`rückgängig | aus_dem_stapel`). Mehr Arbeitsspeicher kostet das nicht: Nur die neuesten 5
+  Einträge halten ihre Daten im Speicher, ältere liest der Baumeister von der Platte. `/bm status` nennt, wie viele.
 - **Tunnel und Brücke edler:** Sockel in der untersten Wandreihe, Mittelstreifen im Boden, Gurtbögen als gemeißelte
   Ringe (im Tiefenschiefer gemeißelter statt polierter), im Nether ein Mittelstreifen aus vergoldetem Schwarzstein. Die
   Brücke bekommt eine Balustrade – alle 3 Blöcke ein gemauerter Pfosten, die Laternen stehen darauf –, einen

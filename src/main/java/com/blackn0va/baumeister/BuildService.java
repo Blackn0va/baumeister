@@ -1682,15 +1682,21 @@ final class BuildService {
         startJob(r.withPreview(false), build, planJson, update);
     }
 
-    /** Aus dem Stapel gefallene Einträge vergessen – bei Stadtbauten auch die Dateien auf der Platte. */
+    /**
+     * Aus dem Stapel gefallene Einträge vergessen – bei Stadtbauten auch die Dateien auf der Platte – und ins Log
+     * schreiben (vorher still, siehe UndoStack). Danach ziehen ältere Einträge auf ihre Kopie auf der Platte um, damit
+     * bau.undo-tiefe 50 keinen Heap kostet.
+     */
     private void trimUndo() {
-        while (undo.size() > settings.undoDepth()) {
-            UndoRecord dropped = undo.removeLast();
+        int depth = settings.undoDepth();
+        UndoStack.trim(undo, depth, dropped -> {
+            LOG.info(() -> UndoStack.dropLine(dropped, depth, java.time.Instant.now()));
             comfort.forget(dropped);
             if (dropped.spool() != null) {
                 dropped.spool().delete();
             }
-        }
+        });
+        UndoStack.offload(undo, UndoStack.IN_MEMORY, comfort::onDisk);
     }
 
     /**
@@ -1867,15 +1873,21 @@ final class BuildService {
         Bukkit.getScheduler().runTaskLater(plugin, () -> lw.watch(box, 200, r -> {
             double limit = Math.max(1, plugin.getConfig().getDouble("bau.lag-grenze-je-sekunde",
                     LagWatch.LIMIT_PER_SECOND));
-            if (!r.lagging(limit) || !undo.remove(rec)) {
+            if (!r.lagging(limit)) {
                 return;
             }
-            comfort.forget(rec);
-            LOG.warning(() -> "lag | maschine_abgebaut | besitzer=" + rec.ownerName() + " " + r.line());
+            // Nicht undo.remove(rec): Liegt der Eintrag inzwischen auf der Platte (UndoStack.offload), steht dort ein
+            // anderes Objekt – take findet auch das.
+            UndoRecord taken = UndoStack.take(undo, rec);
+            if (taken == null) {
+                return;
+            }
+            comfort.forget(taken);
+            LOG.warning(() -> "lag | maschine_abgebaut | besitzer=" + taken.ownerName() + " " + r.line());
             Texts.say(npc.name(), npcLocation(job.center()), to, String.format(java.util.Locale.GERMAN,
                     "Das ist eine Lag-Maschine – %.0f Schaltvorgänge je Sekunde, ohne dass jemand etwas tut. "
                     + "So etwas baue ich nicht, ich räume sie wieder weg.", r.perSecond()));
-            restore(to, rec);
+            restore(to, taken);
         }), 60L);
     }
 
@@ -2453,8 +2465,10 @@ final class BuildService {
             return "räumt auf (rückgängig): " + restoring.restored() + " Blöcke zurückgesetzt"
                     + (undoQueue.isEmpty() ? "" : ", " + undoQueue.size() + " warten") + comfort.statusSuffix();
         }
-        return "bereit" + (undo.isEmpty() ? "" : ", " + undo.size() + " Bau(ten) rückgängig machbar")
-                + comfort.statusSuffix();
+        // „davon von der Platte“: Einträge ohne Ursprünge im Speicher (UndoStack.offload, nach Neustart alle).
+        long onDisk = undo.stream().filter(r -> r.spool() != null).count();
+        return "bereit" + (undo.isEmpty() ? "" : ", " + undo.size() + " Bau(ten) rückgängig machbar"
+                + (onDisk == 0 ? "" : ", " + onDisk + " davon von der Platte")) + comfort.statusSuffix();
     }
 
     void shutdown() {

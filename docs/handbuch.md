@@ -664,9 +664,12 @@ abzubauen zählt nicht, Ernte nur reif.
   ein Ordner mit `eintrag.json` und gzip-Teilen) und wird nach jedem Start und nach `/bm neuladen` wieder geladen.
   Beschädigte oder fremde Einträge und solche mit Blockzuständen, die die laufende Serverfassung nicht kennt, werden
   beim Start gelöscht. In Welten, deren Name nicht nur aus Buchstaben, Ziffern und `_ . -` besteht, gilt Rückgängig
-  nur bis zum Neustart. Grenzen: `bau.undo-tiefe`, `komfort.rückgängig-max-tage` (7), `komfort.rückgängig-max-mb`
+  nur bis zum Neustart. Grenzen: `bau.undo-tiefe` (50), `komfort.rückgängig-max-tage` (7), `komfort.rückgängig-max-mb`
   (512); `komfort.rückgängig-über-neustart: false` stellt den alten Stand her. Das Rückgängig des Weltbaus
-  (`/bm weltbau rückgängig`) überlebt einen Neustart weiterhin nicht.
+  (`/bm weltbau rückgängig`) überlebt einen Neustart weiterhin nicht. Nur die neuesten 5 Einträge halten ihre Daten im
+  Arbeitsspeicher, ältere liest der Baumeister von ihrer Kopie auf der Platte (`/bm status`: „… davon von der
+  Platte“) – ohne Rückgängig über Neustart bleiben alle im Speicher. Fällt ein Eintrag über die Tiefe hinaus, steht
+  `rückgängig | aus_dem_stapel | besitzer=… blöcke=… alter_min=… tiefe=…` im Log.
 - **Wiederherstellen beim Start (Betreiber):** Einträge im selben Format (Ordner `bau-<Millisekunden>-<Nummer>` mit
   `eintrag.json` und gzip-Teilen) unter `plugins/Baumeister/wiederherstellen/` setzt der nächste Start zurück und
   löscht sie danach – für Server ohne Konsole und für Schäden, deren Eintrag schon aus dem Stapel gefallen ist (der
@@ -913,6 +916,10 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
 
 ## Stand
 
+- ✅ Rückgängig-Tiefe 50 (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 14/14 über die Konsole (Tiefe 7, 8 Brücken):
+  eine Logzeile `aus_dem_stapel`, Status „7 … 2 davon von der Platte“, 7 × rückgängig nimmt Brücke 2–8 weg – auch die
+  beiden von der Platte –, Brücke 1 bleibt; mit dem Jar davor je 12/14 (keine Logzeile, kein Plattenhinweis). Weniger
+  Arbeitsspeicher ist nicht gemessen, nur über die Bauart belegt (alter Eintrag nirgends mehr gehalten, Unit-Test)
 - ✅ Wiederherstellen beim Start (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 74/74 Blöcke zurück, ein inzwischen
   gesetzter Block bleibt stehen, der Ordner ist danach leer; mit dem Jar davor je 0/74, der Eintrag bleibt liegen.
   Generalprobe mit den Regionsdateien von dev01 auf Paper 26.2: 8 300 von 8 300 Zellen wie erwartet, die übrigen

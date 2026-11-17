@@ -460,6 +460,46 @@ class UndoJournalTest {
         now.close();
     }
 
+    /**
+     * Rückgängig-Tiefe 50 (2026-11-17): Ältere Einträge ziehen auf ihre Kopie um (UndoStack.offload, ComfortService
+     * .onDisk) – aber erst, wenn die Kopie samt Zettel steht; vorher läse das Rückgängig einen leeren Ordner. Danach
+     * gehört die Kopie dem neuen Eintrag: forget mit ihm löscht sie, mit dem alten nichts mehr.
+     */
+    @Test
+    void copyIsOffloadableOnlyOnceWrittenAndThenBelongsToTheNewEntry() throws Exception {
+        Path root = root();
+        UndoJournal j = new UndoJournal(root, true);
+        CountDownLatch release = new CountDownLatch(1);
+        j.later(() -> {
+            try {
+                release.await(60, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Object entry = new Object();
+        j.persistCopy(entry, house(300), manifest(NOW, 300));
+        assertTrue(j.writtenCopy(entry).isEmpty(), "Kopie noch unterwegs, gilt aber als fertig");
+        release.countDown();
+        j.drain();
+        Path dir = j.writtenCopy(entry).orElseThrow();
+        assertTrue(Files.isRegularFile(dir.resolve(UndoJournal.MANIFEST)));
+        assertEquals(300, UndoSpool.read(dir.resolve("teil-00001.bin.gz")).size());
+
+        Object onDisk = new Object();
+        j.rekey(entry, onDisk);
+        assertFalse(j.hasCopy(entry));
+        assertEquals(dir, j.writtenCopy(onDisk).orElseThrow());
+        j.forget(entry);
+        j.drain();
+        assertTrue(Files.isDirectory(dir), "forget mit dem alten Eintrag löschte die umgeschlüsselte Kopie");
+        j.forget(onDisk);
+        j.drain();
+        assertFalse(Files.exists(dir), "Kopie überlebte forget mit dem neuen Eintrag");
+        assertTrue(j.writtenCopy(onDisk).isEmpty());
+        j.close();
+    }
+
     @Test
     void entryWithAStateThisServerDoesNotKnowIsDiscardedAtLoad() throws Exception {
         Path root = root();
