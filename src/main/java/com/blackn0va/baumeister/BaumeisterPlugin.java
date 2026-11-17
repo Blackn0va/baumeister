@@ -102,6 +102,10 @@ public final class BaumeisterPlugin extends JavaPlugin {
         // abgebrochenes Schreiben) ist verwaist und geht wie bisher weg. Vor load(): Noch legt kein Bau einen Spool an.
         List<java.nio.file.Path> undoKept = UndoJournal.sweep(getDataFolder().toPath().resolve(UndoJournal.DIR),
                 ComfortSettings.from(getConfig()).undoAcrossRestart());
+        // Wiederherstellen beim Start (Betreiber-Ordner, siehe UndoJournal.RESTORE_DIR): immer behalten, angewandt nach
+        // den Welten (restoreAtStart unten).
+        List<java.nio.file.Path> restoreKept = UndoJournal.sweep(
+                getDataFolder().toPath().resolve(UndoJournal.RESTORE_DIR), true, UndoJournal.RESTORE_DIR);
         try {
             load();
         } catch (IllegalArgumentException | IOException e) {
@@ -150,6 +154,7 @@ public final class BaumeisterPlugin extends JavaPlugin {
         weltbau.start();
         // Nach den Welten (Stadtwelt, Erde): Die Einträge nennen ihre Welt nur beim Namen.
         service.comfort().resumeUndo(undoKept);
+        service.comfort().restoreAtStart(restoreKept);
         bars = ProgressBarTask.start(this);
         minimap = new Minimap(this, MinimapSettings.from(getConfig()));
         minimap.start();

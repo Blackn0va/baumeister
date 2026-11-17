@@ -341,6 +341,53 @@ class UndoJournalTest {
         j.close();
     }
 
+    /**
+     * Wiederherstellen beim Start (2026-11-17, dev01: Hohlraum aus neu erzeugter Natur): Den Eintrag schreibt ein
+     * Werkzeug außerhalb des Plugins, Byte für Byte im Format 2 von UndoSpool – hier von Hand genauso. Ändert jemand
+     * das Format, wird dieser Test rot, und das Werkzeug (betrieb/probes/wiederherstellen) muss mitziehen. Im Ordner
+     * RESTORE_DIR bleibt der Eintrag beim Start liegen, ein Ordner ohne Zettel (halb kopiert) nicht; er besteht dieselbe
+     * Prüfung wie ein Stapel-Eintrag und liefert je Zelle Ursprung und gesetzten Typ.
+     */
+    @Test
+    void entryWrittenByAnOutsideToolIsKeptAndReadInTheRestoreFolder() throws Exception {
+        Path root = Files.createDirectories(tmp.resolve(UndoJournal.RESTORE_DIR));
+        Path dir = Files.createDirectories(root.resolve("bau-" + (NOW - 1000) + "-1"));
+        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new GZIPOutputStream(
+                Files.newOutputStream(dir.resolve("teil-00001.bin.gz")))))) {
+            out.writeInt(Integer.MIN_VALUE + 2);  // Kopf Format 2
+            out.writeInt(Integer.MIN_VALUE);      // neuer Zustand 0
+            out.writeUTF("minecraft:deepslate[axis=y]");
+            out.writeInt(Integer.MIN_VALUE);      // neuer Zustand 1
+            out.writeUTF("minecraft:air");
+            for (int v : new int[] {-1150, -40, -280, 0, 1}) {
+                out.writeInt(v);
+            }
+            out.writeInt(Integer.MIN_VALUE);      // neuer Zustand 2
+            out.writeUTF("minecraft:gravel");
+            for (int v : new int[] {-1149, -37, -290, 2, 1}) {
+                out.writeInt(v);
+            }
+        }
+        Files.writeString(dir.resolve(UndoJournal.MANIFEST), "{\"version\":1,\"name\":\"Wiederherstellung Hohlraum\","
+                + "\"welt\":\"world\",\"zeit\":" + (NOW - 1000) + ",\"anzahl\":2}", StandardCharsets.UTF_8);
+        Path half = Files.createDirectories(root.resolve("bau-" + NOW + "-2"));
+
+        List<Path> kept = UndoJournal.sweep(root, true, UndoJournal.RESTORE_DIR);
+        assertEquals(List.of(dir), kept);
+        assertFalse(Files.exists(half), "Ordner ohne Zettel bleibt liegen");
+        List<UndoJournal.Loaded> ok = UndoJournal.validate(kept,
+                new UndoJournal.Limits(UndoJournal.RESTORE_MAX_ENTRIES, 7 * DAY, 512L * 1024 * 1024), NOW);
+        assertEquals(1, ok.size(), "Eintrag des Werkzeugs nicht angenommen");
+        assertEquals(null, ok.get(0).manifest().owner());
+        UndoSpool.Part p = UndoSpool.read(dir.resolve("teil-00001.bin.gz"));
+        assertEquals(2, p.size());
+        assertEquals("minecraft:deepslate[axis=y]", p.state()[0]);
+        assertEquals("minecraft:air", p.placedAt(0));
+        assertEquals("minecraft:gravel", p.state()[1]);
+        assertEquals(-37, p.y()[1]);
+        assertEquals("minecraft:air", p.placedAt(1));
+    }
+
     @Test
     void spoolOutsideTheRootGetsNoManifest() throws Exception {
         Path root = root();

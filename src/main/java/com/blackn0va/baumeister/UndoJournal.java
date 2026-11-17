@@ -68,6 +68,19 @@ final class UndoJournal {
      * konkurrieren. Vorher lagen sie ohne Zettel unter DIR, und jeder Start löschte sie.
      */
     static final String TILE_DIR = "rückgängig-weltbau";
+    /**
+     * Wiederherstellen beim Start (2026-11-17): Einträge im selben Format wie DIR, die der Betreiber hier ablegt,
+     * setzt der nächste Start zurück und löscht sie danach (ComfortService.restoreAtStart). WOZU: dev01 hat weder
+     * Konsole noch RCON. Den Hohlraum vom 2026-11-16 (LLM, fill air) konnte /bm rückgängig nicht mehr zurücknehmen –
+     * sein Eintrag war nach fünf neueren Bauten still aus dem Stapel gefallen –, und ohne Konsole gab es keinen anderen
+     * Weg in die laufende Welt als einen Spieler im Spiel. Geprüft wird wie im Stapel (validate, keepKnown),
+     * zurückgesetzt wie mit /bm rückgängig: je Zelle nur, wo noch steht, was der Eintrag als gesetzt nennt (UndoCheck).
+     * Vertrauensgrenze: Wer hier schreiben kann, kann auch das Plugin-Jar tauschen – der Ordner gibt keine neuen
+     * Rechte.
+     */
+    static final String RESTORE_DIR = "wiederherstellen";
+    /** Höchstens so viele Einträge je Start aus RESTORE_DIR; ältere fallen wie im Stapel samt Dateien heraus. */
+    static final int RESTORE_MAX_ENTRIES = 20;
     /** Kachel auf dem Zettel: „tx,tz“. */
     private static final Pattern TILE = Pattern.compile("-?\\d{1,7},-?\\d{1,7}");
     static final String MANIFEST = "eintrag.json";
@@ -157,16 +170,21 @@ final class UndoJournal {
      * Ist der Ordner selbst eine Verknüpfung, wird nichts angefasst – sonst liefe das Löschen im Ziel.
      */
     static List<Path> sweep(Path root, boolean keep) {
+        return sweep(root, keep, "rückgängig");
+    }
+
+    /** Wie sweep(root, keep); area steht vorn in der Logzeile (RESTORE_DIR: „wiederherstellen“). */
+    static List<Path> sweep(Path root, boolean keep, String area) {
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
         try {
             if (UndoSpool.isLink(root)) {
-                LOG.warning(() -> "rückgängig | ordner_ist_verknüpfung | nichts angefasst");
+                LOG.warning(() -> area + " | ordner_ist_verknüpfung | nichts angefasst");
                 return List.of();
             }
         } catch (IOException e) {
-            LOG.log(Level.WARNING, "rückgängig | ordner_unlesbar | " + e.getMessage(), e);
+            LOG.log(Level.WARNING, area + " | ordner_unlesbar | " + e.getMessage(), e);
             return List.of();
         }
         List<Path> kept = new ArrayList<>();
@@ -182,11 +200,11 @@ final class UndoJournal {
                 }
             }
         } catch (IOException e) {
-            LOG.log(Level.WARNING, "rückgängig | ordner_unlesbar | " + e.getMessage(), e);
+            LOG.log(Level.WARNING, area + " | ordner_unlesbar | " + e.getMessage(), e);
         }
         kept.sort(Comparator.comparing(p -> p.getFileName().toString()));
         int d = deleted;
-        LOG.info(() -> "rückgängig | start | kandidaten=" + kept.size() + " verwaist_gelöscht=" + d + " behalten=" + keep);
+        LOG.info(() -> area + " | start | kandidaten=" + kept.size() + " verwaist_gelöscht=" + d + " behalten=" + keep);
         return kept;
     }
 

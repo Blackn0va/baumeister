@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Wiederherstellen beim Start (für Betreiber):** Was unter `plugins/Baumeister/wiederherstellen/` im Format des
+  Rückgängig-Stapels liegt, setzt der nächste Start zurück und löscht es danach. Je Block wird so geprüft wie bei
+  `/bm rückgängig`: Zurück kommt nur, wo noch steht, was der Eintrag nennt, und nie über einen Behälter mit Inhalt.
+  Gedacht für Server ohne Konsole und für Schäden, deren Rückgängig-Eintrag schon aus dem Stapel gefallen ist.
 - **Tunnel graben – mit dir zusammen:** „Baumeister, grab mit mir einen Tunnel“ (oder über Vera, oder `/bm tunnel`):
   Er gräbt vor dir her, nie mehr als drei Blöcke voraus, und hört nicht auf, solange du mitgehst. Mit Länge gräbt er
   allein, mit „schnell“ im Schnellgang. Der Tunnel wird schön: ausgemauert, Bogen in den oberen Ecken, abgesetzter

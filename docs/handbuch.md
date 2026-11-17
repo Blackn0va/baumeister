@@ -667,6 +667,13 @@ abzubauen zählt nicht, Ernte nur reif.
   nur bis zum Neustart. Grenzen: `bau.undo-tiefe`, `komfort.rückgängig-max-tage` (7), `komfort.rückgängig-max-mb`
   (512); `komfort.rückgängig-über-neustart: false` stellt den alten Stand her. Das Rückgängig des Weltbaus
   (`/bm weltbau rückgängig`) überlebt einen Neustart weiterhin nicht.
+- **Wiederherstellen beim Start (Betreiber):** Einträge im selben Format (Ordner `bau-<Millisekunden>-<Nummer>` mit
+  `eintrag.json` und gzip-Teilen) unter `plugins/Baumeister/wiederherstellen/` setzt der nächste Start zurück und
+  löscht sie danach – für Server ohne Konsole und für Schäden, deren Eintrag schon aus dem Stapel gefallen ist (der
+  Stapel hält nur `bau.undo-tiefe` Bauten). Geprüft wird wie beim Stapel; je Block kommt der Ursprung nur zurück, wo
+  noch steht, was der Eintrag als gesetzt nennt, nie über einen Behälter mit Inhalt. Ordner ohne `eintrag.json` und
+  andere Dateien dort löscht der Start. Die Wiederherstellung selbst landet nicht im Rückgängig-Stapel – Rückweg ist
+  die Sicherung. Im Log: `wiederherstellen | eintrag | …`, danach `bau | rückgängig | besitzer=<Name> …`.
 
 ## Gelände 1:1
 
@@ -906,6 +913,10 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
 
 ## Stand
 
+- ✅ Wiederherstellen beim Start (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 74/74 Blöcke zurück, ein inzwischen
+  gesetzter Block bleibt stehen, der Ordner ist danach leer; mit dem Jar davor je 0/74, der Eintrag bleibt liegen.
+  Generalprobe mit den Regionsdateien von dev01 auf Paper 26.2: 8 300 von 8 300 Zellen wie erwartet, die übrigen
+  9 723 796 Zellen beider Gebiete unverändert
 - ✅ Tunnel, Treppe und Brücke (2026-11-16) auf Paper 26.2 und Spigot 1.21.11 je 33/33 Prüfungen über die Konsole:
   Tunnel durch Lava, Wasser, Kies und Höhle dicht, 5 Laternen auf 30 Abschnitten, Abschluss vor Lava; Weiterbauen mit
   Lichttakt; aus der Kiste genau verrechnet (144 Steinziegel, 24 Treppen, 2 Laternen verbaut, 252 Bruchstein in der

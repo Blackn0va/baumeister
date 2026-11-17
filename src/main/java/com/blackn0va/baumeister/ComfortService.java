@@ -402,6 +402,53 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         LOG.info(() -> "rückgängig | geladen | einträge=" + records.size() + " stapel=" + stack);
     }
 
+    // ---------------------------------------------------------------- Wiederherstellen beim Start
+
+    /**
+     * Einträge aus UndoJournal.RESTORE_DIR (vom Betreiber abgelegt, siehe dort) im Hintergrund prüfen und dann
+     * zurücksetzen – wie /bm rückgängig, aber ohne Stapel und ohne Spieler. Unabhängig von „Rückgängig über
+     * Neustart“: Der Ordner ist ein Auftrag des Betreibers, keine Kopie des Stapels.
+     */
+    void restoreAtStart(List<Path> candidates) {
+        if (candidates.isEmpty()) {
+            return;
+        }
+        journal.loadAsync(candidates, UndoJournal.Limits.of(UndoJournal.RESTORE_MAX_ENTRIES, comfort), task -> {
+            if (plugin.isEnabled()) {
+                Bukkit.getScheduler().runTask(plugin, task);
+            }
+        }, loaded -> {
+            BuildService now = plugin.service();
+            (now != null ? now.comfort() : this).applyRestores(loaded);
+        });
+    }
+
+    /**
+     * Hauptthread: geprüfte Einträge der Zeit nach (ältester zuerst) an BuildService.restore. Das setzt einen nach
+     * dem anderen zurück (undoQueue), je Zelle nur, wo noch steht, was der Eintrag als gesetzt nennt (UndoCheck), und
+     * löscht den Ordner erst, wenn alles durch ist – ein Neustart mittendrin setzt beim nächsten Start fort, schon
+     * zurückgesetzte Zellen lässt UndoCheck stehen. Zustände, die diese Serverfassung nicht kennt: Eintrag verworfen
+     * (keepKnown, fail-closed). Fehlt die Welt, bleibt der Eintrag liegen, bis sie da ist oder er zu alt ist.
+     */
+    void applyRestores(List<UndoJournal.Loaded> loaded) {
+        StateCache<BlockData> states = new StateCache<>(Bukkit::createBlockData);
+        List<UndoJournal.Loaded> known = new ArrayList<>(journal.keepKnown(loaded, states::knows));
+        known.sort(java.util.Comparator.comparingLong((UndoJournal.Loaded l) -> l.manifest().when())
+                .thenComparing(l -> l.dir().getFileName().toString()));
+        for (UndoJournal.Loaded l : known) {
+            UndoJournal.Manifest m = l.manifest();
+            World w = Bukkit.getWorld(m.world());
+            if (w == null) {
+                LOG.warning(() -> "wiederherstellen | welt_fehlt | welt=" + m.world() + " ordner="
+                        + l.dir().getFileName());
+                continue;
+            }
+            LOG.info(() -> "wiederherstellen | eintrag | ordner=" + l.dir().getFileName() + " name=" + m.ownerName()
+                    + " welt=" + m.world() + " blöcke=" + m.count());
+            service.restore(Bukkit.getConsoleSender(), UndoJournal.toRecord(l, w));
+        }
+    }
+
     // ---------------------------------------------------------------- Neuladen, Ende
 
     /**
