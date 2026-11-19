@@ -109,4 +109,13 @@ class CompanionIntentTest {
         assertEquals("iron_ore", CompanionRules.oreFor("eisen"));
         assertEquals(null, CompanionRules.oreFor("Dorf"));
     }
+
+    /** Auf „was kann der Baumeister bauen?“ nennt Vera auch Tunnel und Treppen – sie fehlten seit 2026-11-16. */
+    @Test
+    void buildAnswerNamesTunnelsAndStairs() {
+        String a = CompanionIntent.chat("Was kann der Baumeister alles bauen?").orElseThrow();
+        assertTrue(a.contains("Tunnel"), a);
+        assertTrue(a.contains("Treppen"), a);
+        assertTrue(a.contains("Brücken"), a);
+    }
 }

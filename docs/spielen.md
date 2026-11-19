@@ -39,6 +39,7 @@ Alles geht auch per Klick: **`/hilfe`** öffnet das Hilfebuch, jede Zeile darin 
 | „bau eine Burg“, „bau eine Pyramide“ | Schnellbau, sofort, ohne KI |
 | „bau ein Hochhaus mit 8 Stockwerken“ | Hochhaus mit Fensterbändern |
 | „bau eine Eisenfarm“ | geprüfte Farm, danach sagt er dir, was du noch tun musst |
+| „grab mit mir einen Tunnel“, „bau mir eine Treppe nach oben“, „bau eine Brücke übers Meer“ | Tunnel, Treppe, Brücke – [siehe unten](#tunnel-treppen-und-brücken) |
 | „schneller“, „langsamer“ | laufender Bau im Schnellgang bzw. wieder Block für Block |
 | „… mit 4 Helfern“, „mehr Helfer“ | Helfer-NPCs bauen mit |
 
@@ -46,9 +47,9 @@ Alles geht auch per Klick: **`/hilfe`** öffnet das Hilfebuch, jede Zeile darin 
 
 <img src="bilder/schnellbau.png" alt="Pyramide, Burg, Hochhaus, Brücke, Garten und Tanne aus dem Schnellbau" width="100%">
 
-Diese Bauwerke kennt er auswendig und baut sie sofort: **Pyramide, Burg, Hochhaus, Brücke und Bogenbrücke, Garten,
-Baum, Tanne, Mauer, Lobby, Portalhalle, Bunker** und **acht Farmen**. Die Liste mit Knöpfen steht im Hilfebuch unter
-„Schnellbau“.
+Diese Bauwerke kennt er auswendig und baut sie sofort: **Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Baum,
+Tanne, Mauer, Lobby, Portalhalle, Bunker** und **acht Farmen**. Die Liste mit Knöpfen steht im Hilfebuch unter
+„Schnellbau“. „bau eine Brücke“ baut die lange Brücke mit Pfeilern – sie steht unten bei Tunnel und Treppen.
 
 ## Tunnel, Treppen und Brücken
 
@@ -115,7 +116,7 @@ hat. Welche Mods du brauchst, sagt dir `/mods`. Die meisten Sätze versteht sie 
 
 ## Für alle Spieler
 
-<img src="bilder/hilfebuch.png" alt="Hilfebuch mit Inhalt, Schnellbau, Suchen und Stimmwahl" width="100%">
+<img src="bilder/hilfebuch.png" alt="Hilfebuch mit Inhalt, Schnellbau, Graben (Tunnel, Treppen, Brücke) und Stimmwahl" width="100%">
 
 | Befehl | Was es ist |
 |---|---|

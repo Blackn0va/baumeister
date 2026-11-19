@@ -292,7 +292,9 @@ public final class ReadmeBilder {
     static void schnellbau(Path file) throws Exception {
         List<Shot> shots = List.of(new Shot("Pyramide", "eine Pyramide"), new Shot("Burg", "eine Burg"),
                 new Shot("Hochhaus, 8 Stockwerke", "ein Hochhaus mit 8 Stockwerken"),
-                new Shot("Brücke", "eine Brücke"), new Shot("Garten", "einen Garten"),
+                // Seit 2026-11-16 baut „eine Brücke“ die Brücke mit Pfeilern (Bild tunnel); die Bauform heißt
+                // Bogenbrücke.
+                new Shot("Bogenbrücke", "eine Bogenbrücke"), new Shot("Garten", "einen Garten"),
                 new Shot("Tanne", "eine Tanne"));
         int tw = 620;
         int th = 470;
@@ -583,7 +585,8 @@ public final class ReadmeBilder {
         List<HelpBook.Page> pages = HelpBook.pages(c);
         List<HelpBook.Page> pick = new ArrayList<>();
         pick.add(pages.getFirst());
-        for (String ch : List.of("Schnellbau", "Suchen", HelpBook.VOICE_CHAPTER)) {
+        // Graben statt Suchen (2026-11-19): Tunnel, Treppe und Brücke fehlten sonst im Bild.
+        for (String ch : List.of("Schnellbau", "Graben", HelpBook.VOICE_CHAPTER)) {
             pages.stream().filter(p -> p.chapter().equals(ch)).findFirst().ifPresent(pick::add);
         }
         int pw = 380;
@@ -593,7 +596,7 @@ public final class ReadmeBilder {
         BufferedImage img = new BufferedImage(pick.size() * (pw + gap) + gap, head + ph + 40,
                 BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = canvas(img);
-        title(g, "Hilfebuch – alles per Klick", "Inhalt, Schnellbau, Suchen mit Vera und die Stimmwahl für Admins",
+        title(g, "Hilfebuch – alles per Klick", "Inhalt, Schnellbau, Graben und die Stimmwahl für Admins",
                 img.getWidth());
         for (int i = 0; i < pick.size(); i++) {
             page(g, pick.get(i), gap + i * (pw + gap), head, pw, ph);

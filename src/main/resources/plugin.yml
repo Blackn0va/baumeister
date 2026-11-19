@@ -13,7 +13,7 @@ commands:
   baumeister:
     description: Steuert den Baumeister-NPC
     aliases: [bm]
-    usage: /<command> <bau|stop|rückgängig|status|vorschau|warteschlange|bauteile|schematics|katalog|bauteil|spawn|entfernen|bauenbei|maschine|befehlsblock|befehle|selbsttest|logik|logikbei|neuladen|leistung|sprache|stadt|pause|weiter|tempo|helfer|fortschritt|komm|stadtwelt|gelaende|erde|reise|wo|weltbau|orte|ort|karte|kartenbild|begleiter>
+    usage: /<command> <bau|tunnel|treppe|brücke|weiterbauen|stop|rückgängig|status|vorschau|warteschlange|bauteile|schematics|katalog|bildschirm|bauteil|spawn|entfernen|bauenbei|portal|einrichten|maschine|befehlsblock|befehle|selbsttest|logik|logikbei|neuladen|leistung|lagprobe|spielbauwerk|sprache|stadt|pause|weiter|tempo|helfer|fortschritt|komm|stadtwelt|gelaende|erde|reise|wo|weltbau|orte|ort|karte|kartenbild|begleiter>
     # Bukkit lässt durch, wer EINES der durch ; getrennten Rechte hat (Command.testPermissionSilent). Vorher stand
     # hier nur baumeister.bauen – baumeister.reisen allein wirkte dann nie. Das Bauen-Recht prüft jetzt
     # BaumeisterCommand.onCommand für alles außer orte/ort.

@@ -31,8 +31,8 @@ Alle Dokumente auf einen Blick: [docs/](docs/README.md).
 
 - **Bauen auf Zuruf.** „Baumeister, bau mir ein kleines Haus aus Fichtenholz“ – eine lokale KI plant, das Plugin
   prüft jeden Block, und der NPC setzt ihn sichtbar. Vorschau, Rückgängig und Warteschlange inklusive.
-- **Schnellbau ohne KI.** Pyramide, Burg, Hochhaus, Brücke, Garten, Bäume, Farmen, Bunker, Lobby – sofort, auch wenn
-  keine KI läuft.
+- **Schnellbau ohne KI.** Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Bäume, Farmen, Bunker, Lobby – sofort, auch
+  wenn keine KI läuft.
 - **Tunnel, Treppen und Brücken.** „Grab mit mir einen Tunnel“: Er gräbt vor dir her, ausgemauert und mit Laternen,
   schnurgerade bis 10 000 Blöcke, über Täler und Seen als Röhre. Treppen hinauf und hinab, Brücken mit Pfeilern bis
   zum Grund. Was er abgräbt, steht in vollen Fässern in der Tunnelwand.
@@ -46,13 +46,13 @@ Alle Dokumente auf einen Blick: [docs/](docs/README.md).
 - **Für alle Spieler.** Hilfebuch zum Anklicken, Rucksack mit Teamkisten, Warps, Tagesaufgaben, Mods-Download.
 - **Nichts geht verloren.** Rückgängig für die letzten 50 Bauten, auch nach einem Neustart.
 
-<img src="docs/bilder/schnellbau.png" alt="Sechs Bauwerke, die der Baumeister ohne KI sofort baut: Pyramide, Burg, Hochhaus, Brücke, Garten, Tanne" width="100%">
+<img src="docs/bilder/schnellbau.png" alt="Sechs Bauwerke, die der Baumeister ohne KI sofort baut: Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Tanne" width="100%">
 
 <img src="docs/bilder/tunnel.png" alt="Tunnel im Fels, Röhre über einen See, Treppe nach oben und nach unten, Brücke übers Wasser und ein großer Tunnel im Tiefenschiefer – echte Pläne aus TunnelShape" width="100%">
 
 <table>
 <tr>
-<td width="60%"><img src="docs/bilder/hilfebuch.png" alt="Hilfebuch mit Inhalt, Schnellbau, Suchen und Stimmwahl"></td>
+<td width="60%"><img src="docs/bilder/hilfebuch.png" alt="Hilfebuch mit Inhalt, Schnellbau, Graben (Tunnel, Treppen, Brücke) und Stimmwahl"></td>
 <td width="40%"><img src="docs/bilder/katalog.png" alt="Katalog der Schematics als Kistenfenster"></td>
 </tr>
 <tr>
@@ -77,7 +77,7 @@ geprüft · ⚠️ läuft mit Grenzen · ❌ geht nicht
 | Bereich | Was geht | Was noch nicht |
 |---|---|---|
 | **Bauen per KI** | ✅ Aufträge per `/bm bau`: die KI plant, das Plugin prüft jeden Block, der NPC baut | 🧪 derselbe Auftrag im Chat („Baumeister, …“) von einem echten Spieler · ⚠️ freie Entwürfe (Brunnen, Turmdetails) mit dem 7B-Modell schwankend, Häuser gelingen |
-| **Schnellbau ohne KI** | ✅ Pyramide, Burg, Hochhaus, Brücke, Garten, Bäume, Farmen, Bunker, Lobby, Portalhalle | 🧪 Mauer und Baum noch nicht im Spiel gebaut |
+| **Schnellbau ohne KI** | ✅ Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Bäume, Farmen, Bunker, Lobby, Portalhalle | 🧪 Mauer und Baum noch nicht im Spiel gebaut |
 | **Tunnel, Treppen, Brücken** | ✅ Tunnel bis 10 000 Blöcke, Röhre über Täler und Seen, Treppe hinauf und hinab, Brücke, Weiterbauen, „stopp“ – auf beiden Testservern; Tunnel, Treppe nach oben und Brücke auch im Spiel | 🧪 mit einem echten Spieler: Mitgraben ohne Ende, Treppe aus dem Gang heraus, Fässer aus der Kiste bezahlt |
 | **Maschinen und Logik** | ✅ 28 Maschinen in vier Richtungen (112/112), 16 Formeln in vier Richtungen (64/64) | ❌ `akkumulator_4bit` baut nach Süden fehlerhaft · ⚠️ Logik bis 5 Eingänge, Ausgänge nicht beschildert, Stockwerke nur nach Norden geprüft |
 | **Farmen** | ✅ acht Farmen ohne KI, je in vier Richtungen geprüft, mit Bedienhinweisen | 🧪 Ertrag über Stunden (Golems, Kaktus) nicht im Spiel gemessen |

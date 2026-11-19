@@ -273,6 +273,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Installationen behalten ihre gespeicherte Adresse.
 
 ### Behoben
+- **Tunnel, Treppen und Brücken überall genannt:** Die Hilfe zu `/bm` kannte sie nicht (nur das Hilfebuch im
+  Kapitel „Graben“), `plugin.yml` ließ neun Befehle aus, darunter `tunnel`, `treppe`, `brücke` und
+  `weiterbauen`, und Vera nannte auf „was kann der Baumeister bauen?“ keine Tunnel und Treppen. Jetzt stehen in
+  der `/bm`-Hilfe alle Befehle, die ein Spieler benutzen darf – ein Test hält das für neue Befehle fest.
 - **„stopp“ hält den Tunnel wirklich an:** Ein „/bm stop“ in der Pause zwischen zwei Stücken eines langen Tunnels
   verpuffte, das nächste Stück begann trotzdem – auf dev01 zweimal hintereinander. Jetzt endet der ganze Auftrag, auch
   in der Pause; eigene wartende Aufträge fallen mit weg. „tunnel stopp“ hält ebenso an, und ein neuer Grabauftrag löst

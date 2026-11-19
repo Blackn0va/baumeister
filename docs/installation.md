@@ -7,7 +7,7 @@ Der Baumeister kommt in drei Stufen. Jede läuft für sich; die nächste ist nur
 
 | Stufe | Was du bekommst | Was du brauchst |
 |---|---|---|
-| 1 – nur das Plugin | Farmen, Maschinen und Redstone-Schaltungen auf Zuruf, Städte und Gelände 1:1 aus OpenStreetMap, Begleiterin Vera (ohne Sprachmodell), Rucksack, Warps, Tagesaufgaben, Minikarte, Hilfebuch | Paper oder Spigot, 5 Minuten |
+| 1 – nur das Plugin | Schnellbau (Burg, Pyramide, Hochhaus …), Tunnel, Treppen und Brücken, Schematics, Farmen, Maschinen und Redstone-Schaltungen auf Zuruf, Städte und Gelände 1:1 aus OpenStreetMap, Begleiterin Vera (ohne Sprachmodell), Rucksack, Warps, Tagesaufgaben, Minikarte, Hilfebuch | Paper oder Spigot, 5 Minuten |
 | 2 – KI auf demselben Rechner | dazu Bauaufträge in freien Worten („bau mir eine Kapelle aus Stein“), Vera mit Sprachmodell | Windows-PC mit Grafikkarte, auf dem auch der Minecraft-Server läuft |
 | 3 – KI auf einem anderen PC | dasselbe, der Minecraft-Server läuft woanders (Linux-Server, gemieteter Rechner) | Linux mit systemd auf dem Server, Router-Freigabe eines Ports |
 

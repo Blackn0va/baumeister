@@ -64,6 +64,14 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
      * seine Rechte ändert, muss diese Zeile mitziehen – sonst zeigt die Vervollständigung wieder etwas anderes, als der
      * Befehl tut. Die eigentliche Grenze bleibt requireAdmin; das hier blendet nur aus (ASVS V4.1.1).
      */
+    /**
+     * Namen aller Unterbefehle (ohne Aliase); playerOnly: nur die ohne Admin-Recht – für die Hilfe- und
+     * plugin.yml-Tests.
+     */
+    static List<String> subcommands(boolean playerOnly) {
+        return SUBS.stream().filter(sub -> !playerOnly || !sub.adminOnly()).map(Sub::name).toList();
+    }
+
     private static final List<Sub> SUBS = List.of(
             new Sub("bau", false, List.of("baue", "build")),
             // Graben und Brücken (2026-11-16): wie /bm bau, nur ohne Auftragstext; Rechte wie bau.
@@ -530,59 +538,80 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(CommandSender s, String label) {
-        String n = plugin.npc().name();
-        if (s.hasPermission(BUILD)) {
-            Texts.info(s, "Im Chat: \"" + n + ", bau mir eine kleine Kapelle aus Stein\"");
-            Texts.info(s, "/" + label + " bau <auftrag> · stop · rückgängig · status · bauteile");
-            Texts.info(s, "/" + label + " vorschau <auftrag> (Umriss zeigen, \"ja\" baut) · warteschlange [abbrechen]");
-            Texts.info(s, "/" + label + " katalog [suchwort] – alle Schematics zum Durchklicken, Klick baut vor dir");
-            Texts.info(s, "/" + label + " helfer <0–" + HelperWish.MAX + "|auto> – Helfer für deine Bauten, auch mitten im "
+        String worlds = MainWorlds.label(plugin.getConfig());
+        for (String line : helpLines(label, plugin.npc().name(), s::hasPermission, worlds)) {
+            Texts.info(s, line);
+        }
+    }
+
+    /**
+     * Zeilen der Hilfe zu /bm, je nach Recht. Ohne Bukkit, damit BaumeisterCommandTest prüft, dass jeder Befehl, den
+     * ein Spieler benutzen darf, darin vorkommt: Tunnel, Treppe, Brücke und Weiterbauen fehlten hier seit 2026-11-16
+     * (Hinweis des Nutzers 2026-11-19) – im Hilfebuch standen sie im Kapitel „Graben“, in /bm nicht.
+     */
+    static List<String> helpLines(String label, String n, java.util.function.Predicate<String> has, String mainWorlds) {
+        List<String> out = new java.util.ArrayList<>();
+        String bm = "/" + label;
+        if (has.test(BUILD)) {
+            out.add("Im Chat: \"" + n + ", bau mir eine kleine Kapelle aus Stein\"");
+            out.add(bm + " bau <auftrag> · stop · rückgängig · status · bauteile");
+            out.add(bm + " vorschau <auftrag> (Umriss zeigen, \"ja\" baut) · warteschlange [abbrechen]");
+            out.add(bm + " katalog [suchwort] – alle Schematics zum Durchklicken, Klick baut vor dir");
+            out.add(bm + " tunnel [länge] [schnell] [groß|klein] – Tunnel graben, ohne Länge mit dir zusammen; im Chat "
+                    + "\"" + n + ", grab mit mir einen Tunnel\"");
+            out.add(bm + " treppe [runter] – Treppe nach oben oder unten · brücke [länge] [schnell] – Brücke "
+                    + "übers Wasser · weiterbauen – Tunnel, Treppe oder Brücke fortsetzen · \"stopp\" hält an");
+            out.add(bm + " schematics [suchwort] – Schematics als Liste · bildschirm [uhr|laufschrift <text>|groß"
+                    + "|weg] – Bildschirm aus Karten vor dir");
+            out.add(bm + " fortschritt – Stand mit Restzeit · komm – den Baumeister zu dir holen");
+            out.add(bm + " helfer <0–" + HelperWish.MAX + "|auto> – Helfer für deine Bauten, auch mitten im "
                     + "Bau; oder im Auftrag \"… mit 4 Helfern\", im Chat \"mehr helfer\"");
         }
-        if (s.hasPermission(TRAVEL)) {
-            Texts.info(s, "/" + label + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
+        if (has.test(TRAVEL)) {
+            out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
                     + "(Schleichen: schneller) · karte punkt <Name> · punkte · ziel <Name> · weg <Name> · drehen an|aus");
-            Texts.info(s, "/" + label + " orte [seite|suchwort] · ort <Name> – Sprungpunkte zu gebauten Städten und Orten"
-                    + (s.hasPermission("baumeister.admin") ? " · ort merken <Name> · ort löschen <Name>" : ""));
+            out.add(bm + " orte [seite|suchwort] · ort <Name> – Sprungpunkte zu gebauten Städten und Orten"
+                    + (has.test("baumeister.admin") ? " · ort merken <Name> · ort löschen <Name>" : ""));
         }
-        if (s.hasPermission("baumeister.admin")) {
-            Texts.info(s, "/" + label + " bauteil <name> <vorne n|o|s|w> <beschreibung> – WorldEdit-Auswahl als Bauteil");
-            Texts.info(s, "/" + label + " spawn [skin-spieler] · entfernen · neuladen · bauenbei <welt> <x> <y> <z> <n|o|s|w> <auftrag>");
-            Texts.info(s, "/" + label + " portal <warp|welt|spawn> [Anzeige] – leeren Obsidianrahmen entzünden und "
+        if (has.test("baumeister.admin")) {
+            out.add(bm + " bauteil <name> <vorne n|o|s|w> <beschreibung> – WorldEdit-Auswahl als Bauteil");
+            out.add(bm + " spawn [skin-spieler] · entfernen · neuladen · bauenbei <welt> <x> <y> <z> <n|o|s|w> "
+                    + "<auftrag>");
+            out.add(bm + " portal <warp|welt|spawn> [Anzeige] – leeren Obsidianrahmen entzünden und "
                     + "verbinden (in ihm stehen oder hindurchschauen) · portal entfernen · portal liste");
-            Texts.info(s, "/" + label + " einrichten – frischen Server Schritt für Schritt: Lobby, Weltspawn, Portale, "
+            out.add(bm + " einrichten – frischen Server Schritt für Schritt: Lobby, Weltspawn, Portale, "
                     + "Burgen · einrichten spawn – Weltspawn genau hierher");
-            Texts.info(s, "/" + label + " leistung – TPS, Tick-Zeiten, Heap, Chunks und Aufträge der letzten Minute · "
+            out.add(bm + " leistung – TPS, Tick-Zeiten, Heap, Chunks und Aufträge der letzten Minute · "
                     + "neuladen erzwingen – Bau-Einstellungen auch mit vollem Rückgängig-Stapel übernehmen");
-            Texts.info(s, "/" + label + " maschine <name> [<welt> <x> <y> <z> <n|o|s|w>] – Bauteil direkt bauen, ohne LLM");
-            Texts.info(s, "/" + label + " sprache [an|aus|stimme <name>|vera <name>|ton normal|cartoon|probe] – Stimmen vom "
+            out.add(bm + " maschine <name> [<welt> <x> <y> <z> <n|o|s|w>] – Bauteil direkt bauen, ohne LLM");
+            out.add(bm + " sprache [an|aus|stimme <name>|vera <name>|ton normal|cartoon|probe] – Stimmen vom "
                     + "Server schalten und wählen (stimme = Baumeister, vera und ton = Vera)");
         }
-        if (s.hasPermission(com.blackn0va.baumeister.plan.Tier.COMMANDS.permission())) {
-            Texts.info(s, "/" + label + " befehlsblock [befehl] – Befehlsblock, auf den du schaust, zeigen (Art, bedingt, "
+        if (has.test(com.blackn0va.baumeister.plan.Tier.COMMANDS.permission())) {
+            out.add(bm + " befehlsblock [befehl] – Befehlsblock, auf den du schaust, zeigen (Art, bedingt, "
                     + "immer aktiv, Befehl zum Anklicken) oder seinen Befehl setzen; in jedem Spielmodus");
         }
-        if (s.hasPermission("baumeister.admin")) {
-            Texts.info(s, "/" + label + " logik <Formel> – Redstone-Schaltung aus einer Formel, z. B. "
+        if (has.test("baumeister.admin")) {
+            out.add(bm + " logik <Formel> – Redstone-Schaltung aus einer Formel, z. B. "
                     + "\"Q = A und (B oder nicht C)\", mehrere Ausgänge mit ; getrennt (\"S = A xor B; C = A und B\"); "
                     + "Konsole: logikbei <welt> <x> <y> <z> <n|o|s|w> <Formel>");
-            Texts.info(s, "/" + label + " stadt <Ort|lat,lon> [radius] · stadt los [echt | <welt> <x> <y> <z>] · stadt abbrechen – "
+            out.add(bm + " stadt <Ort|lat,lon> [radius] · stadt los [echt | <welt> <x> <y> <z>] · stadt abbrechen – "
                     + "echter Ort 1:1 aus OpenStreetMap");
-            Texts.info(s, "/" + label + " weltbau <Ort|lat,lon> [radius] · weltbau auto an|aus · status · stop · "
+            out.add(bm + " weltbau <Ort|lat,lon> [radius] · weltbau auto an|aus · status · stop · "
                     + "rückgängig [tx tz] – OpenStreetMap auf das Gelände der Erdwelt");
-            Texts.info(s, "/" + label + " pause · weiter · tempo <blöcke/tick> · helfer <n> · fortschritt · komm – oder im "
+            out.add(bm + " pause · weiter · tempo <blöcke/tick> · helfer <n> – Stadtbau steuern, oder im "
                     + "Chat: \"" + n + ", schneller\"");
-            Texts.info(s, "/" + label + " erde · reise <Ort|lat,lon> · wo [x z] – die ganze Erde 1:1 als eine Welt");
+            out.add(bm + " erde · reise <Ort|lat,lon> · wo [x z] – die ganze Erde 1:1 als eine Welt");
         }
         // Begleiter darf jeder rufen (plugin.yml) – deshalb außerhalb der Admin-Zeilen.
-        if (s.hasPermission(COMPANION)) {
-            Texts.info(s, "/" + label + " begleiter [weg] – Vera rufen; im Chat \"Hey Vera, …\"");
-            Texts.info(s, "/" + label + " begleiter abenteuer team <spieler> | annehmen – zusammen spielen, "
+        if (has.test(COMPANION)) {
+            out.add(bm + " begleiter [weg] – Vera rufen; im Chat \"Hey Vera, …\"");
+            out.add(bm + " begleiter abenteuer team <spieler> | annehmen – zusammen spielen, "
                     + "was einer schafft, zählt für alle");
-            Texts.info(s, "/" + label + " begleiter abenteuer [normal|hardcore|stand|aus] – Minecraft mit Vera "
-                    + "durchspielen (nur " + MainWorlds.label(plugin.getConfig()) + "); im Chat \"Vera, lass uns Minecraft "
-                    + "spielen\"");
+            out.add(bm + " begleiter abenteuer [normal|hardcore|stand|aus] – Minecraft mit Vera "
+                    + "durchspielen (nur " + mainWorlds + "); im Chat \"Vera, lass uns Minecraft spielen\"");
         }
+        return out;
     }
 
     private void listModules(CommandSender s) {

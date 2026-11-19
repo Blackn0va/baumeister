@@ -281,6 +281,33 @@ class BaumeisterCommandTest {
      * „/bm grab ein tunnel“ (dev01 2026-11-16): zeigte dreimal nur die Hilfe. Grabsätze gehen jetzt den Grabweg,
      * alles andere bleibt bei der Hilfe – ein Tippfehler baut nichts.
      */
+    /**
+     * Jeder Befehl, den ein Spieler benutzen darf, steht in der Hilfe zu /bm. Hinweis des Nutzers 2026-11-19: Tunnel,
+     * Treppe, Brücke und Weiterbauen fehlten dort seit 2026-11-16 – dazu Bildschirm, Schematics, Fortschritt und Komm.
+     */
+    @Test
+    void everyPlayerCommandIsInTheHelp() {
+        Set<String> rights = Set.of("baumeister.bauen", "baumeister.reisen", "baumeister.begleiter");
+        String help = String.join("\n", BaumeisterCommand.helpLines("bm", "Baumeister", rights::contains, "world"));
+        for (String sub : BaumeisterCommand.subcommands(true)) {
+            Matcher m = Pattern.compile("(?<!\\p{L})" + Pattern.quote(sub) + "(?!\\p{L})").matcher(help);
+            assertTrue(m.find(), sub + " fehlt in der Hilfe");
+        }
+        assertFalse(help.contains("bauenbei"), "Admin-Befehle nicht in der Spieler-Hilfe");
+    }
+
+    /** plugin.yml nennt unter usage jeden Unterbefehl – dort fehlten neun, darunter tunnel, treppe und brücke. */
+    @Test
+    void pluginYmlUsageNamesEverySubcommand() throws IOException {
+        String yml = Files.readString(Path.of("src/main/resources/plugin.yml"), StandardCharsets.UTF_8);
+        Matcher m = Pattern.compile("usage: /<command> <([^>]+)>").matcher(yml);
+        assertTrue(m.find(), "usage fehlt");
+        Set<String> usage = Set.of(m.group(1).split("\\|"));
+        for (String sub : BaumeisterCommand.subcommands(false)) {
+            assertTrue(usage.contains(sub), sub + " fehlt in plugin.yml unter usage");
+        }
+    }
+
     @Test
     void aDigSentenceAfterBmIsAnOrderAndAnythingElseStaysHelp() {
         assertTrue(BaumeisterCommand.digSentence("grab ein tunnel"));

@@ -214,9 +214,11 @@ public final class CompanionIntent {
             return Optional.of(CompanionCharacter.line(CompanionCharacter.Line.RUDE, cheeky, pick));
         }
         if (BUILD_Q.matcher(full).find()) {
+            // Tunnel und Treppen fehlten hier, seit es sie gibt (2026-11-16; Hinweis des Nutzers 2026-11-19).
             return Optional.of("Der Baumeister baut Häuser, Dörfer, Iglus, Burgen, Brücken, Pools, Bunker und "
-                    + "Hochhäuser – und geprüfte Maschinen: Türen, Fahrstühle, Farmen, Logik, einen Taschenrechner, "
-                    + "eine 7-Segment-Anzeige und Prozessor-Bausteine. Sag zum Beispiel „bau mir ein Iglu“.");
+                    + "Hochhäuser, gräbt Tunnel und Treppen – und baut geprüfte Maschinen: Türen, Fahrstühle, Farmen, "
+                    + "Logik, einen Taschenrechner, eine 7-Segment-Anzeige und Prozessor-Bausteine. Sag zum Beispiel "
+                    + "„bau mir ein Iglu“ oder „grab mit mir einen Tunnel“.");
         }
         if (HELP.matcher(full).find()) {
             return Optional.of("Ich gebe dir Sachen (im Kreativmodus), finde Erze, bringe dich zu Warps, stelle Tag "
