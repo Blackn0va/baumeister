@@ -48,8 +48,8 @@ import javax.imageio.ImageIO;
  * Keine Spiel-Texturen und keine Minecraft-Schrift (Rechte bei Mojang): Blöcke als schattierte Würfel in eigener
  * Farbe, Schrift aus dem System.
  *
- * Aufruf: java -cp target/classes;target/test-classes;&lt;Abhängigkeiten&gt; com.blackn0va.baumeister.bilder.ReadmeBilder
- * docs/bilder
+ * Aufruf: java -cp target/classes;target/test-classes;lib/* com.blackn0va.baumeister.bilder.ReadmeBilder docs/bilder
+ * [name …] – ohne Namen alle Bilder, sonst nur die genannten (z. B. „tunnel banner“).
  *
  * Threads: einer. Fehler: Ausnahme bricht ab.
  */
@@ -64,15 +64,118 @@ public final class ReadmeBilder {
     private ReadmeBilder() {
     }
 
+    /** Ein Bild: Dateiname ohne .png und wie es entsteht. */
+    @FunctionalInterface
+    private interface Painter {
+        void paint(Path file) throws Exception;
+    }
+
     public static void main(String[] args) throws Exception {
         Path out = Path.of(args.length > 0 ? args[0] : "docs/bilder");
+        Set<String> only = Set.of(java.util.Arrays.copyOfRange(args, Math.min(1, args.length), args.length));
         Files.createDirectories(out);
-        schnellbau(out.resolve("schnellbau.png"));
-        hilfebuch(out.resolve("hilfebuch.png"));
-        katalog(out.resolve("katalog.png"));
-        stadt(out.resolve("stadt.png"));
-        technik(out.resolve("technik.png"));
+        Map<String, Painter> all = new java.util.LinkedHashMap<>();
+        all.put("banner", ReadmeBilder::banner);
+        all.put("schnellbau", ReadmeBilder::schnellbau);
+        all.put("tunnel", ReadmeBilder::tunnel);
+        all.put("hilfebuch", ReadmeBilder::hilfebuch);
+        all.put("katalog", ReadmeBilder::katalog);
+        all.put("stadt", ReadmeBilder::stadt);
+        all.put("technik", ReadmeBilder::technik);
+        for (Map.Entry<String, Painter> e : all.entrySet()) {
+            if (only.isEmpty() || only.contains(e.getKey())) {
+                e.getValue().paint(out.resolve(e.getKey() + ".png"));
+                System.out.println("gezeichnet: " + e.getKey() + ".png");
+            }
+        }
         System.out.println("fertig: " + out.toAbsolutePath());
+    }
+
+    // ------------------------------------------------------------------ Kopfbild
+
+    /**
+     * Kopfbild des README (2026-11-19): Name, Satz, drei echte Bauten – Burg und Hochhaus aus QuickOrders, die Röhre
+     * über den See aus TunnelShape.
+     */
+    static void banner(Path file) throws Exception {
+        BufferedImage img = new BufferedImage(1860, 560, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = canvas(img);
+        g.setColor(TEXT);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 96));
+        g.drawString("Baumeister", 60, 200);
+        g.setColor(ACCENT);
+        g.fillRect(64, 226, 260, 5);
+        g.setColor(TEXT);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 30));
+        g.drawString("Baut auf Zuruf – Block für Block, wie ein Spieler.", 62, 292);
+        g.drawString("Mit Vera, die dich begleitet und mit dir spricht.", 62, 336);
+        g.setColor(MUTED);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 21));
+        g.drawString("Plugin für Paper 26.2 und Spigot 1.21.11 · KI lokal, aber nicht nötig", 62, 400);
+        g.drawString("Schnellbau · Tunnel · Maschinen · Städte 1:1 · Rückgängig über Neustart", 62, 434);
+        TunnelBilder.Scene tube = TunnelBilder.scenes().get(1);
+        tile(g, 900, 60, 300, 440);
+        iso(g, quick("eine Burg"), 910, 90, 280, 380);
+        tile(g, 1220, 60, 300, 440);
+        iso(g, tube.cells(), 1230, 90, 280, 380);
+        tile(g, 1540, 60, 280, 440);
+        iso(g, quick("ein Hochhaus mit 8 Stockwerken"), 1550, 90, 260, 380);
+        g.dispose();
+        ImageIO.write(img, "png", file.toFile());
+    }
+
+    // ------------------------------------------------------------------ Tunnel, Treppe, Brücke
+
+    /** Sechs Karten aus TunnelBilder: echte Pläne aus TunnelShape, Fels als Kulisse. */
+    static void tunnel(Path file) throws Exception {
+        List<TunnelBilder.Scene> scenes = TunnelBilder.scenes();
+        int tw = 620;
+        int th = 470;
+        int head = 110;
+        BufferedImage img = new BufferedImage(tw * 3, head + th * 2, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = canvas(img);
+        title(g, "Tunnel, Treppen und Brücken",
+                "Echte Pläne aus TunnelShape, so wie der Baumeister gräbt und mauert – der Fels ist im Bild "
+                        + "aufgeschnitten", img.getWidth());
+        for (int i = 0; i < scenes.size(); i++) {
+            TunnelBilder.Scene s = scenes.get(i);
+            int x0 = (i % 3) * tw;
+            int y0 = head + (i / 3) * th;
+            tile(g, x0 + 14, y0 + 6, tw - 28, th - 20);
+            iso(g, s.cells(), x0 + 30, y0 + 20, tw - 60, th - 100);
+            g.setColor(TEXT);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24));
+            g.drawString(s.title(), x0 + 36, y0 + th - 52);
+            g.setColor(MUTED);
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 17));
+            String count = s.title().startsWith("Treppe")
+                    ? String.format(Locale.GERMANY, "%d Stufen, %,d Blöcke", s.slices(), s.placed())
+                    : String.format(Locale.GERMANY, "%,d Blöcke", s.placed());
+            g.drawString(s.sub() + " · " + count, x0 + 36, y0 + th - 28);
+        }
+        g.dispose();
+        ImageIO.write(img, "png", file.toFile());
+    }
+
+    /** Schnellbau-Plan wie im Spiel: QuickOrders → PlanParser → PlanCompiler, ohne Luft. */
+    private static Map<Pos, BlockSpec> quick(String prompt) throws Exception {
+        PlanCompiler compiler = new PlanCompiler(
+                id -> org.bukkit.Material.getMaterial(id.toUpperCase(Locale.ROOT)) != null, "stone",
+                new PlanCompiler.Limits(400_000, 192));
+        String json = QuickOrders.match(prompt, Set.of(), 64).orElseThrow(
+                () -> new IllegalStateException("kein Schnellweg: " + prompt));
+        CompiledBuild build = compiler.compile(PlanParser.parse(json));
+        Map<Pos, BlockSpec> cells = new HashMap<>();
+        for (CompiledBuild.Action a : build.actions()) {
+            for (CompiledBuild.Change c : a.changes()) {
+                if (!isAir(c.block().id())) {
+                    cells.put(c.pos(), c.block());
+                } else {
+                    cells.remove(c.pos());
+                }
+            }
+        }
+        return cells;
     }
 
     // ------------------------------------------------------------------ Stadt
@@ -310,9 +413,26 @@ public final class ReadmeBilder {
             Map.entry("orange_terracotta", 0xa15325), Map.entry("white_terracotta", 0xd1b2a1),
             Map.entry("red_nether_bricks", 0x5a1013), Map.entry("light_gray_terracotta", 0x876a61),
             Map.entry("polished_blackstone_bricks", 0x302a32), Map.entry("deepslate_tiles", 0x36363a),
-            Map.entry("yellow_terracotta", 0xba8523), Map.entry("birch_sign", 0xc5b77b));
+            Map.entry("yellow_terracotta", 0xba8523), Map.entry("birch_sign", 0xc5b77b),
+            // Tunnel und Brücke (2026-11-19, BildFarbenProbe): sonst Ersatzfarben aus dem Namen, lila Gurtbögen
+            Map.entry("chiseled_stone_bricks", 0x6f6f6f), Map.entry("chiseled_deepslate", 0x3a3a3f),
+            Map.entry("polished_deepslate", 0x4a4a4f), Map.entry("iron_chain", 0x3d4148));
 
     private static Color color(String id) {
+        Integer c = colorOrNull(id);
+        if (c == null) {
+            int h = bare(id).hashCode();
+            c = Color.HSBtoRGB((h & 0xff) / 255f, 0.35f, 0.65f) & 0xffffff;
+        }
+        return new Color(c);
+    }
+
+    /** Hat id eine eigene Farbe (nicht die Ersatzfarbe aus dem Namen)? Für BildFarbenProbe. */
+    static boolean hasColor(String id) {
+        return colorOrNull(id) != null;
+    }
+
+    private static Integer colorOrNull(String id) {
         String n = bare(id);
         for (String cut : List.of("_stairs", "_slab", "_wall", "_fence_gate", "_fence", "_trapdoor", "_door",
                 "_pressure_plate", "_button", "_carpet")) {
@@ -341,11 +461,7 @@ public final class ReadmeBilder {
         if (c == null && n.contains("tulip")) {
             c = 0xe07a3a;
         }
-        if (c == null) {
-            int h = n.hashCode();
-            c = Color.HSBtoRGB((h & 0xff) / 255f, 0.35f, 0.65f) & 0xffffff;
-        }
-        return new Color(c);
+        return c;
     }
 
     /** Isometrische Würfel, verdeckte Flächen weggelassen, von hinten nach vorn gemalt, in den Rahmen eingepasst. */

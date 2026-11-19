@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Doku für Spieler und Entwickler:** [Spielen](docs/spielen.md) erklärt mit Bildern, was man sagen kann und was der
+  Baumeister nicht tut; [Entwicklung](docs/entwicklung.md) zeigt Aufbau, Ablauf eines Auftrags, Pakete und Tests. Das
+  README beginnt mit „Wo fange ich an?“ und sagt je Bereich ehrlich, was geht und was noch nicht. Neue Bilder:
+  Tunnel, Treppen und Brücken sowie ein Kopfbild, gezeichnet aus den echten Plänen.
 - **Wiederherstellen beim Start (für Betreiber):** Was unter `plugins/Baumeister/wiederherstellen/` im Format des
   Rückgängig-Stapels liegt, setzt der nächste Start zurück und löscht es danach. Je Block wird so geprüft wie bei
   `/bm rückgängig`: Zurück kommt nur, wo noch steht, was der Eintrag nennt, und nie über einen Behälter mit Inhalt.

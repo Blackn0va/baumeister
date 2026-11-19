@@ -2,7 +2,8 @@
 
 # Baumeister – Handbuch
 
-**Alles im Detail. Der Überblick steht in der [README](../README.md).**
+**Alles im Detail. Der Überblick steht in der [README](../README.md), für Spieler gibt es
+[Spielen](spielen.md), für Entwickler [Entwicklung](entwicklung.md).**
 
 ![Paper](https://img.shields.io/badge/Paper-26.2-orange) ![Java](https://img.shields.io/badge/Java-21%20%C2%B7%20Server%2025-blue) ![C++](https://img.shields.io/badge/Host-C%2B%2B20%20%C2%B7%20Qt%206-8b5cf6) ![LLM](https://img.shields.io/badge/LLM-llama.cpp%20lokal-green) ![GPU](https://img.shields.io/badge/GPU-Vulkan%20%C2%B7%20CUDA-76b900)
 
@@ -88,12 +89,12 @@ Ein Plan braucht 1–3 Minuten (gemessen: 42–102 s), das Bauen danach ~7 Blöc
 | `Baumeister, …` / `@Baumeister …` im Chat | `baumeister.bauen` | Bauauftrag vor dir, in Blickrichtung |
 | `/bm bau <auftrag>` | `baumeister.bauen` | dasselbe als Befehl |
 | `/bm tunnel [länge] [schnell] [groß\|klein] [n\|o\|s\|w]` · „grab mit mir einen Tunnel“ | `baumeister.bauen` | Tunnel in Blickrichtung, ohne Länge mitgraben ohne Ende, siehe [Tunnel, Treppen und Brücken](#tunnel-treppen-und-brücken) |
-| `/bm treppe` · „bau mir eine Treppe nach oben“ | `baumeister.bauen` | Treppe bis zur Oberfläche |
+| `/bm treppe` · „bau mir eine Treppe nach oben“ · `/bm treppe runter` | `baumeister.bauen` | Treppe bis zur Oberfläche bzw. hinab |
 | `/bm brücke [länge] [schnell]` · „bau eine Brücke übers Meer“ | `baumeister.bauen` | Brücke in Blickrichtung, ohne Länge mitbauen ohne Ende |
 | `/bm weiterbauen` · „bau die Brücke weiter“, „grab den Tunnel weiter“ | `baumeister.bauen` | vorhandenen Tunnel, Treppe oder Brücke erkennen und am Ende genauso weiterbauen |
 | „schneller“ · „langsamer“ im Chat | Auftraggeber, Admin | laufenden Bau in den Schnellgang bzw. zurück zu Block für Block |
 | `/bm stop` | Auftraggeber, Admin | Bau anhalten |
-| `/bm rückgängig` | Auftraggeber, Admin | letzten Bau exakt zurücksetzen (5 Bauten, auch nach einem Neustart, siehe [Komfort](#komfort)) |
+| `/bm rückgängig` | Auftraggeber, Admin | letzten Bau exakt zurücksetzen (bis 50 Bauten, auch nach einem Neustart, siehe [Komfort](#komfort)) |
 | `/bm vorschau <auftrag>` · `vorschau ja\|nein` · „Baumeister, zeig mir …“ im Chat | `baumeister.bauen` | planen und den Umriss als Partikel zeigen; „ja“ baut, „nein“ verwirft |
 | `/bm warteschlange` · `warteschlange abbrechen [platz\|alle]` | `baumeister.bauen` | wartende Aufträge zeigen · eigene herausnehmen (`alle` und fremde nur Admins) |
 | `/bm status` | alle mit `baumeister.bauen` | Zustand, NPC, LLM erreichbar? |
@@ -280,6 +281,8 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Mac
 Eigene Bauteile kommen weiter als WorldEdit-Schematic dazu (`/bm bauteil …`).
 
 ## Tunnel, Treppen und Brücken
+
+<img src="bilder/tunnel.png" alt="Tunnel im Fels, Röhre über einen See, Treppen hinauf und hinab, Brücke und großer Tunnel – echte Pläne aus TunnelShape" width="100%">
 
 Ohne KI und Abschnitt für Abschnitt, so wie man gräbt – an den Baumeister im Chat, über Vera oder als Befehl:
 
@@ -915,6 +918,10 @@ java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.Llm
 ```
 
 ## Stand
+
+Kurzfassung je Bereich: [README → Was geht, was noch nicht](../README.md#was-geht-was-noch-nicht). Hier das
+ausführliche Prüfprotokoll: ✅ geprüft (mit Datum, Server und Zahl der Prüfungen), ⏳ offen oder nur per Test bzw. ohne
+Spieler geprüft.
 
 - ✅ Rückgängig-Tiefe 50 (2026-11-17) auf Paper 26.2 und Spigot 1.21.11 je 14/14 über die Konsole (Tiefe 7, 8 Brücken):
   eine Logzeile `aus_dem_stapel`, Status „7 … 2 davon von der Platte“, 7 × rückgängig nimmt Brücke 2–8 weg – auch die

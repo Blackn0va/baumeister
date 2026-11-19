@@ -3,6 +3,9 @@
 Schön, dass du mitbauen willst. Jeder Beitrag läuft über einen Pull Request und wird vor dem Mergen vom
 Maintainer geprüft und freigegeben – direkt auf `main` schreibt niemand außer ihm.
 
+Wie das Plugin aufgebaut ist, wo man anfängt zu lesen und wie getestet wird, steht in
+[docs/entwicklung.md](docs/entwicklung.md).
+
 ## Ablauf
 
 1. **Issue zuerst** bei allem, was größer als ein Tippfehler ist – dann klären wir vorher, ob es passt.
