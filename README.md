@@ -1,9 +1,9 @@
 <div align="center">
 
-<img src="docs/bilder/banner.png" alt="Baumeister: eine Burg, eine Tunnelröhre über einem See und ein Hochhaus – echte Pläne des Plugins" width="100%">
+<img src="docs/bilder/banner.png" alt="Baumeister: Burg, Brücke, Tunnel und Treppe – echte Pläne des Plugins" width="100%">
 
-**Ein Minecraft-Plugin mit einem Baumeister, der auf Zuruf baut – Block für Block, wie ein Spieler –
-und mit Vera, einer Begleiterin, die mit dir spricht.**
+**Ein Minecraft-Plugin mit einem Baumeister, der auf Zuruf baut – Häuser, Burgen, Tunnel, Treppen und Brücken,
+Block für Block wie ein Spieler – und mit Vera, einer Begleiterin, die mit dir spricht.**
 
 ![Paper](https://img.shields.io/badge/Paper%20%C2%B7%20Spigot-1.21.11%20%C2%B7%2026.2-orange)
 ![Java](https://img.shields.io/badge/Java-21-blue)
@@ -11,9 +11,10 @@ und mit Vera, einer Begleiterin, die mit dir spricht.**
 ![Host](https://img.shields.io/badge/Host-C%2B%2B20%20%C2%B7%20Qt%206-8b5cf6)
 ![Lizenz](https://img.shields.io/badge/Lizenz-GPL--3.0--or--later-blue)
 
-[Wo anfangen](#wo-fange-ich-an) · [Was es kann](#was-es-kann) · [Was geht, was noch nicht](#was-geht-was-noch-nicht) ·
-[So funktioniert's](#so-funktionierts) · [Loslegen](#loslegen) · [Befehle](#die-wichtigsten-befehle) ·
-[Für Entwickler](#für-entwickler) · [Mitmachen](#mitmachen)
+[Wo anfangen](#wo-fange-ich-an) · [Was es kann](#was-es-kann) ·
+[Tunnel, Treppen, Brücken](docs/spielen.md#tunnel-treppen-und-brücken) ·
+[Was geht, was noch nicht](#was-geht-was-noch-nicht) · [So funktioniert's](#so-funktionierts) · [Loslegen](#loslegen) ·
+[Befehle](#die-wichtigsten-befehle) · [Für Entwickler](#für-entwickler) · [Mitmachen](#mitmachen)
 
 </div>
 
@@ -46,9 +47,9 @@ Alle Dokumente auf einen Blick: [docs/](docs/README.md).
 - **Für alle Spieler.** Hilfebuch zum Anklicken, Rucksack mit Teamkisten, Warps, Tagesaufgaben, Mods-Download.
 - **Nichts geht verloren.** Rückgängig für die letzten 50 Bauten, auch nach einem Neustart.
 
-<img src="docs/bilder/schnellbau.png" alt="Sechs Bauwerke, die der Baumeister ohne KI sofort baut: Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Tanne" width="100%">
-
 <img src="docs/bilder/tunnel.png" alt="Tunnel im Fels, Röhre über einen See, Treppe nach oben und nach unten, Brücke übers Wasser und ein großer Tunnel im Tiefenschiefer – echte Pläne aus TunnelShape" width="100%">
+
+<img src="docs/bilder/schnellbau.png" alt="Sechs Bauwerke, die der Baumeister ohne KI sofort baut: Pyramide, Burg, Hochhaus, Bogenbrücke, Garten, Tanne" width="100%">
 
 <table>
 <tr>

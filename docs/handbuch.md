@@ -7,7 +7,7 @@
 
 ![Paper](https://img.shields.io/badge/Paper-26.2-orange) ![Java](https://img.shields.io/badge/Java-21%20%C2%B7%20Server%2025-blue) ![C++](https://img.shields.io/badge/Host-C%2B%2B20%20%C2%B7%20Qt%206-8b5cf6) ![LLM](https://img.shields.io/badge/LLM-llama.cpp%20lokal-green) ![GPU](https://img.shields.io/badge/GPU-Vulkan%20%C2%B7%20CUDA-76b900)
 
-[Installation](installation.md) · [Schematics](schematics.md) · [Aufbau](#aufbau) · [Ablauf](#ablauf) · [Starten](#starten) · [Befehle](#befehle) · [Bauplan](#bauplan) · [Logik](#logik-schaltungen-aus-formeln) · [Komfort](#komfort) · [Gelände](#gelände-11) · [Erde](#die-ganze-erde-11) · [Städte](#städte-und-dörfer-11) · [Betrieb](#betrieb) · [Sicherheit](#sicherheit) · [Eigenes Modell](#eigenes-modell) · [Bauen](#bauen-und-testen) · [Stand](#stand)
+[Installation](installation.md) · [Schematics](schematics.md) · [Aufbau](#aufbau) · [Ablauf](#ablauf) · [Starten](#starten) · [Befehle](#befehle) · [Bauplan](#bauplan) · [Maschinen](#maschinen) · [Tunnel, Treppen, Brücken](#tunnel-treppen-und-brücken) · [Logik](#logik-schaltungen-aus-formeln) · [Begleiter](#begleiter) · [Komfort](#komfort) · [Gelände](#gelände-11) · [Erde](#die-ganze-erde-11) · [Städte](#städte-und-dörfer-11) · [Betrieb](#betrieb) · [Sicherheit](#sicherheit) · [Eigenes Modell](#eigenes-modell) · [Bauen](#bauen-und-testen) · [Stand](#stand)
 
 </div>
 

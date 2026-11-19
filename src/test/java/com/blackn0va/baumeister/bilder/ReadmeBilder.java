@@ -94,32 +94,45 @@ public final class ReadmeBilder {
     // ------------------------------------------------------------------ Kopfbild
 
     /**
-     * Kopfbild des README (2026-11-19): Name, Satz, drei echte Bauten – Burg und Hochhaus aus QuickOrders, die Röhre
-     * über den See aus TunnelShape.
+     * Kopfbild des README: Name, Satz und vier echte Bauten mit Namen – Burg aus QuickOrders, Brücke, Tunnelröhre und
+     * Treppe aus TunnelShape. Vorher (2026-11-19, erster Entwurf) Burg, Röhre und Hochhaus ohne Namen; Hinweis des
+     * Nutzers „du hast die brücken, tunnel und treppen vergessen … im git repo“: Auf der Startseite kamen sie kaum
+     * vor.
      */
     static void banner(Path file) throws Exception {
         BufferedImage img = new BufferedImage(1860, 560, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = canvas(img);
         g.setColor(TEXT);
-        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 96));
-        g.drawString("Baumeister", 60, 200);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 92));
+        g.drawString("Baumeister", 56, 190);
         g.setColor(ACCENT);
-        g.fillRect(64, 226, 260, 5);
+        g.fillRect(60, 214, 250, 5);
         g.setColor(TEXT);
-        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 30));
-        g.drawString("Baut auf Zuruf – Block für Block, wie ein Spieler.", 62, 292);
-        g.drawString("Mit Vera, die dich begleitet und mit dir spricht.", 62, 336);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 28));
+        g.drawString("Baut auf Zuruf – Häuser, Burgen,", 58, 276);
+        g.drawString("Tunnel, Treppen und Brücken.", 58, 314);
+        g.drawString("Block für Block, wie ein Spieler.", 58, 352);
         g.setColor(MUTED);
-        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 21));
-        g.drawString("Plugin für Paper 26.2 und Spigot 1.21.11 · KI lokal, aber nicht nötig", 62, 400);
-        g.drawString("Schnellbau · Tunnel · Maschinen · Städte 1:1 · Rückgängig über Neustart", 62, 434);
-        TunnelBilder.Scene tube = TunnelBilder.scenes().get(1);
-        tile(g, 900, 60, 300, 440);
-        iso(g, quick("eine Burg"), 910, 90, 280, 380);
-        tile(g, 1220, 60, 300, 440);
-        iso(g, tube.cells(), 1230, 90, 280, 380);
-        tile(g, 1540, 60, 280, 440);
-        iso(g, quick("ein Hochhaus mit 8 Stockwerken"), 1550, 90, 260, 380);
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 20));
+        g.drawString("Mit Vera, die dich begleitet und mit dir spricht", 58, 410);
+        g.drawString("Paper 26.2 · Spigot 1.21.11 · KI lokal, aber nicht nötig", 58, 442);
+        List<TunnelBilder.Scene> sc = TunnelBilder.scenes();
+        List<Map.Entry<String, Map<Pos, BlockSpec>>> shots = List.of(
+                Map.entry("Burg", quick("eine Burg")),
+                Map.entry("Brücke", sc.get(4).cells()),
+                Map.entry("Tunnel", sc.get(1).cells()),
+                Map.entry("Treppe", sc.get(2).cells()));
+        int x = 690;
+        int w = 279;
+        for (Map.Entry<String, Map<Pos, BlockSpec>> s : shots) {
+            tile(g, x, 50, w, 460);
+            iso(g, s.getValue(), x + 10, 70, w - 20, 370);
+            g.setColor(TEXT);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24));
+            int tw = g.getFontMetrics().stringWidth(s.getKey());
+            g.drawString(s.getKey(), x + (w - tw) / 2, 488);
+            x += w + 12;
+        }
         g.dispose();
         ImageIO.write(img, "png", file.toFile());
     }
