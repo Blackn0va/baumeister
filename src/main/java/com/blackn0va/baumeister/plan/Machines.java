@@ -110,7 +110,8 @@ public final class Machines implements ModuleLibrary {
         add(logicMachine("addierer_2bit", QuickOrders.ADDER, "2-bit adder (calculator): levers A0, B0, A1, B1 on the "
                 + "left, front to back; lamps at the back S0 (1), S1 (2), C (4) show A + B."));
         add(adder4());
-        add(accumulator4());
+        add(accumulator4(false));
+        add(accumulator4(true));
         add(display());
         // Befehlsblock-Maschinen (Plan B7, 2026-11-08): nur mit der Stufe Befehle baubar; Probe in 4 Richtungen.
         add(CommandMachines.button());
@@ -1631,43 +1632,53 @@ public final class Machines implements ModuleLibrary {
      * (15,3,38) ← Wandfackel (16,3,38) an der Schiene. Die Spalte x 15 an der Lampe ist frei, x 16–19 (z 34) ist
      * Draht des Übertragsnetzes – deshalb beginnt die Taktschiene erst bei z 36, eine Reihe Abstand dazu. Takt-Hebel
      * hinten links, die Taktleitung läuft auf z 44 nach rechts, je Stufe ein Abzweig.
+     *
+     * clear=false baut akkumulator_4bit, clear=true die Maschine mit Löschen (CLEAR_ACCUMULATOR, siehe
+     * accumulatorClear). Mit false läuft jede Zeile genau wie vor dem 2026-11-20 – Zelle für Zelle und in derselben
+     * Reihenfolge, belegt durch MachinesTest.existingMachinesKeepTheTestedLayout. Wer hier für das Löschen etwas
+     * außerhalb von „if (clear)“ verschiebt, ändert den auf dem Testserver geprüften akkumulator_4bit mit.
      */
-    private static Machine accumulator4() {
+    private static Machine accumulator4(boolean clear) {
         LogicCircuit.Circuit fa = fullAdderForChain();
         Grid g = new Grid();
         adderChain(g, fa, ACC_FRONT, false);
         int back = ACC_FRONT + fa.module().size().z() - 1;                 // z der Summenlampen (34)
         int sx = fa.outputs().getFirst().lamp().x();                       // x der Summenlampe (14)
-        int bus = back + 10;                                               // Taktleitung (44)
+        int gate = back + 2;                                               // z der Löschsperre (nur clear)
+        int master = clear ? gate + 1 : back + 2;                          // z des Masters (36, mit Sperre 37)
+        int bus = master + 8;                                              // Taktleitung (44, mit Sperre 45)
         List<Pin> ins = new ArrayList<>();
         List<Pin> outs = new ArrayList<>();
         for (int bit = 0; bit < 4; bit++) {
             int dx = bit * ADDER_STRIDE;
             int x = dx + sx;
-            g.put(x, 3, back + 1, "repeater[facing=front]")               // liest die Summenlampe
-                    .put(x, 3, back + 2, "repeater[facing=front]")        // Master
-                    .put(x + 1, 3, back + 2, "repeater[facing=right]")
-                    .put(x + 2, 3, back + 2, "repeater[facing=right,delay=3]")
-                    .put(x, 3, back + 3, WIRE)
-                    .put(x, 3, back + 4, "repeater[facing=front]")        // Slave
-                    .put(x + 1, 3, back + 4, "repeater[facing=right]")
-                    .put(x + 2, 3, back + 4, "redstone_wall_torch[facing=left]");
-            for (int z = back + 1; z <= back + 4; z++) {
+            g.put(x, 3, back + 1, "repeater[facing=front]");              // liest die Summenlampe
+            if (clear) {
+                g.put(x, 3, gate, "comparator[facing=front,mode=subtract]"); // Sperre: L an → 0 in den Master
+            }
+            g.put(x, 3, master, "repeater[facing=front]")                 // Master
+                    .put(x + 1, 3, master, "repeater[facing=right]")
+                    .put(x + 2, 3, master, "repeater[facing=right,delay=3]")
+                    .put(x, 3, master + 1, WIRE)
+                    .put(x, 3, master + 2, "repeater[facing=front]")      // Slave
+                    .put(x + 1, 3, master + 2, "repeater[facing=right]")
+                    .put(x + 2, 3, master + 2, "redstone_wall_torch[facing=left]");
+            for (int z = back + 1; z <= master + 2; z++) {
                 g.put(x, 2, z, "stone");
             }
-            g.put(x + 1, 2, back + 2, "stone").put(x + 2, 2, back + 2, "stone").put(x + 1, 2, back + 4, "stone");
+            g.put(x + 1, 2, master, "stone").put(x + 2, 2, master, "stone").put(x + 1, 2, master + 2, "stone");
             // Taktschiene der Stufe: Stein auf y 3, Draht darauf, von der Taktleitung bis zum Master-Riegel.
-            for (int z = back + 2; z <= bus; z++) {
+            for (int z = master; z <= bus; z++) {
                 g.put(x + 3, 3, z, "stone").put(x + 3, 4, z, WIRE);
             }
             // Rückführung: hinter dem Slave hoch auf y 6, eine Spalte nach links, über das Rechenwerk nach vorn,
             // vor der Vorderkante hinunter auf y 1, nach links bis x 0 und von vorn in den A-Eingang.
             List<Pos> path = new ArrayList<>();
-            path.add(new Pos(x, 3, back + 5));
-            path.add(new Pos(x, 4, back + 6));
-            path.add(new Pos(x, 5, back + 7));
-            path.add(new Pos(x, 6, back + 8));
-            for (int z = back + 8; z >= ACC_FRONT - 1; z--) {
+            path.add(new Pos(x, 3, master + 3));
+            path.add(new Pos(x, 4, master + 4));
+            path.add(new Pos(x, 5, master + 5));
+            path.add(new Pos(x, 6, master + 6));
+            for (int z = master + 6; z >= ACC_FRONT - 1; z--) {
                 path.add(new Pos(x - 1, 6, z));
             }
             for (int y = 5; y >= 1; y--) {
@@ -1702,17 +1713,21 @@ public final class Machines implements ModuleLibrary {
         Pos ci = fa.inputPins().get(2);
         ins.add(pin("CI", ci.x(), ci.y(), ACC_FRONT + ci.z()));
         ins.add(pin("T", first - 1, 4, bus));
+        if (clear) {
+            ins.add(accumulatorClear(g, sx, gate, bus));
+        }
         // Ablauf: B nur bei T aus ändern (Haltezeit wie register_4bit). 3+3 = 6, +5 = 11, +5 = 16 → 0 (Überlauf),
         // 15, dann +1 → 0: der Übertrag läuft durch alle vier Stufen und zurück in den Speicher.
         List<Step> steps = new ArrayList<>();
         int acc = 0;
-        int[][] plan = {{3, 0}, {3, 1}, {3, 0}, {3, 1}, {3, 0}, {5, 0}, {5, 1}, {5, 0}, {5, 1}, {5, 0}, {15, 0},
-                {15, 1}, {15, 0}, {1, 0}, {1, 1}, {1, 0}};
+        int[][] plan = clear ? CLEAR_PLAN : new int[][] {{3, 0}, {3, 1}, {3, 0}, {3, 1}, {3, 0}, {5, 0}, {5, 1},
+                {5, 0}, {5, 1}, {5, 0}, {15, 0}, {15, 1}, {15, 0}, {1, 0}, {1, 1}, {1, 0}};
         boolean clock = false;
         for (int[] p : plan) {
             boolean t = p[1] == 1;
+            boolean l = clear && p[2] == 1;
             if (t && !clock) {
-                acc = (acc + p[0]) & 15;
+                acc = l ? 0 : (acc + p[0]) & 15;
             }
             clock = t;
             Map<String, Boolean> in = new LinkedHashMap<>();
@@ -1722,12 +1737,115 @@ public final class Machines implements ModuleLibrary {
                 out.put("Q" + i, (acc >> i & 1) == 1);
             }
             in.put("T", t);
+            if (clear) {
+                in.put("L", l);
+            }
             steps.add(new Step(in, out));
         }
-        return new Machine(g.module("akkumulator_4bit", "4-bit accumulator: each clock adds B to the stored value. "
-                + "Levers B at the front left of each adder, clock T at the back left; lamps Q0..Q3 above the front "
-                + "show the value, bit 0 left."), List.copyOf(ins), List.copyOf(outs), "lamp", Map.of(),
-                List.copyOf(steps));
+        Module mod = clear
+                ? g.module(CLEAR_ACCUMULATOR, "4-bit accumulator with clear: each clock T adds B to the stored value; "
+                        + "with lever L on, the clock sets it to 0 instead. Levers B front left, T and L back left; "
+                        + "lamps Q0..Q3 show the value.")
+                : g.module("akkumulator_4bit", "4-bit accumulator: each clock adds B to the stored value. "
+                        + "Levers B at the front left of each adder, clock T at the back left; lamps Q0..Q3 above the "
+                        + "front show the value, bit 0 left.");
+        return new Machine(mod, List.copyOf(ins), List.copyOf(outs), "lamp", Map.of(), List.copyOf(steps));
+    }
+
+    /**
+     * Name der Maschine mit Löschen: ASCII wie alle Bauteilnamen; „Akkumulator mit Löschen“ trifft ihn als ganze
+     * Wortfolge (RequestHints.findNames), „Akkumulator“ allein weiter keinen.
+     */
+    static final String CLEAR_ACCUMULATOR = "akkumulator_mit_loeschen"; // umlaut-ok
+
+    /**
+     * Ablauf der Maschine mit Löschen je Schritt {B, T, L}. B und L ändern sich nur bei T aus (Haltezeit wie B im
+     * akkumulator_4bit). Geprüft wird: L allein ändert nichts (Löschen wirkt mit dem Takt), Takt mit L ergibt 0 statt
+     * AKKU + B, nach dem Löschen rechnet er normal weiter, Löschen von 15 setzt alle vier Bits zurück (jede der vier
+     * Sperren einmal mit 1 davor), und der Überlauf geht danach wie vorher.
+     */
+    private static final int[][] CLEAR_PLAN = {
+            {3, 0, 0}, {3, 1, 0}, {3, 0, 0}, {5, 0, 0}, {5, 1, 0}, {5, 0, 0},         // 3, dann 8
+            {5, 0, 1}, {5, 1, 1}, {5, 0, 1}, {5, 0, 0}, {5, 1, 0}, {5, 0, 0},         // L: 8 → 0, dann +5 = 5
+            {10, 0, 0}, {10, 1, 0}, {10, 0, 0}, {15, 0, 1}, {15, 1, 1}, {15, 0, 1},   // 15, L mit B = 15 → 0
+            {15, 0, 0}, {15, 1, 0}, {15, 0, 0}, {1, 0, 0}, {1, 1, 0}, {1, 0, 0}};     // 15, +1 → 0 (Überlauf)
+
+    /**
+     * Löschen für CLEAR_ACCUMULATOR (2026-11-20, Vorstufe zum Steuerwerk aus „Prozessor Stufe 3“ im
+     * Gedächtnis): Mit dem Hebel L an setzt der nächste Takt AKKU := 0 statt AKKU + B. Vorher ging zurück auf 0 nur
+     * über eine passende Addition bis zum Überlauf.
+     *
+     * Wie: Zwischen dem Verstärker, der die Summenlampe liest, und dem Master sitzt je Stufe ein Komparator im
+     * Subtraktionsmodus (z gate). Hinten 15 vom Verstärker, von links 15 vom Löschverstärker – heraus kommt 0, der
+     * Master übernimmt bei T aus eine 0, der Takt gibt sie an den Slave. Ohne L kommt die Summe unverändert durch. Der
+     * Seiteneingang muss ein Verstärker sein: Draht käme mit weniger als 15 an, der Komparator ließe 15 − Stärke ≥ 1
+     * durch, und der Master sähe trotz L eine 1. Vergleichsmodus wäre falsch herum: 15 gegen 15 gibt 15.
+     *
+     * Warum mit dem Takt und nicht sofort: In einem Master-Slave-Speicher ist immer einer der beiden Riegel zu, und ein
+     * verriegelter Verstärker lässt sich von außen nicht auf 0 zwingen, nur entriegeln. Sofortiges Löschen bräuchte
+     * getrennte Riegelleitungen für Master und Slave und eine Verzögerung beim Loslassen, sonst fängt der Slave den
+     * alten Master-Wert wieder ein (durchgerechnet 2026-11-20, je ein Redstone-Tick Abstand). Mit dem Takt ist L ein
+     * Dateneingang wie B: Ein Steuerwerk legt ihn an, der Takt führt ihn aus – so löscht auch ein Prozessor.
+     *
+     * Geometrie (lokal, Stufe bei x = dx + sx): Sperre (x, 3, gate); Löschverstärker (x − 1, 3, gate) zeigt von
+     * links hinein. Die Leitung dahin kommt von hinten auf y 1 (dort liegt hinter dem Rechenwerk sonst nichts),
+     * Spalte x − 2, und steigt erst die letzten zwei Felder auf y 3 – mit einem Feld Abstand zur Reihe der
+     * Summenlampen (z gate − 2, Draht des ODER-Netzes), Draht direkt daneben verbände sich mit ihr. Von rechts ginge
+     * es nicht: Dort liegen die Master-Riegel und die Taktschiene (x + 3), Draht auf y 3 neben ihrem Stein verbände
+     * sich schräg nach oben mit ihrem Draht auf y 4. Die Löschleitung läuft hinter der Taktleitung (z bus + 1) auf
+     * y 1 nach rechts, Verstärker vor jedem Abzweig und einer dazwischen wie dort; jeder Abzweig beginnt mit einem
+     * Verstärker, der nur von der Leitung nimmt. Hebel L hinten links am Anfang der Leitung.
+     *
+     * Speicher nach dem Bau auf 0: derselbe Weg wie akkumulator_4bit – BuildJob setzt jeden verriegelten Verstärker,
+     * der an ist, nach dem Bau auf aus (6eb5eab). Der Komparator ist kein Speicher. Gibt den Pin von L zurück.
+     */
+    private static Pin accumulatorClear(Grid g, int sx, int gate, int bus) {
+        int j0 = sx - 2;                                                   // Spalte des ersten Abzweigs (12)
+        int line = bus + 1;                                                // z der Löschleitung (46)
+        List<Pos> cells = new ArrayList<>();
+        for (int bit = 0; bit < 4; bit++) {
+            int j = bit * ADDER_STRIDE + j0;
+            cells.add(new Pos(j, 1, bus));
+            List<Pos> path = new ArrayList<>();
+            for (int z = bus - 1; z >= gate + 2; z--) {
+                path.add(new Pos(j, 1, z));
+            }
+            path.add(new Pos(j, 2, gate + 1));
+            path.add(new Pos(j, 3, gate));
+            path.add(new Pos(j + 1, 3, gate));                             // Löschverstärker, zeigt in die Sperre
+            for (Pos p : path) {
+                cells.add(p);
+                if (p.y() > 1) {
+                    cells.add(p.add(0, -1, 0));
+                }
+            }
+            requireFree(g, cells);
+            cells.clear();
+            g.put(j, 1, bus, "repeater[facing=back]");                     // Abzweig: nimmt nur von der Leitung
+            route(g, path, 15, true);
+        }
+        int last = 3 * ADDER_STRIDE + j0;
+        for (int x = j0 - 1; x <= last; x++) {
+            cells.add(new Pos(x, 1, line));
+        }
+        requireFree(g, cells);
+        g.put(j0 - 1, 1, line, LEVER);                                     // L
+        for (int x = j0; x <= last; x++) {
+            int rel = (x - j0) % ADDER_STRIDE;
+            boolean repeater = x > j0 && (rel == ADDER_STRIDE - 1 || rel == 14);
+            g.put(x, 1, line, repeater ? "repeater[facing=left]" : WIRE);
+        }
+        return pin("L", j0 - 1, 1, line);
+    }
+
+    /** Die Löschleitung darf nichts überbauen – route() und put() überschrieben belegte Zellen still. */
+    private static void requireFree(Grid g, List<Pos> cells) {
+        for (Pos p : cells) {
+            if (g.at(p.x(), p.y(), p.z()) != null) {
+                throw new IllegalStateException("Löschleitung trifft belegte Zelle " + p + ": " + g.at(p.x(), p.y(),
+                        p.z()));
+            }
+        }
     }
 
     /**
