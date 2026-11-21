@@ -19,7 +19,7 @@ mode ::= "\"new\"" | "\"update\""
 design ::= "\"" char{0,700} "\""
 reply ::= "\"" char{0,200} "\""
 
-steps ::= "[" ws step ( ws "," ws step ){0,59} ws "]"
+steps ::= "[" nl step ( "," nl step ){0,59} nl "]"
 
 # Äußere Klammer: Der GBNF-Leser von llama.cpp erlaubt Zeilenumbrüche nur innerhalb von Klammern
 # (parse_space mit newline_ok = is_nested).
@@ -77,5 +77,10 @@ width ::= [1-9]
 # JSON-Zeichen ohne Steuerzeichen; Escapes wie in JSON.
 char ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{4} )
 
-# Leerraum begrenzt: Ein unbegrenztes [ \t\n]* ließe das Modell endlos Leerzeilen schreiben, bis max_tokens greift.
-ws ::= | " " | "\n" [ \t]{0,8}
+# Leerraum: im Schritt und im Kopf keiner, zwischen den Schritten höchstens ein Zeilenumbruch – genau die Form der
+# Beispiele in system-prompt.txt. Vorher ws ::= | " " | "\n" [ \t]{0,8} überall: Gemessen 2026-11-21 (PlanBench,
+# Qwen2.5 7B) schrieb das Modell die Zuckerrohrfarm eingerückt, jedes Feld auf eigener Zeile, und lief in beiden
+# Runden bei 8 191 Token in den Kontext. Wer Leerzeichen und Einrückung zurückgibt, bezahlt sie mit Antwort-Token,
+# die vor der 8 192-Grenze fehlen. ws bleibt als (leere) Regel stehen, weil GrammarDriftTest die Felder daran liest.
+ws ::= ""
+nl ::= | "\n"
