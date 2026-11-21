@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Geändert
+- **Plan-Vorschau der Host-App wie der echte Bau:** Häuser und Hochhäuser zeigt die Vorschau jetzt so, wie das
+  Plugin sie baut (Fenster, Leiter, Einrichtung, Lampen, Dachplatten, hohles fill, Betten, Aliasnamen);
+  abgeschnittene Antworten zeigen die vollständigen Schritte statt nichts. Gemessen an 50 echten Plänen:
+  35 von 46 zellgenau statt 16 von 41. Maschinen und Bauformen wie die Burg zeigt sie weiter vereinfacht.
 - **Weniger verworfene KI-Pläne bei Maschinen:** Setzt die KI eine Lampe oder einen Hebel genau dorthin, wo die
   Maschine oder Schaltung schon ihre eigene Lampe bzw. ihren Hebel hat, fällt der überflüssige Schritt weg –
   vorher wurde deshalb der ganze Plan verworfen. Ein anderer Block oder Zustand dort bleibt eine Absage.

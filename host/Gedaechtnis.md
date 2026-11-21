@@ -189,7 +189,10 @@ Stand: 2026-11-16
 - Meldungen im Infobereich am GPU-PC mit echtem Tunnelabbruch prüfen (hier nur Unit-Test und Bildschirmfoto).
 - Ende-Grund nicht im echten Fenster geprüft: Windows-Abmeldung (commitDataRequest), Infobereich „Beenden“, Fenster
   ohne Infobereich – nur Bildschirmfoto-Lauf und `taskkill` gemessen.
-- Plan-Vorschau mit echten Modellplänen (Haus, Hochhaus) gegen den Bau vergleichen.
+- Plan-Vorschau gegen den Bau: seit e23daea an 50 echten Plänen 35/46 zellgenau (vorher 16/41), Probe
+  `host/probes/plan_preview` + `PreviewCellsProbe`. Offen: Ersatzblöcke (6 Pläne) als Hinweis zeigen, Module mit
+  Maßen vom Plugin melden lassen (4), Bauformen aus Structures (1); Vorschau zeigt auch Pläne, die das Plugin
+  ablehnt. Im echten Fenster nicht angesehen.
 - `MainWindow::refresh`/`notify_events`: seit b1a1395 über `window_feed` getestet (Plan genau einmal, verdrängte
   Meldung nicht erneut). Dedupe hängt auch am Notifier (Plannummer) – „nicht erneut“ sichern nur plan_changed und
   der Abrufzähler. `swbh_test_server` war 2026-11-21 in einem Gesamtlauf einmal rot, einzeln grün – Wackler, Ursache
