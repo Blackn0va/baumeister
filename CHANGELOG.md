@@ -5,6 +5,13 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Eigener Begleitername auch beim Sprechen:** Heißt die Begleiterin im Plugin anders als Vera (`begleiter.name`),
+  nimmt die Spracherkennung der Host-App diesen Namen in ihren Vortext. Vorher stand dort fest „Vera“, ein anderer
+  Name wurde schlechter verstanden. Der Name kommt über die bestehende Verbindung; ein ungültiger fällt auf „Vera“
+  zurück. Die Host-App braucht dafür das neue Plugin (ältere schicken keinen Namen – dann bleibt es bei Vera).
+- **Akkumulator mit Löschen:** Die neue Maschine `akkumulator_mit_loeschen` addiert wie der 4-Bit-Akkumulator bei
+  jedem Takt B; steht der Hebel L an, setzt der nächste Takt den Speicher auf 0. Vorher ging das nur über einen
+  Überlauf. Auf dem Spigot-Testserver in allen vier Richtungen geprüft. <!-- umlaut-ok: Maschinen-ID -->
 - **Burg mit Hof, Bogenbrücke mit Rampen:** Eine Burg ab Hofseite 9 bekommt einen gepflasterten Weg vom Tor zu einem
   Brunnen in der Mitte; Mauern, Türme und Tor bleiben wie vorher. Liegt das Deck einer Bogenbrücke über dem Boden,
   führt an beiden Enden eine Treppe hinauf – vorher endete sie in der Luft.
