@@ -184,12 +184,23 @@ public final class PlanReview {
                         norm.truncated(), String.join("; ", repairs), attempt));
             }
             // Grundriss in den gültigen Bereich, bevor der Parser ihn ablehnt (PlanAutoFix.footprints).
+            // Log-Namen der Selbstkorrekturen einheitlich „<art>_gerichtet“ (AK-11, 2026-11-21); vorher hieß dieser
+            // „grundriss_angepasst“, der für Module „module_entfernt“ – wer in alten dev01-Logs zählt, sucht beide.
             PlanAutoFix.Fixed sides = PlanAutoFix.footprints(json);
             if (!sides.notes().isEmpty()) {
                 json = sides.json();
                 assistant = json;
                 repairs.addAll(sides.notes());
-                LOG.info(() -> "plan | grundriss_angepasst | " + String.join("; ", sides.notes()) + " versuch="
+                LOG.info(() -> "plan | grundriss_gerichtet | " + String.join("; ", sides.notes()) + " versuch="
+                        + attempt);
+            }
+            // Ungültige Seite einer Bauform (wall/castle/garden) auf die Vorgabe, ebenfalls vor dem Parser.
+            PlanAutoFix.Fixed sideFacing = PlanAutoFix.facings(json);
+            if (!sideFacing.notes().isEmpty()) {
+                json = sideFacing.json();
+                assistant = json;
+                repairs.addAll(sideFacing.notes());
+                LOG.info(() -> "plan | facing_gerichtet | " + String.join("; ", sideFacing.notes()) + " versuch="
                         + attempt);
             }
             BuildPlan plan = PlanParser.parse(json);
@@ -210,7 +221,7 @@ public final class PlanReview {
                         plan = PlanParser.parse(json);
                         build = compiler.compile(plan);
                         repairs.addAll(stripped.get().notes());
-                        LOG.info(() -> String.format(Locale.ROOT, "plan | module_entfernt | anzahl=%d anteil=%.2f "
+                        LOG.info(() -> String.format(Locale.ROOT, "plan | maschine_gerichtet | anzahl=%d anteil=%.2f "
                                 + "versuch=%d", unwanted.size(), share, attempt));
                     }
                 }
@@ -331,6 +342,13 @@ public final class PlanReview {
                 }
                 LOG.info(() -> "plan | baufehler_gebaut | modus=reparieren anzahl=" + severe.size());
             }
+            // Knapp zu groß kürzt der Compiler selbst (PlanCompiler.CROP_TOLERANCE); hier wird es als Korrektur
+            // sichtbar – vorher stand es nur in den Warnungen, ohne Log und ohne Eintrag in den Nachbesserungen.
+            List<String> cropped = build.warnings().stream().filter(PlanReview::isCrop).toList();
+            if (!cropped.isEmpty()) {
+                repairs.addAll(cropped);
+                LOG.info(() -> "plan | größe_gerichtet | " + String.join("; ", cropped) + " versuch=" + attempt);
+            }
             siteCheck = true;
             if (!update) {
                 checkOverbuild(ctx.survey(), ctx.prompt(), build, ctx.maxOverbuild());
@@ -343,6 +361,11 @@ public final class PlanReview {
             }
             return new GiveUp(e.getMessage(), siteCheck, e.getMessage());
         }
+    }
+
+    /** Warnung des Compilers „Bauwerk A×B×C auf N je Richtung gekürzt.“ (PlanCompiler.compile). */
+    static boolean isCrop(String warning) {
+        return warning.startsWith("Bauwerk ") && warning.endsWith(" je Richtung gekürzt.");
     }
 
     private static final java.util.regex.Pattern UNKNOWN = java.util.regex.Pattern.compile(
