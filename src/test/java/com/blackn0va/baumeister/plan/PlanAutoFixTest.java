@@ -9,8 +9,12 @@ import com.blackn0va.baumeister.plan.PlanReview.Accept;
 import com.blackn0va.baumeister.plan.PlanReview.LintMode;
 import com.blackn0va.baumeister.plan.PlanReview.Verdict;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import org.junit.jupiter.api.Test;
 
@@ -137,5 +141,115 @@ class PlanAutoFixTest {
         assertTrue(pillars.stream().allMatch(c -> c.block().id().equals("oak_planks")));
         assertFalse(a.remaining().stream().anyMatch(i -> i.rule() == PlanLinter.Rule.FLOATING),
                 a.remaining().toString());
+    }
+
+    // ---------------------------------------------------------------- AK-11 (dev01-Logs bis 2026-11-21)
+
+    /** Log-Zeilen des Plugin-Loggers während run – belegt, dass jede Korrektur „plan | <art>_gerichtet“ meldet. */
+    private static List<String> logOf(Runnable run) {
+        Logger log = Logger.getLogger("Baumeister");
+        List<String> lines = new ArrayList<>();
+        Handler h = new Handler() {
+            @Override
+            public void publish(LogRecord r) {
+                lines.add(r.getMessage());
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        log.addHandler(h);
+        try {
+            run.run();
+        } finally {
+            log.removeHandler(h);
+        }
+        return lines;
+    }
+
+    private static boolean logged(List<String> lines, String kind) {
+        return lines.stream().anyMatch(l -> l.startsWith("plan | " + kind + " |"));
+    }
+
+    /** 3× verworfen: wall mit facing up – die Seite fällt weg, die Mauer wird mit der Vorgabe gebaut. */
+    @Test
+    void wallWithFacingUpIsBuiltWithTheDefaultSide() {
+        String plan = HouseSite.plan("{\"op\":\"wall\",\"block\":\"stone_bricks\",\"from\":[0,0,0],"
+                + "\"to\":[12,0,0],\"height\":5,\"facing\":\"up\"}");
+        List<Accept> out = new ArrayList<>();
+        List<String> log = logOf(() -> out.add(accepted("bau eine mauer", plan)));
+        Accept a = out.getFirst();
+        assertEquals("", a.plan().steps().getFirst().facing());
+        assertTrue(a.repairs().stream().anyMatch(r -> r.contains("wall-facing „up“ ungültig")),
+                a.repairs().toString());
+        assertTrue(logged(log, "facing_gerichtet"), log.toString());
+    }
+
+    /** Dieselbe Fehlerart mit einem Wort, das schon der Parser ablehnt (north statt front/back/left/right). */
+    @Test
+    void gardenWithCompassFacingIsBuiltWithTheDefaultGate() {
+        String plan = HouseSite.plan("{\"op\":\"garden\",\"block\":\"oak_fence\",\"from\":[0,0,0],"
+                + "\"to\":[8,0,8],\"facing\":\"north\"}");
+        Accept a = accepted("bau einen garten", plan);
+        assertEquals("", a.plan().steps().getFirst().facing());
+    }
+
+    /** Tür, Modul, Kolben: facing trägt dort die Funktion – die Korrektur fasst nur die drei Bauformen an. */
+    @Test
+    void facingFixLeavesOtherOpsAndValidSidesAlone() {
+        String plan = HouseSite.plan(
+                "{\"op\":\"set\",\"block\":\"piston\",\"pos\":[0,1,0],\"facing\":\"up\"}",
+                "{\"op\":\"wall\",\"block\":\"stone_bricks\",\"from\":[0,0,4],\"to\":[9,0,4],\"facing\":\"Back\"}");
+        PlanAutoFix.Fixed f = PlanAutoFix.facings(plan);
+        assertEquals(plan, f.json());
+        assertTrue(f.notes().isEmpty(), f.notes().toString());
+    }
+
+    /** Überbau bleibt fail-closed: die Korrektur macht aus einem Überbau keinen Bau, die Absage bleibt wortgleich. */
+    @Test
+    void facingFixDoesNotLetAWallThroughAnExistingHouse() {
+        String through = "{\"op\":\"wall\",\"block\":\"stone_bricks\",\"from\":[0,0,10],\"to\":[12,0,10],"
+                + "\"height\":5,\"facing\":\"%s\"}";
+        String prompt = "bau eine mauer";
+        PlanReview.Context ctx = new PlanReview.Context(prompt, RequestHints.parse(prompt, MODULES),
+                HouseSite.withHouse(), false, 12, 1, LintMode.STRICT);
+        Verdict bad = new PlanReview(COMPILER, LIB, ctx).judge(HouseSite.plan(String.format(through, "up")), 1);
+        Verdict valid = new PlanReview(COMPILER, LIB, ctx).judge(HouseSite.plan(String.format(through, "")), 1);
+        PlanReview.GiveUp g = assertInstanceOf(PlanReview.GiveUp.class, bad, bad::toString);
+        PlanReview.GiveUp ref = assertInstanceOf(PlanReview.GiveUp.class, valid, valid::toString);
+        assertTrue(g.siteCheck(), "Bauplatzfehler, kein Ersatzbau");
+        assertEquals(ref.reason(), g.reason());
+        assertEquals(ref.playerText(), g.playerText());
+    }
+
+    /** Die schon vorhandenen Korrekturen melden sich einheitlich als „<art>_gerichtet“. */
+    @Test
+    void existingFixesLogTheirKindAsGerichtet() {
+        List<String> house = logOf(() -> accepted("bau ein haus", HouseSite.plan(
+                "{\"op\":\"house\",\"block\":\"oak_planks\",\"from\":[0,0,0],\"to\":[31,0,0],\"floors\":1}")));
+        assertTrue(logged(house, "grundriss_gerichtet"), house.toString());
+        List<String> sky = logOf(() -> accepted("bau ein hochhaus", HouseSite.plan("{\"op\":\"skyscraper\","
+                + "\"block\":\"stone_bricks\",\"from\":[0,0,0],\"to\":[3,0,2],\"floors\":6}")));
+        assertTrue(logged(sky, "grundriss_gerichtet"), sky.toString());
+        List<String> module = logOf(() -> accepted("bau ein haus", HouseSite.plan(
+                "{\"op\":\"house\",\"block\":\"oak_planks\",\"from\":[0,0,0],\"to\":[9,0,9],\"floors\":2}",
+                "{\"op\":\"module\",\"name\":\"und_gatter\",\"pos\":[12,0,0]}")));
+        assertTrue(logged(module, "maschine_gerichtet"), module.toString());
+    }
+
+    /** Knapp zu groß: gekürzt, als Nachbesserung sichtbar und als „größe_gerichtet“ geloggt. */
+    @Test
+    void croppedBuildIsReportedAsARepair() {
+        List<Accept> out = new ArrayList<>();
+        List<String> log = logOf(() -> out.add(accepted("bau einen turm", HouseSite.plan(
+                "{\"op\":\"walls\",\"block\":\"stone_bricks\",\"from\":[0,0,0],\"to\":[12,200,4]}"))));
+        assertTrue(out.getFirst().repairs().stream().anyMatch(r -> r.contains("auf 192 je Richtung gekürzt")),
+                out.getFirst().repairs().toString());
+        assertTrue(logged(log, "größe_gerichtet"), log.toString());
     }
 }

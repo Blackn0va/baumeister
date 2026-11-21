@@ -141,6 +141,63 @@ public final class PlanAutoFix {
         return v;
     }
 
+    // ---------------------------------------------------------------- Seite der Bauformen
+
+    /** Bauformen, deren facing eine der vier Seiten sein muss (Structures.side) und bei denen leer die Vorgabe ist. */
+    static final Set<String> SIDE_FORMS = Set.of("castle", "wall", "garden");
+
+    /**
+     * Ungültiges facing bei castle, wall und garden fällt weg – dann gilt die Vorgabe der Bauform (Tor vorn, Außenseite
+     * der Mauer quer zu ihr, siehe Structures.wall). Vorher warf Structures.side („wall: facing muss front, back, left
+     * oder right sein“) bzw. der Parser bei einem Wort außerhalb up/down, und das Modell schrieb in der Reparaturrunde
+     * dasselbe noch einmal: dev01-Logs bis 2026-11-21, 3× verworfen. Eine Mauer mit der Außenseite nach oben gibt es
+     * nicht – welche Seite gemeint war, steht nirgends, die Vorgabe ist so gut wie jede geratene Seite und besser als
+     * keine Mauer. Andere Ops (Tür, Kolben, Modul) bleiben unberührt: Dort trägt facing die Funktion, und ein Wegfall
+     * wäre geraten.
+     */
+    public static Fixed facings(String json) {
+        JsonObject root = stepsRoot(json);
+        if (root == null) {
+            return new Fixed(json, List.of());
+        }
+        List<String> notes = new ArrayList<>();
+        JsonArray steps = root.getAsJsonArray("steps");
+        for (int i = 0; i < steps.size(); i++) {
+            if (!steps.get(i).isJsonObject()) {
+                continue;
+            }
+            JsonObject s = steps.get(i).getAsJsonObject();
+            String op = s.has("op") && s.get("op").isJsonPrimitive()
+                    ? s.get("op").getAsString().toLowerCase(Locale.ROOT) : "";
+            if (!SIDE_FORMS.contains(op) || !s.has("facing") || s.get("facing").isJsonNull()) {
+                continue;
+            }
+            JsonElement f = s.get("facing");
+            String facing = f.isJsonPrimitive() ? f.getAsString().trim().toLowerCase(Locale.ROOT) : f.toString();
+            if (facing.isEmpty() || Orientation.isLocalDirection(facing)) {
+                continue;
+            }
+            s.remove("facing");
+            notes.add("Schritt " + (i + 1) + ": " + op + "-facing „" + facing + "“ ungültig – Vorgabe der Bauform "
+                    + "genommen");
+        }
+        return notes.isEmpty() ? new Fixed(json, List.of()) : new Fixed(root.toString(), List.copyOf(notes));
+    }
+
+    /** Wurzelobjekt mit steps-Feld oder null (unlesbar – das meldet dann der Parser). */
+    private static JsonObject stepsRoot(String json) {
+        try {
+            JsonElement el = JsonParser.parseString(json);
+            if (!el.isJsonObject() || !el.getAsJsonObject().has("steps")
+                    || !el.getAsJsonObject().get("steps").isJsonArray()) {
+                return null;
+            }
+            return el.getAsJsonObject();
+        } catch (JsonSyntaxException | IllegalStateException e) {
+            return null;
+        }
+    }
+
     // ---------------------------------------------------------------- Module ohne Maschinenwunsch
 
     /**
