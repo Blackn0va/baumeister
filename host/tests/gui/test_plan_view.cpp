@@ -2,9 +2,14 @@
 
 #include "test_support.hpp"
 
+#include "base/fileio.hpp"
+#include "base/json.hpp"
 #include "gui/plan_view.hpp"
 
+#include <map>
+#include <sstream>
 #include <string>
+#include <tuple>
 
 using namespace swbh::gui;
 
@@ -111,7 +116,9 @@ TEST_CASE("Plan-Vorschau: Satteldach mit Überstand, First entlang der längeren
     CHECK(p.min_z == -1);
     CHECK(p.max_z == 5);
     CHECK(p.max_y == 8);                                                    // 4 Schichten (z -1…5 → Mitte z 2)
-    CHECK(p.at(3, 8, 2) == std::optional<std::string_view>("oak_stairs"));  // First
+    // First als Platte wie PlanCompiler.slabFor – bis T-017 stand hier oak_stairs, das Plugin baut dort aber oak_slab.
+    CHECK(p.at(3, 8, 2) == std::optional<std::string_view>("oak_slab"));
+    CHECK(p.at(3, 7, 1) == std::optional<std::string_view>("oak_stairs"));  // Schicht darunter bleibt Treppe
     CHECK(p.at(0, 6, 2) == std::optional<std::string_view>("oak_planks"));  // Giebelfüllung in der Wandebene
 }
 
@@ -206,4 +213,110 @@ TEST_CASE("Plan-Vorschau: Draufsicht nimmt je Spalte den obersten Block, Schnitt
     CHECK(p.palette[static_cast<std::size_t>(cut.at(1, 3).block)] == "glass");
     CHECK(cut.at(0, 1).block == -1);  // Bretter liegen bei z = 0
     CHECK(top_view(rasterize_plan(plan_with(""))).cells.empty());
+}
+
+namespace {
+
+using CellMap = std::map<std::tuple<int, int, int>, std::string>;
+
+// Erwartete Zellen aus tests/plan/data/<name>.cells.txt (Ausgabe des PlanCompilers, erzeugt von vorschau_erzeugen.py).
+CellMap expected_cells(const std::string& name) {
+    std::istringstream in(swbh::read_file(swbh::test::source_path("tests/plan/data/" + name + ".cells.txt")));
+    CellMap out;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        std::istringstream row(line);
+        int x = 0;
+        int y = 0;
+        int z = 0;
+        std::string block;
+        row >> x >> y >> z >> block;
+        out[{x, y, z}] = block;
+    }
+    return out;
+}
+
+PlanBlocks preview_of(const std::string& name) {
+    const swbh::Json record =
+        swbh::parse_utf8(swbh::read_file(swbh::test::source_path("tests/plan/data/" + name + ".json")));
+    return rasterize_plan(swbh::json_find(record, "antwort")->get<std::string>());
+}
+
+// Zählt Abweichungen und nennt die ersten, damit ein roter Lauf sagt, WO die Vorschau vom Bau abweicht.
+int count_differences(const PlanBlocks& p, const CellMap& want) {
+    int diffs = 0;
+    for (const auto& [pos, block] : want) {
+        const auto [x, y, z] = pos;
+        const auto got = p.at(x, y, z);
+        if (!got || *got != block) {
+            if (++diffs <= 5) {
+                MESSAGE(x << " " << y << " " << z << ": Plugin " << block << ", Vorschau "
+                          << (got ? std::string(*got) : std::string("nichts")));
+            }
+        }
+    }
+    std::size_t extra = 0;
+    for (int x = p.min_x; x <= p.max_x; ++x) {
+        for (int y = p.min_y; y <= p.max_y; ++y) {
+            for (int z = p.min_z; z <= p.max_z; ++z) {
+                if (p.at(x, y, z) && !want.contains({x, y, z})) {
+                    if (++extra <= 5) {
+                        MESSAGE(x << " " << y << " " << z << ": nur in der Vorschau " << std::string(*p.at(x, y, z)));
+                    }
+                }
+            }
+        }
+    }
+    return diffs + static_cast<int>(extra);
+}
+
+}  // namespace
+
+// AK-19 (T-017): Die Erwartung kommt aus dem echten PlanCompiler, nicht von Hand. Gemessen an 50 echten Plänen von
+// dev01 waren vorher 16 von 41 vergleichbaren Plänen zellgenau, nachher 35 von 46 (Rest: Module, Burg, Ersatzblöcke
+// des Server-Katalogs – bewusst, siehe plan_view.hpp).
+TEST_CASE("Plan-Vorschau: ein nachgebauter Hausplan zeigt die Zellen, die das Plugin baut") {
+    const PlanBlocks p = preview_of("vorschau-haus");
+    REQUIRE(p.ok);
+    const CellMap want = expected_cells("vorschau-haus");
+    REQUIRE(want.size() > 800);
+    CHECK(count_differences(p, want) == 0);
+    CHECK(p.cells.size() == want.size());
+}
+
+TEST_CASE("Plan-Vorschau: Hochhaus, Dachplatten, hohles fill und Aliasnamen wie im Plugin") {
+    const PlanBlocks p = preview_of("vorschau-hochhaus");
+    REQUIRE(p.ok);
+    const CellMap want = expected_cells("vorschau-hochhaus");
+    REQUIRE(want.size() > 800);
+    CHECK(count_differences(p, want) == 0);
+    CHECK(p.cells.size() == want.size());
+}
+
+TEST_CASE("Plan-Vorschau: abgeschnittene Antwort zeigt die vollständigen Schritte wie das Plugin") {
+    const PlanBlocks p = preview_of("vorschau-abgeschnitten");
+    REQUIRE(p.ok);
+    CHECK(p.steps == 2);
+    const CellMap want = expected_cells("vorschau-abgeschnitten");
+    CHECK(count_differences(p, want) == 0);
+    CHECK(p.cells.size() == want.size());
+    REQUIRE_FALSE(p.notes.empty());
+    CHECK(p.notes.front().find("abgeschnitten") != std::string::npos);
+}
+
+TEST_CASE("Plan-Vorschau: Kappen abgeschnittener Pläne – nur am Ende eines ganzen Schritts") {
+    // Abbruch direkt nach einem Komma in der Schrittliste: alles Vollständige bleibt.
+    CHECK(cut_truncated_plan(R"({"steps":[{"op":"set","pos":[1,2,3]},)") ==
+          std::optional<std::string>(R"({"steps":[{"op":"set","pos":[1,2,3]}]})"));
+    // Abbruch in einer Koordinatenliste: Der halbe Schritt fällt ganz weg.
+    CHECK(cut_truncated_plan(R"({"steps":[{"op":"set","pos":[1,2,3]},{"op":"set","pos":[4,)") ==
+          std::optional<std::string>(R"({"steps":[{"op":"set","pos":[1,2,3]}]})"));
+    // Abbruch in einem Text mit Klammer darin: Zeichen in Anführungszeichen zählen nicht.
+    CHECK(cut_truncated_plan(R"({"steps":[{"op":"set","block":"a[b]","pos":[0,0,0]},{"op":"x}]")") ==
+          std::optional<std::string>(R"({"steps":[{"op":"set","block":"a[b]","pos":[0,0,0]}]})"));
+    CHECK_FALSE(cut_truncated_plan(R"({"steps":[]})").has_value());  // vollständig
+    CHECK_FALSE(cut_truncated_plan("kein json").has_value());
 }

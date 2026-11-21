@@ -1,0 +1,5 @@
+{
+  "auftrag": "Testplan vorschau-abgeschnitten",
+  "versuch": "0",
+  "antwort": "{\"design\":\"Testabbruch\",\"reply\":\"Test\",\"mode\":\"new\",\"steps\":[{\"op\":\"fill\",\"block\":\"stone\",\"from\":[0,0,0],\"to\":[4,0,4]},\n{\"op\":\"walls\",\"block\":\"oak_planks\",\"from\":[0,1,0],\"to\":[4,3,4]},\n{\"op\":\"set\",\"block\":\"lantern\",\"pos\":[2,1,"
+}

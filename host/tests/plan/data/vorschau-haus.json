@@ -1,0 +1,5 @@
+{
+  "auftrag": "Testplan vorschau-haus",
+  "versuch": "0",
+  "antwort": "{\"design\":\"Testhaus\",\"reply\":\"Test\",\"mode\":\"new\",\"steps\":[{\"op\":\"house\",\"block\":\"spruce_planks\",\"from\":[0,0,0],\"to\":[10,0,10],\"floors\":2,\"roof_block\":\"spruce_stairs\"},{\"op\":\"set\",\"block\":\"red_bed\",\"pos\":[14,0,2],\"facing\":\"left\"},{\"op\":\"set\",\"block\":\"sunflower\",\"pos\":[14,0,5]},{\"op\":\"set\",\"block\":\"door\",\"pos\":[14,0,8]},{\"op\":\"set\",\"block\":\"stone\",\"pos\":[14,0,8]}]}"
+}

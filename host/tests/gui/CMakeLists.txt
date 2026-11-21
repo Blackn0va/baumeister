@@ -18,3 +18,10 @@ swbh_add_test(swbh_test_settings_dialog SOURCES test_settings_dialog.cpp
 # Plan/Meldungen der Fensterabfrage (gui/window_feed). Ohne QApplication, deshalb ohne Plattform-Plugin.
 swbh_add_test(swbh_test_gui_wiring SOURCES test_window_wiring.cpp
     LIBS swbh::gui_qt swbh::voice swbh::server)
+
+# Messprobe T-017 (kein ctest): Zellen der Plan-Vorschau für den Vergleich mit dem PlanCompiler des Plugins, siehe
+# probes/plan_preview/README.md. Echte Antworten liegen nie im Repo, daher Ordner als Argumente statt Testfall.
+add_executable(swbh_probe_plan_preview plan_preview_probe.cpp)
+target_link_libraries(swbh_probe_plan_preview PRIVATE swbh::compile_defaults swbh::gui_core)
+swbh_strict_warnings(swbh_probe_plan_preview)
+set_target_properties(swbh_probe_plan_preview PROPERTIES FOLDER "probes")

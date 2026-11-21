@@ -1,0 +1,5 @@
+{
+  "auftrag": "Testplan vorschau-hochhaus",
+  "versuch": "0",
+  "antwort": "{\"design\":\"Testhochhaus\",\"reply\":\"Test\",\"mode\":\"new\",\"steps\":[{\"op\":\"skyscraper\",\"block\":\"light_gray_concrete\",\"from\":[0,0,0],\"to\":[8,0,10],\"floors\":3},{\"op\":\"roof\",\"block\":\"stone_brick_stairs\",\"shape\":\"hip\",\"from\":[12,0,0],\"to\":[16,0,4]},{\"op\":\"roof\",\"block\":\"oak_stairs\",\"shape\":\"flat\",\"from\":[12,0,8],\"to\":[14,0,10]},{\"op\":\"fill\",\"block\":\"frosted_ice\",\"hollow\":true,\"from\":[18,0,0],\"to\":[21,3,3]},{\"op\":\"set\",\"block\":\"sign\",\"pos\":[18,0,6]},{\"op\":\"set\",\"block\":\"redstone\",\"pos\":[19,0,6]}]}"
+}
