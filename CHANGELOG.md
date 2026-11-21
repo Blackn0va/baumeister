@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Relay mit belegten Grenzen:** Jede Schutzgrenze des Relays hat jetzt einen eigenen Test: die Fristen für die
+  Antwort der App und für den Kopf einer Anfrage, ein Plugin, das nicht liest, hängendes Schreiben, zu viele lokale
+  Verbindungen und das Speicherbudget. Am Verhalten ändert sich nichts.
 - **Client-Mod mit Gedächtnis:** Wie im Plugin merkt sich der Client den letzten Bau eine Stunde lang im Umkreis von
   48 Blöcken. Ein Nachtrag wie „mach das Dach rot“ ändert diesen Bau, statt einen neuen zu planen;
   `/kbau rückgängig` nimmt den Nachtrag zurück und vergisst ihn. Unsinnige KI-Werte in den Einstellungen fallen

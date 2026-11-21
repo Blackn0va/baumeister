@@ -92,7 +92,7 @@ geprüft · ⚠️ läuft mit Grenzen · ❌ geht nicht
 | **Client-Mod** (Fabric) | ✅ Minecraft 26.2, im echten Client geprüft · Nachträge mit Gedächtnis („mach das Dach rot“), KI-Werte geprüft | 🧪 Nachtrag und Rückgängig des Nachtrags nur per Test, nicht im echten Spiel |
 
 Jede Zeile hat ihren Beleg im [Prüfprotokoll des Handbuchs](docs/handbuch.md#stand). Tests heute: Plugin 1 674
-Unit-Tests grün (2026-11-17), Relay 144 grün (2026-11-19), Host 14 Testprogramme.
+Unit-Tests grün (2026-11-17), Relay 155 grün (2026-11-21, alle Fristen und Budgets mit eigenem Test), Host 14 Testprogramme.
 
 ## So funktioniert's
 
