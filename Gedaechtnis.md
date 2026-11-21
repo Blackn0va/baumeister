@@ -1578,7 +1578,8 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
   Die Dateien tragen kein Urteil; der Import prüft neu.
 - Vorbilder: saubere, frei stehende Bauten sammeln (eigene per `//copy` + `//schem save`, fremde nur mit klarer
   Lizenz), je Datei Auftrag und Vorderseite in vorbilder.json; dann `DatasetGenerator --vorbilder <ordner>`. Erkennung
-  von Dächern (Treppenreihen) und Kugeln fehlt noch – heute werden Dachtreppen zu line.
+  von Dächern: seit 311dde1 werden Treppenreihen aus ≥ 2 ansteigenden Lagen ein roof (PlanDecompiler, einlagige
+  Doppelbank/Freitreppe nicht); Kugeln fehlen noch.
 - Lehrset um Reparaturrunden erweitern (kaputter Plan + Rückmeldung → korrigierter Plan) – heute nur Erstantworten.
 - Minikarte im Spiel ausprobieren: Drehung beim Umsehen (flüssig genug? ROTATE_TICKS 3), Wegpunkte und Ziel am Rand,
   Reisepunkt-Marker, Zoom mit Schleichen, Plotrahmen gedreht, ob der Klick im Kreativmodus keinen Block bricht; und mit
@@ -1588,6 +1589,7 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
   dev01-Logs zählen (bis f09f3f0 hießen die ersten zwei grundriss_angepasst|module_entfernt); NUR Logs nach dem
   letzten Deploy zählen – 2026-11-21 hatte ich ältere mitgezählt (58 von 72 Verwerfungen längst behoben). Ab
   2026-11-01 verworfen: 4 Überbau, 4 „set überschreibt Maschinenblock“, 3 schwebend, je 1 Wasser/Tür/Block fehlt.
+  „set überschreibt Maschinenblock“ mit gleichem Block richtet seit ff5240d `plan | modulzelle_gerichtet`.
   Pfeiler aus Stein unter einem Glasdach sehen ggf. fremd aus.
 - Nachbesserungen nach bestätigter Vorschau (ComfortService.Planned trägt fixes/rounds, 2026-11-01): nur Code und
   Kompilieren, nicht im Spiel geprüft (Vorschau gibt es nur für Spieler, nicht über RCON).
@@ -1641,7 +1643,8 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
   und Laternenzahl am Münchner Cache im Spiel ansehen. Bahnbrücken liegen flach, Gleise am Hang ohne aufsteigende
   Schienen, Talbrücken mit Stufe in der Mitte; Wald und Parkplätze nur als Way. Nach dem Deploy holt jede Kachel
   einmal neu (neuer Zwischenspeicher-Name) – Overpass-Last beim ersten Bau eines schon gebauten Orts.
-- Logik in Stockwerken: auf dem Server nur Richtung Norden geprüft (o/s/w nur über die Drehung der Unit-Tests);
+- Logik in Stockwerken: seit 1a0ee23 (2026-11-21) auf dem Spigot-Testserver in N/O/S/W gemessen, 6 Formeln × 4 =
+  24/24 BESTANDEN, bis 4-zu-16-Dekoder (16 Lampen, 4 Stockwerke) und „3d“ (LogicProbe 3dmax/3dalle);
   im Spiel nicht angesehen; ob das echte Modell „3d“ und lange Formeln nutzt, ungeprüft; die Grenze 480 im
   Modellplan wirkt erst mit der neuen Host-App auf dem Spiele-PC.
 - Logik (bewusst offen): Ausgänge ohne Schilder (nur Reihenfolge links → rechts). Ein mehrstelliges Rechenwerk aus
