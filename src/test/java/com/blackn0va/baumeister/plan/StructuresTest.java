@@ -9,10 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 
 import org.junit.jupiter.api.Test;
@@ -73,6 +78,12 @@ class StructuresTest {
         };
     }
 
+    /**
+     * Ein Hofpunkt, den man vom Tor aus erreichen muss. Vorher die Hofmitte – dort steht seit 2026-11-20 der Brunnen
+     * (Wasser zählt nicht als Lauffläche). Die Ecke des Pflasterrings ist in jeder Drehung frei.
+     */
+    private static final Pos YARD = new Pos(CW / 2 + 2, 1, CD / 2 + 2);
+
     /** Laufbereich: das Rechteck plus die eine Zeile davor – ohne Umweg außen um die Burg herum. */
     private static Predicate<Pos> rectPlus(int w, int d, List<Pos> row) {
         Set<Pos> extra = Set.copyOf(row);
@@ -102,7 +113,7 @@ class StructuresTest {
             for (String side : FormChecks.SIDES) {
                 String label = "castle " + side + " " + style;
                 Map<Pos, BlockSpec> s = state(compile(castle(side, style)));
-                Pos yard = new Pos(CW / 2, 1, CD / 2);
+                Pos yard = YARD;
                 List<Pos> gateRow = outsideRow(side, CW, CD, 1);
                 Set<Pos> in = new FormChecks.Walker(s, 0, false, rectPlus(CW, CD, gateRow)).reach(gateRow);
                 assertTrue(in.contains(yard), label + ": Hof vom Tor aus nicht erreichbar");
@@ -120,8 +131,7 @@ class StructuresTest {
                 String label = "castle " + side + " " + style;
                 Map<Pos, BlockSpec> s = state(compile(castle(side, style)));
                 Set<Pos> reach = new FormChecks.Walker(s, 0, false,
-                        p -> p.x() >= 0 && p.x() < CW && p.z() >= 0 && p.z() < CD).reach(
-                                List.of(new Pos(CW / 2, 1, CD / 2)));
+                        p -> p.x() >= 0 && p.x() < CW && p.z() >= 0 && p.z() < CD).reach(List.of(YARD));
                 // Wehrgang in der Mitte jeder Seite (Innenreihe 1, Laufhöhe CH+1) – auf der Torseite die Torstube.
                 for (Pos walk : List.of(new Pos(CW / 2, CH + 1, 1), new Pos(CW / 2, CH + 1, CD - 2),
                         new Pos(1, CH + 1, CD / 2), new Pos(CW - 2, CH + 1, CD / 2))) {
@@ -170,6 +180,232 @@ class StructuresTest {
         Map<Pos, BlockSpec> s = state(b);
         assertHolds(s, "castle 17");
         assertNoCell(s, p -> p.x() < 0 || p.x() > 16 || p.z() < 0 || p.z() > 16, "castle 17");
+    }
+
+    // ---------------------------------------------------------------- Burghof
+
+    /** Burg w×d mit Mauerhöhe h und Mauerdicke t. */
+    private static String castle(int w, int d, int h, int t, String facing, String style) {
+        return "{\"op\":\"castle\",\"block\":\"stone_bricks\",\"from\":[0,0,0],\"to\":[" + (w - 1) + ",0," + (d - 1)
+                + "],\"height\":" + h + ",\"width\":" + t + ",\"facing\":\"" + facing + "\",\"style\":\"" + style
+                + "\"}";
+    }
+
+    /**
+     * Grundrisse mit Hofseite ab 9 ({w, d, h, t}): Standard, die Schwelle bei Mauerdicke 4 und 5 (dort steht der
+     * Brunnen direkt hinter der Torhausleiter) und groß mit Turmradius 3. Alle Seiten ungerade: Tormitte und Hofmitte
+     * sind dann in jeder Drehung dieselbe Zelle.
+     */
+    private static final int[][] YARDS = {{CW, CD, CH, 3}, {17, 17, 4, 4}, {19, 19, 5, 5}, {37, 29, 8, 3}};
+
+    /**
+     * Hofkoordinaten einer gedrehten Burg: k = Abstand von der Torseite nach innen, l = entlang der Torseite. Nur für
+     * ungerade Seiten (siehe YARDS).
+     */
+    private record Yard(String side, int w, int d, int t) {
+
+        private boolean alongX() {
+            return side.equals("front") || side.equals("back");
+        }
+
+        int kc() {
+            return ((alongX() ? d : w) - 1) / 2;
+        }
+
+        int lc() {
+            return ((alongX() ? w : d) - 1) / 2;
+        }
+
+        int k(Pos p) {
+            return switch (side) {
+                case "front" -> p.z();
+                case "back" -> d - 1 - p.z();
+                case "left" -> p.x();
+                default -> w - 1 - p.x();
+            };
+        }
+
+        int l(Pos p) {
+            return alongX() ? p.x() : p.z();
+        }
+
+        Pos at(int k, int y, int l) {
+            return switch (side) {
+                case "front" -> new Pos(l, y, k);
+                case "back" -> new Pos(l, y, d - 1 - k);
+                case "left" -> new Pos(k, y, l);
+                default -> new Pos(w - 1 - k, y, l);
+            };
+        }
+
+        /**
+         * Hofzellen: Boden des Wegs (3 breit ab der Hofseite des Torhauses, Tiefe t + 2) und des Pflasterrings 5×5,
+         * darüber der Brunnen 3×3 bis zum Dach – nur bei Hofseite ab 9, darunter gibt es keinen Hof. Die Burg vor dem
+         * Hof setzte hier keine einzige Zelle (gezählt beim Erzeugen von CASTLE_LAYOUT: 0 in allen 32 Burgen mit
+         * Hof; bei 17×17 und Mauer 5 lägen 20 Zellen von Torhaus und Leiter darin).
+         */
+        boolean zone(Pos p) {
+            if (Math.min(w, d) - 2 * t < 9) {
+                return false;
+            }
+            int dk = k(p) - kc();
+            int dl = Math.abs(l(p) - lc());
+            if (p.y() == 0) {
+                return dl <= 1 && k(p) >= t + 2 && dk <= 0 || dl <= 2 && Math.abs(dk) <= 2;
+            }
+            return p.y() >= 1 && p.y() <= 4 && dl <= 1 && Math.abs(dk) <= 1;
+        }
+    }
+
+    private static String id(Map<Pos, BlockSpec> s, Pos p) {
+        BlockSpec b = s.get(p);
+        return b == null ? "nichts" : b.id();
+    }
+
+    /**
+     * Burg: der Hof hat einen Weg vom Tor zum Brunnen in der Mitte (Gedächtnis „Offen“: „Burg-Hof leer“). In allen
+     * vier Richtungen und beiden Turmformen führt der Weg zum eigenen Tor: Läge er nach einer falschen Drehung an
+     * einer anderen Seite, stünde Pflaster außerhalb von Weg und Ring.
+     */
+    @Test
+    void courtyardHasAPavedPathFromTheGateToAWellInTheMiddle() throws Exception {
+        for (int[] c : YARDS) {
+            for (String style : new String[] {"round", "square"}) {
+                for (String side : FormChecks.SIDES) {
+                    String label = "castle " + c[0] + "x" + c[1] + " t" + c[3] + " " + side + " " + style;
+                    Map<Pos, BlockSpec> s = state(compile(castle(c[0], c[1], c[2], c[3], side, style)));
+                    assertHolds(s, label);
+                    assertAttached(s, label);
+                    Yard yard = new Yard(side, c[0], c[1], c[3]);
+                    int kc = yard.kc();
+                    int lc = yard.lc();
+                    // Brunnen: Wasser in der Mitte auf Pflaster, Rand rundum, oben offen, Dach mit Hängelaterne
+                    assertEquals("water", id(s, yard.at(kc, 1, lc)), label + ": Wasser in der Mitte");
+                    assertEquals("cobblestone", id(s, yard.at(kc, 0, lc)), label + ": Boden unter dem Wasser");
+                    for (int dk = -1; dk <= 1; dk++) {
+                        for (int dl = -1; dl <= 1; dl++) {
+                            if (dk != 0 || dl != 0) {
+                                assertEquals("stone_bricks", id(s, yard.at(kc + dk, 1, lc + dl)),
+                                        label + ": Brunnenrand " + dk + "/" + dl);
+                            }
+                            assertEquals("spruce_slab", id(s, yard.at(kc + dk, 4, lc + dl)), label + ": Dach");
+                        }
+                    }
+                    assertEquals("nichts", id(s, yard.at(kc, 2, lc)), label + ": Wasser oben offen");
+                    BlockSpec lamp = s.get(yard.at(kc, 3, lc));
+                    assertTrue(lamp != null && lamp.id().equals("lantern") && "true".equals(lamp.props().get(
+                            "hanging")), label + ": Laterne unter dem Dach " + lamp);
+                    // Weg 3 breit wie die Durchfahrt, von der Hofseite des Torhauses bis zur Mitte, Ring 5×5
+                    for (int k = c[3] + 2; k <= kc + 2; k++) {
+                        int ring = k >= kc - 2 ? 2 : 1;
+                        for (int dl = -ring; dl <= ring; dl++) {
+                            assertEquals("cobblestone", id(s, yard.at(k, 0, lc + dl)), label + ": Pflaster bei Tiefe "
+                                    + k + ", seitlich " + dl);
+                        }
+                    }
+                    for (Map.Entry<Pos, BlockSpec> e : s.entrySet()) {
+                        if (e.getValue().id().equals("cobblestone")) {
+                            assertTrue(e.getKey().y() == 0 && yard.zone(e.getKey()), label + ": Pflaster abseits bei "
+                                    + e.getKey());
+                        }
+                    }
+                    // Zu Fuß: von vor dem Tor durch die Durchfahrt bis an den Brunnen
+                    List<Pos> gateRow = outsideRow(side, c[0], c[1], 1);
+                    Set<Pos> in = new FormChecks.Walker(s, 0, false, rectPlus(c[0], c[1], gateRow)).reach(gateRow);
+                    assertTrue(in.contains(yard.at(kc - 2, 1, lc)), label + ": vom Tor nicht zum Brunnen");
+                }
+            }
+        }
+    }
+
+    /**
+     * Hof unter 9 bleibt leer: Bei Mauerdicke 5 und Seite 17 oder 18 stünde der Brunnen in der Torhausleiter. Beide
+     * Seiten zählen – 18×30 hat in der Tiefe Platz, in der Breite nicht.
+     */
+    @Test
+    void courtyardsBelowNineStayEmpty() throws Exception {
+        for (int[] c : new int[][] {{17, 17}, {18, 18}, {18, 30}, {30, 18}}) {
+            for (String style : new String[] {"round", "square"}) {
+                for (String side : FormChecks.SIDES) {
+                    String label = "castle " + c[0] + "x" + c[1] + " t5 " + side + " " + style;
+                    Map<Pos, BlockSpec> s = state(compile(castle(c[0], c[1], 6, 5, side, style)));
+                    assertTrue(s.values().stream().noneMatch(b -> Set.of("water", "cobblestone", "spruce_slab",
+                            "spruce_fence").contains(b.id())), label + ": Hof nicht leer");
+                }
+            }
+        }
+    }
+
+    /**
+     * Fingerabdruck der Burgen ohne Hof, erzeugt 2026-11-20 mit dem Stand 2fe5a8a (vor dem Hof): je Grundriss
+     * {w, d, h, t} und Turmform über alle vier Richtungen die Zellenzahl und die ersten 16 Hexzeichen von SHA-256
+     * über die sortierten Zeilen „richtung x,y,z=block“ ohne die Hofzellen (Yard.zone). Vorher prüften die Tests
+     * nur Stichproben (Zinnen, Durchfahrt, Wehrgang) – ein Hof, der eine Turmzelle oder die Torleiter überschreibt,
+     * bliebe grün. Wer hier einen Wert ändert, hat Mauer, Turm oder Tor verändert.
+     */
+    private static final Map<String, String> CASTLE_LAYOUT = Map.ofEntries(
+            Map.entry("25x21 h6 t3 round", "9484 fce8733e86640d36"),
+            Map.entry("25x21 h6 t3 square", "9996 efc0925cd1b6cb50"),
+            Map.entry("17x17 h4 t4 round", "6568 fff896e75cec2cb4"),
+            Map.entry("17x17 h4 t4 square", "7016 4c086dafdcb32731"),
+            Map.entry("19x19 h5 t5 round", "9300 dfc2e388ebed0bb1"),
+            Map.entry("19x19 h5 t5 square", "9684 f3e617cd205a05eb"),
+            Map.entry("37x29 h8 t3 round", "18260 7eeb21957d60c5c2"),
+            Map.entry("37x29 h8 t3 square", "19860 a3bd355cdd8e9a46"),
+            // Ohne Hof (Hofseite 7): alle Zellen, die Burg bleibt ganz wie vorher.
+            Map.entry("17x17 h6 t5 round", "9332 933ca4d0191b84c8"),
+            Map.entry("17x17 h6 t5 square", "9732 8f058a81dcc6dc87"));
+
+    @Test
+    void wallsTowersAndGateStayCellForCellAsBeforeTheCourtyard() throws Exception {
+        List<int[]> cases = new ArrayList<>(List.of(YARDS));
+        cases.add(new int[] {17, 17, 6, 5});
+        Map<String, String> actual = new TreeMap<>();
+        for (int[] c : cases) {
+            for (String style : new String[] {"round", "square"}) {
+                List<String> lines = new ArrayList<>();
+                for (String side : FormChecks.SIDES) {
+                    Yard yard = new Yard(side, c[0], c[1], c[3]);
+                    state(compile(castle(c[0], c[1], c[2], c[3], side, style))).forEach((p, b) -> {
+                        if (!yard.zone(p)) {
+                            lines.add(side + " " + p.x() + "," + p.y() + "," + p.z() + "=" + b.asString());
+                        }
+                    });
+                }
+                lines.sort(null);
+                byte[] hash = MessageDigest.getInstance("SHA-256")
+                        .digest(String.join("\n", lines).getBytes(StandardCharsets.UTF_8));
+                actual.put(c[0] + "x" + c[1] + " h" + c[2] + " t" + c[3] + " " + style,
+                        lines.size() + " " + HexFormat.of().formatHex(hash).substring(0, 16));
+            }
+        }
+        assertEquals(new TreeMap<>(CASTLE_LAYOUT), actual);
+    }
+
+    /**
+     * Alles, was Hof und Rampe selbst wählen, gibt es in 1.21.11 UND 26.2 (wie TunnelStyleTest): Ein Block, den
+     * eine Fassung nicht kennt, würde dort als Ersatzblock gesetzt.
+     */
+    @Test
+    void courtyardAndRampBlocksExistInBothServerVersions() throws Exception {
+        Set<String> old = TunnelStyleTest.ids("1.21.11");
+        Set<String> now = TunnelStyleTest.ids("26.2");
+        Set<String> used = new TreeSet<>();
+        for (String side : FormChecks.SIDES) {
+            for (String style : new String[] {"round", "square"}) {
+                state(compile(castle(CW, CD, CH, 3, side, style))).values().forEach(b -> used.add(b.id()));
+            }
+        }
+        for (String[] kind : new String[][] {{"arch", "stone_bricks"}, {"beam", "stone_bricks"}, {"", "spruce_planks"},
+                {"", "oak_planks"}}) {
+            state(compile(bridge(new int[] {0, 0, 0}, new int[] {0, 0, 21}, 4, kind[0], kind[1], 3))).values()
+                    .forEach(b -> used.add(b.id()));
+        }
+        assertTrue(used.containsAll(Set.of("water", "cobblestone", "spruce_slab", "spruce_fence", "stone_brick_stairs",
+                "spruce_stairs", "oak_stairs")), "Hof und Rampen gebaut: " + used);
+        for (String id : used) {
+            assertTrue(old.contains(id) && now.contains(id), id + " fehlt in 1.21.11 oder 26.2");
+        }
     }
 
     // ---------------------------------------------------------------- Mauer
@@ -259,9 +495,14 @@ class StructuresTest {
     // ---------------------------------------------------------------- Brücke
 
     private static String bridge(int[] a, int[] b, String style, String block, int width) {
-        return "{\"op\":\"bridge\",\"block\":\"" + block + "\",\"from\":[" + a[0] + ",0," + a[2] + "],\"to\":[" + b[0]
-                + ",0," + b[2] + "]" + ",\"width\":" + width + (style.isEmpty() ? "" : ",\"style\":\"" + style + "\"")
-                + "}";
+        return bridge(a, b, 0, style, block, width);
+    }
+
+    /** Brücke mit dem Deck auf deckY (from.y und to.y). */
+    private static String bridge(int[] a, int[] b, int deckY, String style, String block, int width) {
+        return "{\"op\":\"bridge\",\"block\":\"" + block + "\",\"from\":[" + a[0] + "," + deckY + "," + a[2]
+                + "],\"to\":[" + b[0] + "," + deckY + "," + b[2] + "]" + ",\"width\":" + width
+                + (style.isEmpty() ? "" : ",\"style\":\"" + style + "\"") + "}";
     }
 
     @Test
@@ -340,6 +581,152 @@ class StructuresTest {
         assertTrue(s.get(new Pos(0, -4, 3)) == null, "zwischen den Pfeilern frei");
         // Längsträger unter dem Rand, liegend in Laufrichtung (lokal z)
         assertEquals("z", s.get(new Pos(-2, -1, 3)).props().get("axis"));
+    }
+
+    // ---------------------------------------------------------------- Brückenrampen
+
+    private static final int[][][] BRIDGE_LINES = {{{0, 0, 0}, {21, 0, 0}}, {{21, 0, 0}, {0, 0, 0}},
+            {{0, 0, 0}, {0, 0, 21}}, {{0, 0, 21}, {0, 0, 0}}};
+    private static final String[][] BRIDGE_KINDS = {{"arch", "stone_bricks", "stone_brick_stairs"},
+            {"beam", "stone_bricks", "stone_brick_stairs"}, {"", "spruce_planks", "spruce_stairs"}};
+
+    /** Planposition bei along (Laufrichtung) und across (quer) für eine Brücke entlang x oder z. */
+    private static Pos onBridge(boolean alongX, int along, int y, int across) {
+        return alongX ? new Pos(along, y, across) : new Pos(across, y, along);
+    }
+
+    /**
+     * Bogenbrücke: an beiden Enden führt eine Rampe vom Deck auf den Boden (Gedächtnis „Offen“: „Brücke ohne
+     * Rampen“). Deck auf y = 1 und 4 über dem Boden y = 0: Vom Boden vor der einen Rampe kommt man zu Fuß aufs Deck
+     * und hinter der anderen wieder hinunter, jede Spalte genau eine Stufe tiefer – in allen vier Richtungen, für
+     * Bogen, Balken und Holz.
+     */
+    @Test
+    void rampsLeadFromARaisedDeckDownToTheGroundAtBothEnds() throws Exception {
+        for (int[][] line : BRIDGE_LINES) {
+            for (String[] kind : BRIDGE_KINDS) {
+                for (int width : new int[] {1, 3}) {
+                    for (int deck : new int[] {1, 4}) {
+                        String label = "bridge " + java.util.Arrays.deepToString(line) + " " + kind[0] + " " + kind[1]
+                                + " width " + width + " deck " + deck;
+                        Map<Pos, BlockSpec> s = state(compile(bridge(line[0], line[1], deck, kind[0], kind[1],
+                                width)));
+                        assertHolds(s, label);
+                        assertAttached(s, label);
+                        boolean alongX = line[0][0] != line[1][0];
+                        int lo = alongX ? Math.min(line[0][0], line[1][0]) : Math.min(line[0][2], line[1][2]);
+                        int hi = alongX ? Math.max(line[0][0], line[1][0]) : Math.max(line[0][2], line[1][2]);
+                        int half = (width + 2) / 2;
+                        // Je Ende so viele Spalten Rampe, wie das Deck hoch liegt – darüber hinaus nichts.
+                        assertNoCell(s, p -> {
+                            int along = alongX ? p.x() : p.z();
+                            int across = alongX ? p.z() : p.x();
+                            return along < lo - deck || along > hi + deck || Math.abs(across) > half
+                                    || p.y() > deck + 2;
+                        }, label);
+                        Predicate<Pos> area = p -> {
+                            int along = alongX ? p.x() : p.z();
+                            int across = alongX ? p.z() : p.x();
+                            return along >= lo - deck - 1 && along <= hi + deck + 1 && Math.abs(across) <= half;
+                        };
+                        Pos before = onBridge(alongX, lo - deck - 1, 1, 0);
+                        Pos after = onBridge(alongX, hi + deck + 1, 1, 0);
+                        Pos top = onBridge(alongX, (lo + hi) / 2, deck + 1, 0);
+                        Set<Pos> up = new FormChecks.Walker(s, 0, false, area).reach(List.of(before));
+                        assertTrue(up.contains(top) && up.contains(after), label + ": vom Boden nicht übers Deck");
+                        Set<Pos> back = new FormChecks.Walker(s, 0, false, area).reach(List.of(after));
+                        assertTrue(back.contains(top) && back.contains(before), label + ": zurück nicht übers Deck");
+                        for (int i = 1; i <= deck; i++) {
+                            for (int along : new int[] {lo - i, hi + i}) {
+                                Pos tread = onBridge(alongX, along, deck - i, 0);
+                                assertEquals(kind[2], id(s, tread), label + ": Stufe bei " + tread);
+                                assertEquals("nichts", id(s, tread.up()), label + ": über der Stufe frei");
+                            }
+                        }
+                        // Stufen steigen zum Deck hin: facing (die hohe Seite) zeigt in Laufrichtung auf das Deck.
+                        for (Map.Entry<Pos, BlockSpec> e : s.entrySet()) {
+                            if (e.getValue().id().endsWith("_stairs")) {
+                                int[] v = FormChecks.localVector(e.getValue().props().get("facing"));
+                                int along = alongX ? e.getKey().x() : e.getKey().z();
+                                int toDeck = Integer.signum(alongX ? v[0] : v[2]);
+                                assertEquals(along < lo ? 1 : -1, toDeck, label + ": Stufe bei " + e.getKey()
+                                        + " schaut " + e.getValue().props().get("facing"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Die Stufen drehen mit der Brücke: In jeder der vier Weltrichtungen (so, wie BuildService den Plan setzt) zeigt
+     * die hohe Seite jeder Stufe auf das Deck. Wer nur die Positionen dreht, baut Rampen, die vom Deck weg steigen.
+     */
+    @Test
+    void rampStairsTurnWithTheBridgeInEveryWorldDirection() throws Exception {
+        for (int[][] line : BRIDGE_LINES) {
+            Map<Pos, BlockSpec> local = state(compile(bridge(line[0], line[1], 3, "arch", "stone_bricks", 3)));
+            Pos mid = new Pos((line[0][0] + line[1][0]) / 2, 3, (line[0][2] + line[1][2]) / 2);
+            for (Orientation.Cardinal c : Orientation.Cardinal.values()) {
+                Orientation o = new Orientation(c);
+                Pos deck = o.toWorldOffset(mid);
+                int stairs = 0;
+                for (Map.Entry<Pos, BlockSpec> e : local.entrySet()) {
+                    if (!e.getValue().id().endsWith("_stairs")) {
+                        continue;
+                    }
+                    stairs++;
+                    Pos p = o.toWorldOffset(e.getKey());
+                    int[] v = FormChecks.worldVector(o.toWorld(e.getValue()).props().get("facing"));
+                    long toDeck = (long) v[0] * (deck.x() - p.x()) + (long) v[2] * (deck.z() - p.z());
+                    assertTrue(toDeck > 0, java.util.Arrays.deepToString(line) + " Blick " + c + ": Stufe bei " + p
+                            + " steigt vom Deck weg");
+                }
+                assertEquals(2 * 3 * 3, stairs, "zwei Rampen zu je 3 Spalten, 3 Laufreihen");
+            }
+        }
+    }
+
+    /** Liegt das Deck auf dem Boden (y = 0) oder darunter, entsteht keine Rampe – Zelle für Zelle wie vorher. */
+    @Test
+    void deckOnOrBelowTheGroundGetsNoRamp() throws Exception {
+        for (int[][] line : BRIDGE_LINES) {
+            for (String[] kind : BRIDGE_KINDS) {
+                for (int deck : new int[] {0, -3}) {
+                    String label = "bridge " + java.util.Arrays.deepToString(line) + " " + kind[1] + " deck " + deck;
+                    Map<Pos, BlockSpec> s = state(compile(bridge(line[0], line[1], deck, kind[0], kind[1], 3)));
+                    boolean alongX = line[0][0] != line[1][0];
+                    int lo = alongX ? Math.min(line[0][0], line[1][0]) : Math.min(line[0][2], line[1][2]);
+                    int hi = alongX ? Math.max(line[0][0], line[1][0]) : Math.max(line[0][2], line[1][2]);
+                    assertTrue(s.values().stream().noneMatch(b -> b.id().endsWith("_stairs")), label + ": Stufen");
+                    assertNoCell(s, p -> (alongX ? p.x() : p.z()) < lo || (alongX ? p.x() : p.z()) > hi, label);
+                }
+            }
+        }
+    }
+
+    /**
+     * Deck höher als 24 (MAX_RAMP_STEPS): Structures.fit kappt die Rampe mit Warnung, statt den Plan je Höhenblock um
+     * eine Spalte über from..to wachsen zu lassen (ein Deck auf y = 200 wüchse sonst um 200 je Seite). Deck und Grenze
+     * stehen hier fest: Abgeleitet aus der Konstante, scheiterte die Gegenprobe „ohne Kappung“ nur an der
+     * Schemagrenze der Koordinate statt an der zu langen Rampe.
+     */
+    @Test
+    void tooHighDeckGetsACappedRampAndAWarning() throws Exception {
+        int max = 24;
+        int deck = 30;
+        CompiledBuild b = compile(bridge(new int[] {0, 0, 0}, new int[] {0, 0, 21}, deck, "arch", "stone_bricks", 3));
+        Map<Pos, BlockSpec> s = state(b);
+        assertHolds(s, "deck " + deck);
+        assertNoCell(s, p -> p.z() < -max || p.z() > 21 + max, "deck " + deck);
+        assertEquals("stone_brick_stairs", id(s, new Pos(0, deck - max, -max)), "letzte Stufe");
+        assertEquals("stone_brick_stairs", id(s, new Pos(0, deck - max, 21 + max)), "letzte Stufe hinten");
+        assertTrue(b.warnings().stream().anyMatch(w -> w.contains("Rampe") && w.contains("gekappt auf " + max)),
+                () -> "" + b.warnings());
+        // Bis 24 keine Warnung
+        assertTrue(compile(bridge(new int[] {0, 0, 0}, new int[] {0, 0, 21}, max, "arch", "stone_bricks", 3))
+                .warnings().isEmpty());
     }
 
     // ---------------------------------------------------------------- Garten

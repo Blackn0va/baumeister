@@ -23,8 +23,8 @@ import org.junit.jupiter.api.Test;
 /** Aussehen der Tunnel (Wunsch 2026-11-16: schöne Lichter statt Fackeln) und Material aus der Kiste. */
 class TunnelStyleTest {
 
-    /** Block-IDs einer Fassung aus dem Datengenerator (src/test/resources/blockstates). */
-    private static Set<String> ids(String version) throws IOException {
+    /** Block-IDs einer Fassung aus dem Datengenerator (src/test/resources/blockstates); auch für StructuresTest. */
+    static Set<String> ids(String version) throws IOException {
         Set<String> out = new HashSet<>();
         try (InputStream in = TunnelStyleTest.class.getResourceAsStream("/blockstates/" + version + ".txt.gz");
                 BufferedReader r = new BufferedReader(new InputStreamReader(new GZIPInputStream(in),

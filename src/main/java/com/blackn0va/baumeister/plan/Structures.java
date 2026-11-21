@@ -17,8 +17,9 @@ import java.util.Set;
  * Vollzylinder, Brunnen mit eingemauertem Wasser, Anbau auf statt neben der Wand). Zinnenreihen, Mauerdicke,
  * Brückenbögen, Beete und Baumkronen sind genau solche Wiederholung – wie bei skyscraper und house rechnet sie der
  * Compiler sicher, und ein Plan wird ein einziger Schritt statt vierzig. Jede Form hält (jeder Block hängt über
- * Nachbarn an der untersten Schicht), ist begehbar (Tor, Wehrgang, Leitern, Brückendeck) und bleibt in dem
- * Rechteck, das das LLM angegeben hat – das prüft StructuresTest in allen vier Richtungen.
+ * Nachbarn an der untersten Schicht), ist begehbar (Tor, Wehrgang, Leitern, Brückendeck, Burghof) und bleibt in dem
+ * Rechteck, das das LLM angegeben hat – das prüft StructuresTest in allen vier Richtungen. Einzige Ausnahme sind die
+ * Rampen einer Brücke, deren Deck über dem Boden liegt (siehe bridge).
  *
  * Gemeinsames Muster: Jede Form wird in einem eigenen Rahmen gerechnet (u entlang der Tor- bzw. Laufrichtung, v quer
  * dazu, Tor und Außenseite bei kleinem v) und erst beim Setzen mit Orientation.rotateLocal gedreht – Positionen UND
@@ -65,6 +66,19 @@ public final class Structures {
     static final int MIN_GATE_WALL_HEIGHT = 4;
     /** Laternen- und Pfeilerabstand: Licht etwa alle 6 Blöcke hält Monster vom Deck fern. */
     private static final int SPACING = 6;
+    /**
+     * Hofseite (Innenmaß zwischen den Mauern, w − 2·width bzw. d − 2·width), ab der die Burg Weg und Brunnen bekommt.
+     * Ab 9 steht der 3×3-Brunnen in der Hofmitte hinter der Torhausleiter (Reihe width + 2); bei 8 stünde sein Rand
+     * in ihr.
+     */
+    static final int MIN_COURTYARD_SIDE = 9;
+    /** Boden des Plans (Systemprompt: „y=0 is ground level“) – dorthin führen die Rampen der Brücke. */
+    static final int GROUND_Y = 0;
+    /**
+     * Längste Rampe je Brückenende in Stufen. Jede Stufe ist eine Spalte vor dem Deckende: Ohne Grenze wüchse ein
+     * Deck auf y = 200 um 200 Spalten je Seite über from..to hinaus. 24 wie die höchste Mauer, Bogen- und Pfeilerhöhe.
+     */
+    static final int MAX_RAMP_STEPS = MAX_STRUCTURE_HEIGHT;
 
     static final Set<String> CASTLE_STYLES = Set.of("round", "square");
     static final Set<String> BRIDGE_STYLES = Set.of("arch", "beam");
@@ -259,6 +273,13 @@ public final class Structures {
                 if (height != 0) {
                     height = clampNoted(where, "height", height, 1, MAX_STRUCTURE_HEIGHT, warnings);
                 }
+                // Die Rampenlänge ist kein Feld des Schritts, sie folgt aus from.y (rampSteps). Gekappt und gemeldet
+                // wird sie trotzdem hier, damit die Warnung denselben Weg in den Chat nimmt wie height und width.
+                int rise = s.from() == null ? 0 : s.from().y() - GROUND_Y;
+                if (rise > MAX_RAMP_STEPS) {
+                    warnings.add(where + "Rampe " + rise + " Stufen gekappt auf " + MAX_RAMP_STEPS + " (endet "
+                            + (rise - MAX_RAMP_STEPS) + " Blöcke über dem Boden)");
+                }
             }
             case TREE -> {
                 if (height != 0) {
@@ -275,6 +296,11 @@ public final class Structures {
         return new Step(s.op(), s.block(), s.from(), s.to(), s.pos(), radius, height, s.hollow(), s.dome(),
                 s.shape(), s.overhang(), s.gableBlock(), s.facing(), s.name(), s.floors(), s.windowBlock(),
                 s.roofBlock(), s.expr(), width, s.style());
+    }
+
+    /** Stufen je Rampe: Höhe des Decks (from.y) über dem Boden, höchstens {@link #MAX_RAMP_STEPS}, nie negativ. */
+    static int rampSteps(Step s) {
+        return Math.clamp((long) s.from().y() - GROUND_Y, 0, MAX_RAMP_STEPS);
     }
 
     /** Nur Werte im Schema (height 1–48, width 1–9, radius 1–24) – alles andere bleibt für validate stehen. */
@@ -476,6 +502,67 @@ public final class Structures {
         if (lantern != null) {
             f.put(mid, top + 3, gateDepth / 2, lantern.with("hanging", "true"));
         }
+        courtyard(f, t, mid, gateDepth, y0, wall);
+    }
+
+    /**
+     * Hof (2026-11-20, Gedächtnis „Offen“: „Burg-Hof leer“): Vorher lag hinter dem Tor eine leere Wiese – kein Weg,
+     * nichts, das die Mitte zeigte. Jetzt führt ein gepflasterter Weg, so breit wie die Durchfahrt, von der Hofseite
+     * des Torhauses zum Brunnen in der Hofmitte, um den Brunnen ein Pflasterring 5×5.
+     *
+     * Erst ab Hofseite {@link #MIN_COURTYARD_SIDE}: Darunter stünde der Brunnenrand in der Torhausleiter, der Hof
+     * bleibt dann leer wie vorher. Gesetzt wird nur, wo die Burg vorher nichts setzte – der Boden y0 im Hof und der
+     * Brunnen darüber. Mauern, Türme und Tor bleiben Zelle für Zelle (StructuresTest, Fingerabdruck CASTLE_LAYOUT).
+     * Wer den Brunnen größer macht oder aus der Mitte rückt, muss die Schwelle mitziehen, sonst überschreibt er Leiter
+     * oder Turm.
+     */
+    private void courtyard(Frame f, int t, int mid, int gateDepth, int y0, BlockSpec wall) throws PlanException {
+        if (Math.min(f.width, f.depth) - 2 * t < MIN_COURTYARD_SIDE) {
+            return;
+        }
+        int midV = (f.depth - 1) / 2;
+        BlockSpec paving = orElse(firstKnown("cobblestone"), wall);
+        for (int v = gateDepth; v < midV - 2; v++) {
+            for (int u = mid - 1; u <= mid + 1; u++) {
+                f.put(u, y0, v, paving);
+            }
+        }
+        for (int dv = -2; dv <= 2; dv++) {
+            for (int du = -2; du <= 2; du++) {
+                f.put(mid + du, y0, midV + dv, paving);
+            }
+        }
+        well(f, mid, midV, y0, wall);
+    }
+
+    /**
+     * Brunnen 3×3 auf dem Pflaster: Rand aus dem Mauerstein, in der Mitte eine Wasserquelle, die nach allen vier
+     * Seiten an den Rand stößt und oben offen ist (ohne Rand liefe sie über den Hof aus). Vier Holzpfosten auf den
+     * Ecken tragen ein Dach aus Holz-Halbblöcken (slab) mit Hängelaterne – das Licht hält Monster vom Hof fern.
+     * Fehlt ein Block auf dem Server, nimmt der Brunnen den Mauerstein; fehlt Wasser, bleibt ein trockener Trog.
+     */
+    private void well(Frame f, int cu, int cv, int y0, BlockSpec rim) throws PlanException {
+        BlockSpec water = firstKnown("water");
+        BlockSpec post = orElse(firstKnown("spruce_fence", "oak_fence"), rim);
+        BlockSpec roof = orElse(firstKnown("spruce_slab", "oak_slab"), rim);
+        BlockSpec lantern = firstKnown("lantern");
+        for (int dv = -1; dv <= 1; dv++) {
+            for (int du = -1; du <= 1; du++) {
+                if (du != 0 || dv != 0) {
+                    f.put(cu + du, y0 + 1, cv + dv, rim);
+                } else if (water != null) {
+                    f.put(cu, y0 + 1, cv, water);
+                }
+                if (du != 0 && dv != 0) {
+                    f.put(cu + du, y0 + 2, cv + dv, post);
+                    f.put(cu + du, y0 + 3, cv + dv, post);
+                }
+                f.put(cu + du, y0 + 4, cv + dv, roof);
+            }
+        }
+        if (lantern != null) {
+            f.put(cu, y0 + 3, cv, lantern.with("hanging", "true"));
+        }
     }
 
     /** Senkrechte Säule aus einem Block. */
@@ -652,6 +739,14 @@ public final class Structures {
      * eine Schicht – die Last geht über die Widerlager an beiden Ufern. beam: flaches Deck auf Pfeilern alle 6 Blöcke
      * (height tief, Vorgabe 4) mit Längsträgern unter den Rändern. Holz ohne style wird beam: Ein Holzbogen über
      * 20 Blöcke ist kein Bauwerk, das ein Spieler erwartet.
+     *
+     * Rampen (2026-11-20, Gedächtnis „Offen“: „Brücke ohne Rampen“): Vorher endete ein Deck über dem Boden an beiden
+     * Enden als Kante – wer auf y = 0 stand, kam nicht hinauf. Jetzt führt an jedem Ende vor from bzw. hinter to eine
+     * Treppe vom Deck auf den Boden y = 0, je Spalte eine Treppenstufe (stairs) tiefer, mit Geländer. Liegt das Deck
+     * auf dem Boden oder darunter, gibt es keine Rampe, die Brücke bleibt Zelle für Zelle wie vorher. Die Rampe ist
+     * die eine Stelle, an der eine Form über ihr Rechteck hinausgeht: Innerhalb von from..to hätte sie die Spannweite
+     * verkürzt, die das LLM über das Wasser gelegt hat. Begrenzt ist sie durch {@link #MAX_RAMP_STEPS} (fit meldet
+     * die Kappung). to.y bleibt wie bisher ohne Bedeutung – das Deck liegt auf from.y (Systemprompt).
      */
     private void bridge(Step s, BlockSpec deck, Sink out) throws PlanException {
         Pos a = s.from();
@@ -664,7 +759,8 @@ public final class Structures {
         String wood = woodOf(deck.id());
         boolean beam = s.style().isEmpty() ? wood != null : s.style().equals("beam");
         int depth = s.height() > 0 ? s.height() : beam ? 4 : Math.clamp(len / 4, 2, 10);
-        checkVolume((long) len * rows * (depth + 3));
+        int ramp = rampSteps(s);
+        checkVolume((long) len * rows * (depth + 3) + 2L * ramp * rows * 3);
         if (beam) {
             BlockSpec log = wood == null ? null : firstKnown(logFor(wood));
             BlockSpec pier = log != null ? log.with("axis", "y") : deck;
@@ -702,6 +798,45 @@ public final class Structures {
                 f.put(u, yd + 2, rows - 1 - c, lantern);
             }
         }
+        if (ramp > 0) {
+            BlockSpec stair = stairsFor(deck);
+            for (int i = 1; i <= ramp; i++) {
+                // facing = hohe Seite der Treppe = zum Deck hin; Frame.put dreht den Zustand mit der Brücke.
+                rampColumn(f, -i, yd - i, rows, c, deck, stair, rail, "right");
+                rampColumn(f, len - 1 + i, yd - i, rows, c, deck, stair, rail, "left");
+            }
+        }
+    }
+
+    /**
+     * Eine Spalte der Rampe: in den Laufreihen eine Treppenstufe auf y (ohne Treppe zum Material der Deckblock – auch
+     * das ist ein Schritt von einem Block), an den Rändern der Deckblock mit Geländer darauf, unter allem EIN Block
+     * Deck. Der hält die Stufe und stößt an die Stufe der nächsten Spalte; eine volle Rampe bis zum Boden kostete bei
+     * Deck 24 und Breite 9 rund 3 300 statt gut 500 Blöcke je Ende (gerechnet). Die unterste Stufe liegt auf y = 0 im
+     * Boden.
+     */
+    private static void rampColumn(Frame f, int u, int y, int rows, int c, BlockSpec deck, BlockSpec stair,
+            BlockSpec rail, String up) throws PlanException {
+        for (int k = 0; k < rows; k++) {
+            boolean edge = k == 0 || k == rows - 1;
+            f.put(u, y, k - c, edge || stair == null ? deck : stair.with("facing", up));
+            if (y - 1 >= GROUND_Y) {
+                f.put(u, y - 1, k - c, deck);
+            }
+            if (edge) {
+                f.put(u, y + 1, k - c, rail);
+            }
+        }
+    }
+
+    /** Treppe zum Deck wie beim Hausdach (stone_bricks → stone_brick_stairs), Holz auch aus Stamm → Bretter-Treppe. */
+    private BlockSpec stairsFor(BlockSpec deck) {
+        List<String> ids = new ArrayList<>(List.of(PlanCompiler.stairsCandidates(deck.id())));
+        String wood = woodOf(deck.id());
+        if (wood != null) {
+            ids.add(wood + "_stairs");
+        }
+        return firstKnown(ids.toArray(String[]::new));
     }
 
     // ---------------------------------------------------------------- Garten
