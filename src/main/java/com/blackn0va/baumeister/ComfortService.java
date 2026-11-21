@@ -107,8 +107,26 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
 
     @Override
     public long fingerprint(BuildService.Request r) {
-        // Ohne Rahmen gibt es keine Vorschau (divert verlangt ihn); MIN_VALUE passt dann zu keiner Prüfsumme.
-        return r.frame() == null ? Long.MIN_VALUE : SiteFingerprint.of(r.frame());
+        // Ohne Rahmen gibt es keine Vorschau (divert verlangt ihn); UNREADABLE passt dann zu keiner Prüfsumme.
+        // Ungeladene Chunks liest ofLoaded nicht (AK-8) – geladen hat sie vorher loadSite.
+        SiteFrame f = r.frame();
+        return f == null ? SiteFingerprint.UNREADABLE
+                : SiteFingerprint.ofLoaded(ChunkPrefetch.of(plugin, f.world()), f.scanChunks(), SiteFingerprint.ids(f));
+    }
+
+    @Override
+    public void loadSite(BuildService.Request r, Runnable then) {
+        SiteFrame f = r.frame();
+        if (f == null) {
+            then.run();
+            return;
+        }
+        SiteFingerprint.whenLoaded(ChunkPrefetch.of(plugin, f.world()), f.scanChunks(), then);
+    }
+
+    @Override
+    public void previewOffered(BuildService.Request r) {
+        startPreviewTimer();
     }
 
     @Override
@@ -155,13 +173,11 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
             Block a = r.frame().blockAt(build.min().add(shiftX, 0, shiftZ));
             Block b = r.frame().blockAt(build.max().add(shiftX, 0, shiftZ));
             return new ComfortFlow.Shown(a.getWorld().getName(), BuildPreview.Box.of(a.getX(), a.getY(), a.getZ(),
-                    b.getX(), b.getY(), b.getZ()), build.blockCount(), SiteFingerprint.of(r.frame()));
+                    b.getX(), b.getY(), b.getZ()), build.blockCount(), fingerprint(r));
         });
         if (shown) {
+            // Den Partikel-Takt startet previewOffered – die Vorschau entsteht erst, wenn der Bauplatz geladen ist.
             npc.status("bereit");
-            if (!flow.previews().isEmpty()) {
-                startPreviewTimer();
-            }
         }
         return shown;
     }
