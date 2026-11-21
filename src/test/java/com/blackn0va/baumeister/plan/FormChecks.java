@@ -27,7 +27,7 @@ final class FormChecks {
     static final Set<String> EXTRA = Set.of("stone_brick_wall", "grass_block", "dirt", "coarse_dirt", "poppy",
             "dandelion", "cornflower", "oxeye_daisy", "allium", "azure_bluet", "oak_fence_gate", "spruce_fence_gate",
             "spruce_leaves", "birch_log", "birch_leaves", "birch_planks", "sandstone", "sandstone_wall", "cherry_log",
-            "cherry_leaves", "oak_planks");
+            "cherry_leaves", "oak_planks", "water", "stone_brick_stairs");
     static final BlockCatalog CATALOG = id -> TestCatalog.KNOWN.contains(id) || EXTRA.contains(id);
     /** Config-Vorgaben (bau.max-blöcke 150 000, bau.max-ausdehnung 192). */
     static final PlanCompiler.Limits DEFAULTS = new PlanCompiler.Limits(150_000, 192);

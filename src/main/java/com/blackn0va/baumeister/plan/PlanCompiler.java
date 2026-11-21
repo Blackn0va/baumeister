@@ -532,8 +532,8 @@ public final class PlanCompiler {
         return spec == null ? null : spec.with("facing", dir);
     }
 
-    /** Treppe passend zum Wandblock: spruce_planks → spruce_stairs, stone_bricks → stone_brick_stairs. */
-    private static String[] stairsCandidates(String wallId) {
+    /** Treppe zum Wandblock: spruce_planks → spruce_stairs, stone_bricks → stone_brick_stairs (auch für Structures). */
+    static String[] stairsCandidates(String wallId) {
         List<String> out = new ArrayList<>(3);
         if (wallId.endsWith("_planks")) {
             out.add(wallId.substring(0, wallId.length() - "_planks".length()) + "_stairs");
