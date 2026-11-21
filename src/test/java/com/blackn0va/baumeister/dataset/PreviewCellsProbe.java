@@ -1,6 +1,5 @@
 package com.blackn0va.baumeister.dataset;
 
-import com.blackn0va.baumeister.plan.BlockCatalog;
 import com.blackn0va.baumeister.plan.BuildPlan;
 import com.blackn0va.baumeister.plan.CompiledBuild;
 import com.blackn0va.baumeister.plan.PlanCompiler;
@@ -12,14 +11,11 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
@@ -30,10 +26,11 @@ import java.util.stream.Stream;
  *
  * Zwei Fassungen je Plan, weil sie verschiedene Fragen beantworten:
  * - „compiler“: PlanCompiler direkt auf der Antwort (nach PlanParser.normalize, wie PlanReview sie liest), mit den
- *   eingebauten Maschinen und dem Blockkatalog aus tiers/block-ids.txt (Datengenerator 1.21.11/26.2). Das ist, was
- *   die Vorschau nachrechnet – jede Abweichung hier liegt an der Vorschau. Nicht der Katalog von PlanJudge: Der lässt
- *   jeden Material-Namen durch, auch Gegenstände wie „redstone“, die der Server (BukkitBlockCatalog, isBlock) über
- *   den Alias zu redstone_wire macht – gemessen 2 198 Zellen Scheinabweichung in einem Plan (2026-11-21).
+ *   eingebauten Maschinen und dem Blockkatalog aus tiers/block-ids.txt (Datengenerator 1.21.11/26.2), seit T-019
+ *   derselbe wie in PlanJudge (PlanJudge.SERVER_BLOCKS). Das ist, was die Vorschau nachrechnet – jede Abweichung hier
+ *   liegt an der Vorschau. Vorher kannte der Katalog von PlanJudge jeden Material-Namen, auch Gegenstände wie
+ *   „redstone“, die der Server (BukkitBlockCatalog, isBlock) über den Alias zu redstone_wire macht – gemessen
+ *   2 198 Zellen Scheinabweichung in einem Plan (2026-11-21); diese Probe hatte deshalb eine eigene Liste.
  * - „review“: der Bau nach PlanReview (PlanJudge, dieselbe Prüfkette wie im Plugin). Was hier zusätzlich abweicht,
  *   hat das Plugin am Plan nachgebessert (Hohlmachen, Stützen, weggelassene Blöcke) – das kann die Vorschau aus der
  *   Antwort allein nicht wissen.
@@ -60,18 +57,7 @@ public final class PreviewCellsProbe {
         Path out = Path.of(args[1]);
         Files.createDirectories(out);
         PlanJudge judge = new PlanJudge();
-        Set<String> ids = blockIds();
-        PlanCompiler compiler = new PlanCompiler(new BlockCatalog() {
-            @Override
-            public boolean isBlock(String id) {
-                return ids.contains(id);
-            }
-
-            @Override
-            public Set<String> allIds() {
-                return ids;
-            }
-        }, "stone", new PlanCompiler.Limits(150_000, 192), judge.modules());
+        PlanCompiler compiler = judge.compiler();
         List<Path> files;
         try (Stream<Path> s = Files.list(Path.of(args[0]))) {
             files = s.filter(p -> p.toString().endsWith(".json")).sorted().toList();
@@ -113,22 +99,6 @@ public final class PreviewCellsProbe {
             counts.merge(compilerStatus.split(" ")[0] + "/" + v.getClass().getSimpleName(), 1, Integer::sum);
         }
         System.out.println("Pläne: " + files.size() + " " + counts);
-    }
-
-    private static Set<String> blockIds() throws IOException {
-        try (InputStream in = PreviewCellsProbe.class.getResourceAsStream("/tiers/block-ids.txt")) {
-            if (in == null) {
-                throw new IOException("tiers/block-ids.txt fehlt im Klassenpfad");
-            }
-            Set<String> out = new HashSet<>();
-            for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().toList()) {
-                String id = line.strip();
-                if (!id.isEmpty() && !id.startsWith("#")) {
-                    out.add(id);
-                }
-            }
-            return Set.copyOf(out);
-        }
     }
 
     private static void write(Path file, String status, CompiledBuild build) throws IOException {
