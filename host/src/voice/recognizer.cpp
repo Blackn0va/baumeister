@@ -73,7 +73,7 @@ llm::ModelSpec whisper_model_spec() {
 }
 
 std::string recognizer_prompt(std::string_view companion_name) {
-    const std::string name = companion_name.empty() ? std::string("Vera") : std::string(companion_name);
+    const std::string name(companion_name.empty() ? kDefaultCompanionName : companion_name);
     // Deutscher Satz mit dem Namen vorn: In kraken lenkte ein deutscher Vortext Whisper zuverlässig auf Deutsch
     // (vorher englische Zeilen trotz Sprache „de“), Namen zuerst, weil Whisper kurze Eigennamen sonst verhört.
     // Spielwörter dahinter (2026-11-04): „Du sollst mir Brot geben“ kam als „… Baut geben“ an – Whisper bevorzugt

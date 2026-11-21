@@ -25,6 +25,7 @@ import org.bukkit.configuration.file.FileConfiguration;
  * Schnittstelle Version 1, Gegenstück im Host: host/src/server/companion_api.cpp – beide Seiten gleich halten:
  *   POST &lt;Host aus llm.url&gt;/baumeister/v1/begleiter/sagen  {spieler, text}    – Host liest vor (TTS)
  *   GET  &lt;Host aus llm.url&gt;/baumeister/v1/begleiter/gehoert  – Long-Poll, Host hält bis 20 s,  umlaut-ok: URL ASCII
+ *        mit ?imspiel=Name1,Name2&amp;begleiter=Name (heardUri)
  *        Antwort {saetze: [{spieler, text}]} (leer nach Ablauf)                        // umlaut-ok: JSON-Schlüssel ASCII
  * Mikrofon, Erkennung und Vorlesen laufen in der Host-App auf dem PC des Spielers; Ton verlässt den PC nie, über den
  * Tunnel geht nur Text.
@@ -65,8 +66,15 @@ final class CompanionVoiceLink {
     private final VoiceAppBinding binding;
     private volatile long lastDropLog = Long.MIN_VALUE / 2;
     private final AtomicInteger droppedSinceLog = new AtomicInteger();
+    /** begleiter.name für den Vortext der Erkennung in der App (heardUri, begleiter=). */
+    private final String companionName;
 
     CompanionVoiceLink(URI base, HttpClient http, LongSupplier clock, VoiceAppBinding binding) {
+        this(base, http, clock, binding, CompanionSettings.DEFAULT_NAME);
+    }
+
+    CompanionVoiceLink(URI base, HttpClient http, LongSupplier clock, VoiceAppBinding binding, String companionName) {
+        this.companionName = companionName;
         this.sayUri = base.resolve(SAY_PATH);
         this.heardUri = base.resolve(HEARD_PATH);
         this.hearUri = base.resolve(HEAR_PATH);
@@ -103,7 +111,9 @@ final class CompanionVoiceLink {
         } else {
             LOG.info(() -> "begleiter | sprache_an_apps_gebunden | apps=" + binding.describe());
         }
-        return new CompanionVoiceLink(base, http, System::nanoTime, binding);
+        // Name aus derselben Prüfung wie für den Begleiter selbst (CompanionSettings) – /bm neuladen ruft from()
+        // erneut, ein umbenannter Begleiter kommt so mit dem nächsten Abholen in der App an.
+        return new CompanionVoiceLink(base, http, System::nanoTime, binding, CompanionSettings.from(c).name());
     }
 
     /** Vorlesen lassen – der Host spricht nur, wenn spieler der dort eingetragene Name ist. */
@@ -201,11 +211,23 @@ final class CompanionVoiceLink {
      * nahm die App-Taste (Vorgabe V, dieselbe
      * Taste wie das Menü von Simple Voice Chat) parallel auf, und jeder Satz kam doppelt an. Mit dieser Liste lässt die
      * App ihre Taste ruhen. Nur gültige Namen, höchstens 32 (Adresse bleibt kurz).  umlaut-ok: URL ASCII
+     *
+     * Dazu „begleiter=Name“ (Wunsch 2026-11-20, AK-4): Vorher stand im Vortext der Erkennung fest „Vera“, ein anderer
+     * begleiter.name wurde schlechter erkannt, und ohne erkannten Namen nimmt das Plugin die Anrede nicht an. Kodiert
+     * mit URLEncoder (Leerzeichen „+“, Umlaute %C3%xx) – beides lassen Relay und App durch (docs/kanal-v1.md,
+     * Abschnitt 5). Ein Name außerhalb von CompanionSettings.NAME fällt weg, die App bleibt dann bei „Vera“.
      */
-    static URI heardUri(URI heard, java.util.Collection<String> names) {
+    static URI heardUri(URI heard, java.util.Collection<String> names, String companion) {
         String list = names.stream().filter(n -> n != null && n.matches("[A-Za-z0-9_]{3,16}")).limit(32)
                 .collect(java.util.stream.Collectors.joining(","));
-        return list.isEmpty() ? heard : URI.create(heard + "?imspiel=" + list);
+        java.util.List<String> query = new java.util.ArrayList<>(2);
+        if (!list.isEmpty()) {
+            query.add("imspiel=" + list);
+        }
+        if (companion != null && CompanionSettings.NAME.matcher(companion).matches()) {
+            query.add("begleiter=" + java.net.URLEncoder.encode(companion, StandardCharsets.UTF_8));
+        }
+        return query.isEmpty() ? heard : URI.create(heard + "?" + String.join("&", query));
     }
 
     /** Long-Poll starten; heard bekommt (spieler, text) im HttpClient-Pool. */
@@ -222,7 +244,8 @@ final class CompanionVoiceLink {
         if (!running) {
             return;
         }
-        HttpRequest req = HttpRequest.newBuilder(heardUri(heardUri, inGame.get())).timeout(Duration.ofSeconds(35))
+        HttpRequest req = HttpRequest.newBuilder(heardUri(heardUri, inGame.get(), companionName))
+                .timeout(Duration.ofSeconds(35))
                 .GET().build();
         http.sendAsync(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
                 .whenComplete((r, err) -> {

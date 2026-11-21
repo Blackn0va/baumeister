@@ -4,6 +4,7 @@
 
 #include "base/json.hpp"
 #include "server/companion_api.hpp"
+#include "server/http.hpp"
 
 #include <chrono>
 #include <optional>
@@ -256,4 +257,65 @@ TEST_CASE("Begleiter: Pfaderkennung und Minecraft-Namen") {
     CHECK(valid_player_name("a_b"));
     CHECK_FALSE(valid_player_name("a"));
     CHECK_FALSE(valid_player_name("seventeen_chars_x"));
+}
+
+TEST_CASE("Begleitername: die Erkennung nimmt den Namen aus dem Plugin") {
+    // AK-4 (2026-11-20): CompanionVoiceLink.heardUri hängt begleiter.name an, URLEncoder-kodiert.
+    const std::string p(kCompanionHeardPath);
+    CHECK(query_companion_name(p + "?imspiel=Steve&begleiter=Lotte") == "Lotte");
+    CHECK(query_companion_name(p + "?begleiter=Lotte&imspiel=Steve") == "Lotte");
+    CHECK(query_companion_name(p + "?begleiter=J%C3%BCrgen+Maria") == "Jürgen Maria");
+    CHECK(query_companion_name(p + "?begleiter=%c3%89lise") == "Élise");  // Kleinbuchstaben-Hex wie Großbuchstaben
+    CHECK(query_companion_name(p + "?begleiter=Abcdefghijklmnop") == "Abcdefghijklmnop");  // genau 16 Zeichen
+    CHECK(query_companion_name(p + "?begleiter=%C3%84%C3%B6%C3%BC%C3%9F") == "Äöüß");
+}
+
+TEST_CASE("Begleitername: fehlt er oder ist er ungültig, bleibt die Erkennung bei Vera") {
+    const std::string p(kCompanionHeardPath);
+    CHECK(query_companion_name(p) == "Vera");                    // älteres Plugin ohne Parameter
+    CHECK(query_companion_name(p + "?imspiel=Steve") == "Vera");
+    CHECK(query_companion_name(p + "?begleiterx=Lotte") == "Vera");
+    CHECK(query_companion_name(p + "?xbegleiter=Lotte") == "Vera");
+    for (const char* bad : {"", "L", "L0tte", "Lo_tte", "Ve%2Ara", "+Lotte", "Lotte+", "Siebzehnbuchstabe",
+                            "Lo%0Atte", "Lo%00tte", "Lo%7Ftte", "Lo%zztte", "Lotte%2", "Lotte%", "Lotte%C3",
+                            "%D0%92%D0%B5%D1%80%D0%B0",  // „Вера“: kein lateinischer Buchstabe
+                            "%E2%80%AELotte",            // Schreibrichtungs-Umkehr U+202E
+                            "%C0%A0Lotte",               // überlange Folge
+                            "Lo%C3%97tte",               // ×
+                            "%EF%BC%A1%EF%BC%A2",        // Vollbreite „ＡＢ“
+                            "Lo%3Ctte%3E"}) {
+        const std::string raw(bad);  // CAPTURE zeigte bei const char* nur die Adresse (Gegenprobe 2026-11-20)
+        CAPTURE(raw);
+        CHECK(query_companion_name(p + "?begleiter=" + raw) == "Vera");
+    }
+    // Sehr lang (der Parser erlaubt Kopfzeilen bis 16 KiB): Vorgabe, ohne Absturz und ohne erst zu dekodieren.
+    CHECK(query_companion_name(p + "?begleiter=" + std::string(8000, 'a')) == "Vera");
+    CHECK(query_companion_name(p + "?begleiter=" + std::string(97, 'a')) == "Vera");
+    CHECK(valid_companion_name("Ab"));
+    CHECK(valid_companion_name("Anna Lena"));
+    CHECK_FALSE(valid_companion_name("A"));
+    CHECK_FALSE(valid_companion_name(" Anna"));
+    CHECK_FALSE(valid_companion_name("Anna "));
+    CHECK_FALSE(valid_companion_name(std::string("An\0na", 5)));
+}
+
+TEST_CASE("Begleitername: kommt durch Parser und Abwehrregeln bis zum Handler") {
+    // Lehre aus dem 415-Vorfall (dev01 2026-11-04): neue Parameter nicht nur am Handler prüfen, sondern so, wie der
+    // Server die Anfrage liest – parse_request, dann check_request, dann handle_companion.
+    const auto name_after_poll = [](const std::string& target) {
+        const ParseResult pr = parse_request("GET " + target + " HTTP/1.1\r\nHost: 127.0.0.1:18080\r\n\r\n");
+        REQUIRE(pr.status == ParseStatus::Complete);
+        REQUIRE_FALSE(check_request(pr.request).has_value());
+        HeardQueue q;
+        CompanionHandlers h;
+        std::string seen = "nicht gerufen";
+        h.companion_name = [&seen](const std::string& n) { seen = n; };
+        CHECK(handle_companion(pr.request, q, {}, h, 10ms).status == 200);
+        return seen;
+    };
+    const std::string p(kCompanionHeardPath);
+    CHECK(name_after_poll(p + "?imspiel=Blackkn0va&begleiter=J%C3%BCrgen+Maria") == "Jürgen Maria");
+    CHECK(name_after_poll(p + "?begleiter=Lotte") == "Lotte");
+    CHECK(name_after_poll(p) == "Vera");  // auch ohne Parameter gerufen: ein Wechsel zurück auf die Vorgabe greift
+    CHECK(name_after_poll(p + "?begleiter=L0tte") == "Vera");
 }

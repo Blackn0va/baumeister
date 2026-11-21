@@ -11,6 +11,7 @@ swbh_add_module(gui_core
         notifier.hpp notifier.cpp
         city_paint.hpp city_paint.cpp
         console_export.hpp console_export.cpp
+        console_throttle.hpp console_throttle.cpp
         exit_report.hpp exit_report.cpp
         simple_mode.hpp simple_mode.cpp
     PUBLIC_DEPS

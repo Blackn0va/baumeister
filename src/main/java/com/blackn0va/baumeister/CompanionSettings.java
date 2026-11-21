@@ -19,13 +19,20 @@ record CompanionSettings(boolean enabled, String name, double distance, long con
 
     static final String DEFAULT_NAME = "Vera";
 
+    /**
+     * Gültiger Begleitername. Steht hier statt nur im Ausdruck unten, weil CompanionVoiceLink.heardUri ihn ebenso
+     * prüft, bevor er in die Abhol-Adresse geht (begleiter=, 2026-11-20): Ein „*“ ließe URLEncoder stehen, und das
+     * Relay beantwortete den ganzen Long-Poll mit 404.
+     */
+    static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[\\p{L}][\\p{L} ]{1,15}");
+
     static CompanionSettings from(ConfigurationSection root) {
         if (root == null) {
             return new CompanionSettings(true, DEFAULT_NAME, 2.5, 30_000_000_000L, 64, 400, DEFAULT_ADVENTURE_WORLDS,
                     true, true, true);
         }
         String raw = root.getString("begleiter.name", DEFAULT_NAME);
-        String name = raw != null && raw.trim().matches("[\\p{L}][\\p{L} ]{1,15}") ? raw.trim() : DEFAULT_NAME;
+        String name = raw != null && NAME.matcher(raw.trim()).matches() ? raw.trim() : DEFAULT_NAME;
         return new CompanionSettings(
                 root.getBoolean("begleiter.an", true),
                 name,

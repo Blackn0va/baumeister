@@ -363,7 +363,9 @@
       "/baumeister/v1/begleiter/gehoert?imspiel=Alex",
       "/baumeister/v1/begleiter/hoeren?spieler=Alex",
       "/baumeister/v1/begleiter/gehoert?imspiel=J%C3%BCrgen",
-      "/baumeister/v1/begleiter/gehoert?imspiel=Alex,Steve"
+      "/baumeister/v1/begleiter/gehoert?imspiel=Alex,Steve",
+      "/baumeister/v1/begleiter/gehoert?imspiel=Alex&begleiter=Lotte",
+      "/baumeister/v1/begleiter/gehoert?begleiter=J%C3%BCrgen+Maria"
     ],
     "verboten": [
       "/",

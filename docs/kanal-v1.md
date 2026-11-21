@@ -86,6 +86,11 @@ u16 Kopflänge (Big Endian, 1..4096) | Kopf: JSON-Objekt, UTF-8 | Datenstück: 0
   `/`; optional `?` und eine Abfrage aus `[A-Za-z0-9_.~%=&+,-]`. Insgesamt ≤ 2 048 Zeichen. Das Komma kam am
   2026-11-08 dazu: Das Plugin schickt `?imspiel=Name1,Name2` (CompanionVoiceLink.heardUri), die erste Fassung hätte
   den Long-Poll ab zwei Spielern im Voice-Chat mit 404 beendet (gefunden beim Bau des Relays).
+  2026-11-20 dazu: Jede Abholung trägt den Begleiternamen aus `begleiter.name`, etwa
+  `?imspiel=Alex&begleiter=Lotte` oder `?begleiter=J%C3%BCrgen+Maria` (URLEncoder: `+` = Leerzeichen, Umlaute als
+  `%C3%xx`). Die App nimmt ihn in den Vortext der Spracherkennung, sie prüft ihn selbst (2–16 lateinische Buchstaben
+  und Leerzeichen, `companion_api.hpp` `valid_companion_name`); fehlt er oder ist er ungültig, bleibt „Vera“. Der
+  Kanal braucht dafür keine neue Regel – `&`, `+` und `%XX` waren schon erlaubt, die Testvektoren halten es fest.
 - Verboten: Segmente `.`/`..`, `%2e`/`%2E` (im ganzen Pfad **samt Abfrage**), `%` ohne zwei Hex-Ziffern dahinter,
   kodierte Steuerzeichen `%00`–`%1F` und `%7F` (ein kodiertes NUL kann im C++-Server einen String abschneiden),
   `//`, `\`, `#`, Leerzeichen, Steuerzeichen, absolute URLs, abschließendes `/` – die Liste `pfade` in den

@@ -25,6 +25,62 @@ std::string_view path_of(std::string_view target) {
     return target.substr(0, target.find('?'));
 }
 
+// Roher Wert von key in der Abfrage (erster Treffer), nullopt ohne ihn.
+std::optional<std::string_view> query_value(std::string_view target, std::string_view key) {
+    const std::size_t q = target.find('?');
+    if (q == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string_view rest = target.substr(q + 1);
+    while (!rest.empty()) {
+        const std::size_t amp = rest.find('&');
+        const std::string_view pair = rest.substr(0, amp);
+        if (pair.size() > key.size() && pair.starts_with(key) && pair[key.size()] == '=') {
+            return pair.substr(key.size() + 1);
+        }
+        rest = amp == std::string_view::npos ? std::string_view() : rest.substr(amp + 1);
+    }
+    return std::nullopt;
+}
+
+int hex_value(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+// Formular-Kodierung wie java.net.URLEncoder: „+“ = Leerzeichen, %XX = ein Byte. Unvollständiges % = nullopt.
+std::optional<std::string> form_decode(std::string_view raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '+') {
+            out.push_back(' ');
+        } else if (raw[i] == '%') {
+            if (i + 2 >= raw.size()) {
+                return std::nullopt;
+            }
+            const int hi = hex_value(raw[i + 1]);
+            const int lo = hex_value(raw[i + 2]);
+            if (hi < 0 || lo < 0) {
+                return std::nullopt;
+            }
+            out.push_back(static_cast<char>(hi * 16 + lo));
+            i += 2;
+        } else {
+            out.push_back(raw[i]);
+        }
+    }
+    return out;
+}
+
 }  // namespace
 
 void HeardQueue::push(Spoken s) {
@@ -116,6 +172,46 @@ std::vector<std::string> query_in_game(std::string_view target) {
         rest = amp == std::string_view::npos ? std::string_view() : rest.substr(amp + 1);
     }
     return out;
+}
+
+bool valid_companion_name(std::string_view utf8) {
+    std::size_t chars = 0;
+    bool last_space = false;
+    for (std::size_t i = 0; i < utf8.size();) {
+        const auto b0 = static_cast<unsigned char>(utf8[i]);
+        char32_t cp = 0;
+        if (b0 < 0x80) {
+            cp = b0;
+            i += 1;
+        } else if (b0 >= 0xC2 && b0 <= 0xDF && i + 1 < utf8.size() &&
+                   (static_cast<unsigned char>(utf8[i + 1]) & 0xC0) == 0x80) {
+            // 2-Byte-Folge; C0/C1 wären überlang. Längere Folgen tragen nichts aus der Liste (alles ≤ U+024F).
+            cp = static_cast<char32_t>(((b0 & 0x1F) << 6) | (static_cast<unsigned char>(utf8[i + 1]) & 0x3F));
+            i += 2;
+        } else {
+            return false;
+        }
+        const bool letter = (cp >= U'A' && cp <= U'Z') || (cp >= U'a' && cp <= U'z') ||
+                            (cp >= 0xC0u && cp <= 0x24Fu && cp != 0xD7u && cp != 0xF7u);
+        if (!letter && (chars == 0 || cp != U' ')) {
+            return false;
+        }
+        last_space = cp == U' ';
+        if (++chars > kCompanionNameMaxChars) {
+            return false;
+        }
+    }
+    return chars >= 2 && !last_space;
+}
+
+std::string query_companion_name(std::string_view target) {
+    const std::optional<std::string_view> raw = query_value(target, "begleiter");
+    // 96 = 16 Zeichen zu je zwei Byte, jedes als %XX: Längeres kann kein gültiger Name sein – nicht erst dekodieren.
+    if (!raw || raw->size() > kCompanionNameMaxChars * 6) {
+        return std::string(kDefaultCompanionName);
+    }
+    const std::optional<std::string> name = form_decode(*raw);
+    return name && valid_companion_name(*name) ? *name : std::string(kDefaultCompanionName);
 }
 
 bool own_player_in_game(std::string_view configured, const std::vector<std::string>& in_game) {
@@ -232,6 +328,9 @@ ApiResponse handle_companion(const HttpRequest& request, HeardQueue& heard, cons
         }
         if (handlers.in_game) {
             handlers.in_game(query_in_game(request.target));
+        }
+        if (handlers.companion_name) {
+            handlers.companion_name(query_companion_name(request.target));
         }
         Json list = Json::array();
         for (Spoken& s : heard.take(hold, gone)) {
