@@ -44,6 +44,14 @@ final class OutageLog {
         return UP;
     }
 
+    /**
+     * Gilt der Host gerade als weg? Nur lesen, ändert keinen Zustand. LlmClient sagt damit ab, ohne die volle
+     * Wiederholungskette zu durchlaufen (T-010, 2026-11-21).
+     */
+    synchronized boolean down() {
+        return down;
+    }
+
     /** Erfolg: Minuten des eben beendeten Ausfalls, wenn einer lief (einmal loggen), sonst UP. */
     synchronized long success() {
         if (!down) {
