@@ -86,4 +86,41 @@ class ClientSettingsTest {
         assertFalse(ClientSettings.validLlmUrl(null));
         assertFalse(ClientSettings.validLlmUrl("http:///pfad"), "ohne Host");
     }
+
+    /** Einstellungen: unsinnige KI-Werte fallen auf die Vorgabe zurück (AK-6, 2026-11-21). */
+    @Test
+    void nonsenseAiValuesFallBackToTheDefault() {
+        ClientSettings d = new ClientSettings();
+        assertEquals(600, d.llmTimeoutSeconds, "Vorgabe wie vorher fest in ClientPlanner.ask (10 min)");
+        ClientSettings s = new ClientSettings();
+        s.temperature = -0.5;
+        s.maxTokens = 0;
+        s.repairAttempts = -1;
+        s.maxOverbuild = -3;
+        s.llmTimeoutSeconds = 0;
+        assertEquals(List.of("temperature", "maxTokens", "repairAttempts", "maxOverbuild", "llmTimeoutSeconds"),
+                s.sanitize());
+        assertEquals(d.temperature, s.temperature);
+        assertEquals(d.maxTokens, s.maxTokens);
+        assertEquals(d.repairAttempts, s.repairAttempts);
+        assertEquals(d.maxOverbuild, s.maxOverbuild);
+        assertEquals(d.llmTimeoutSeconds, s.llmTimeoutSeconds);
+        ClientSettings hot = new ClientSettings();
+        hot.temperature = Double.NaN;
+        assertEquals(List.of("temperature"), hot.sanitize(), "NaN ist kein Wert");
+        ClientSettings far = new ClientSettings();
+        far.temperature = 2.5;
+        assertEquals(List.of("temperature"), far.sanitize(), "Bereich 0..2 wie in der OpenAI-Schnittstelle");
+    }
+
+    @Test
+    void sensibleAiValuesStay() {
+        ClientSettings s = new ClientSettings();
+        s.temperature = 0;
+        s.maxTokens = 1;
+        s.repairAttempts = 0;
+        s.maxOverbuild = 0;
+        s.llmTimeoutSeconds = 30;
+        assertTrue(s.sanitize().isEmpty(), "0 Nachbesserungen und 0 Überbau sind gewollte Einstellungen");
+    }
 }

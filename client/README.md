@@ -28,6 +28,22 @@ Während des Baus zeigt die Aktionsleiste über der Hotbar den Stand: Blöcke, P
 | `/kbau host <url>` | Adresse des Baumeister-Hosts (Vorgabe `http://127.0.0.1:8080/v1/chat/completions`) |
 
 Einstellungen: `config/baumeister-client.json`. Ergebnisse meldet die Mod an die App (Reiter „Verlauf“, „(Client)“).
+Unbrauchbare Werte setzt die Mod beim Laden auf die Vorgabe zurück und schreibt das ins Log – auch die KI-Werte
+`temperature` (0 bis 2), `maxTokens` (ab 1), `repairAttempts` und `maxOverbuild` (ab 0). `llmTimeoutSeconds`
+(Vorgabe 600) ist die Wartezeit auf eine Antwort des Hosts; danach endet die Planung mit einer Meldung im Chat.
+
+## Nachträge (Gedächtnis)
+
+Wie im Plugin merkt sich die Mod deinen letzten Bau: Ein Auftrag binnen einer Stunde und höchstens 48 Blöcke vom
+Standort des ersten Auftrags („mach das Dach rot“, „bau noch einen Turm dran“) schickt dem LLM den vorigen Plan mit.
+Das LLM liefert dann den vollständigen neuen Plan; was der alte Bau gesetzt hat und der neue nicht mehr enthält, räumt
+die Mod zuerst weg – nur, wo noch derselbe Block steht. Kürzt das Modell den alten Bau, ohne dass du Wegnehmen
+verlangt hast, bleibt er stehen (Anbau). `/kbau rückgängig` nach dem Nachtrag stellt den Bau davor wieder her, und
+das Gedächtnis zeigt wieder auf ihn; nach dem Rückgängig des einzigen Baus ist es leer.
+
+Neu geplant wird in einer anderen Welt, Dimension oder auf einem anderen Server, nach Ablauf der Stunde und bei einem
+neuen eigenständigen Bauwerk („bau mir ein Haus“). Das Gedächtnis liegt nur im Speicher, nie auf der Platte – nach
+einem Neustart des Spiels beginnt der nächste Auftrag frisch.
 
 ## Bauen und testen
 
@@ -54,4 +70,7 @@ Die Plan-Logik kommt unverändert aus dem Plugin (`../src/main/java`, Pakete `pl
 - ✅ Spieltest im echten Client (2026-10-31): Hochhaus per Befehl 6 s, wie ein Spieler 105 s, Maschinenhalle mit
   Übernahme 74 s (811/811), Rückgängig 70 s – jede Stelle geprüft
 - ⏳ Mit LLM im echten Spiel (Host auf dem GPU-PC) noch nicht gelaufen; Flüssigkeiten gehen nur per Befehl
-- ⏳ Recherche, Gedächtnis für Folgeaufträge und Plot-Modus gibt es nur im Plugin
+- ✅ Gedächtnis für Nachträge (2026-11-21) in Unit-Tests: gefälschter Host (`ClientPlannerTest`), Frist/Umkreis/Welt
+  (`ClientMemoryTest`), Nachtrag und Rückgängig mit echten Blockzuständen (`ClientFollowUpTest`)
+- ⏳ Nachtrag im echten Spiel mit LLM noch nicht gelaufen
+- ⏳ Recherche und Plot-Modus gibt es nur im Plugin
