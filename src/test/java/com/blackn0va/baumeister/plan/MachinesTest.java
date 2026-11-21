@@ -45,8 +45,10 @@ class MachinesTest {
             // Breite/Tiefe bis zum Raster des Logik-Compilers (16 Terme → 57 breit, 5 Eingänge → 43 tief; LogicCircuit):
             // Vorher fest 32 – die ALU-Scheibe (5 Eingänge, 2026-10-31) ist 43 tief und passt trotzdem in jeden Bauplatz.
             // Ausnahme addierer_4bit/akkumulator_4bit: vier Volladdierer nebeneinander (4 × 28), kein einzelnes Raster;
-            // der Akkumulator hat davor die Rückführung und dahinter Speicher und Taktleitung (45 tief).
-            boolean chain = n.equals("addierer_4bit") || n.equals("akkumulator_4bit");
+            // der Akkumulator hat davor die Rückführung und dahinter Speicher und Taktleitung (45 tief), der mit Löschen
+            // zusätzlich die Sperre vor dem Master und die Löschleitung hinter der Taktleitung (47 tief).
+            boolean chain = n.equals("addierer_4bit") || n.equals("akkumulator_4bit")
+                    || n.equals(Machines.CLEAR_ACCUMULATOR);
             // Ausnahme anzeige: 7 Ausgänge nebeneinander plus Leitungen und Ziffer dahinter (SevenSegment), passt in
             // jeden Bauplatz (bau.max-ausdehnung 192).
             boolean display = n.equals("anzeige");
@@ -160,6 +162,300 @@ class MachinesTest {
         }
         // Master-Riegel mit Verzögerung 3: kürzer öffnet der Master, bevor der Slave zu ist (siehe accumulator4).
         assertTrue(c.values().stream().filter(b -> b.asString().contains("delay=3")).count() >= 4);
+    }
+
+    /**
+     * Akkumulator mit Löschen (2026-11-20): Der Ablauf der Probe ist das, was die Maschine können soll – ein Takt mit
+     * L an ergibt 0 statt AKKU + B, L allein bei T aus ändert nichts, danach rechnet er normal weiter, und einmal wird
+     * 15 gelöscht, also jedes der vier Bits. B und L ändern sich nie im selben Schritt wie der Takt (Haltezeit: sonst
+     * misst die Probe einen Wettlauf zwischen Daten und Riegel, keinen Schaltungsfehler).
+     */
+    @Test
+    void clearAccumulatorSetsZeroOnTheClockWhileLIsOn() {
+        Machines.Machine m = LIB.machine(Machines.CLEAR_ACCUMULATOR).orElseThrow();
+        assertEquals(List.of("B0", "B1", "B2", "B3", "CI", "T", "L"),
+                m.inputs().stream().map(Machines.Pin::name).toList());
+        assertEquals(List.of("Q0", "Q1", "Q2", "Q3"), m.outputs().stream().map(Machines.Pin::name).toList());
+        int acc = 0;
+        boolean clock = false;
+        int prevB = 0;
+        boolean prevL = false;
+        boolean clearedWithB = false;
+        boolean clearedFifteen = false;
+        boolean heldWithoutClock = false;
+        boolean addedAfterClear = false;
+        boolean justCleared = false;
+        boolean wrapped = false;
+        for (Machines.Step st : m.sequence()) {
+            int b = 0;
+            int q = 0;
+            for (int i = 0; i < 4; i++) {
+                b |= st.inputs().get("B" + i) ? 1 << i : 0;
+                q |= st.expect().get("Q" + i) ? 1 << i : 0;
+            }
+            boolean t = st.inputs().get("T");
+            boolean l = st.inputs().get("L");
+            if (t != clock) {
+                assertEquals(prevB, b, "B ändert sich mit dem Takt: " + st);
+                assertEquals(prevL, l, "L ändert sich mit dem Takt: " + st);
+            }
+            if (t && !clock) {
+                if (l) {
+                    clearedWithB |= b != 0 && acc != 0;
+                    clearedFifteen |= acc == 15;
+                    acc = 0;
+                    justCleared = true;
+                } else {
+                    addedAfterClear |= justCleared && b != 0;
+                    wrapped |= acc + b > 15;
+                    acc = (acc + b) & 15;
+                    justCleared = false;
+                }
+            } else if (l && !t) {
+                heldWithoutClock |= acc != 0;
+            }
+            clock = t;
+            prevB = b;
+            prevL = l;
+            assertEquals(acc, q, st.toString());
+        }
+        assertTrue(clearedWithB, "Löschen mit B ≠ 0 – sonst sähe ein Akkumulator ohne Sperre nur B = 0 + 0");
+        assertTrue(clearedFifteen, "Löschen von 15: alle vier Sperren");
+        assertTrue(heldWithoutClock, "L ohne Takt lässt den Wert stehen");
+        assertTrue(addedAfterClear, "nach dem Löschen wird wieder addiert");
+        assertTrue(wrapped, "Überlauf nach dem Löschen");
+    }
+
+    /**
+     * Löschnetz des Akkumulators mit Löschen: Vom Hebel L aus erreicht die Leitung genau die vier Sperren – je ein
+     * Komparator im Subtraktionsmodus zwischen dem Verstärker an der Summenlampe und dem Master, von der Seite gespeist
+     * durch einen Verstärker (Draht käme mit weniger als 15 an, und 15 − Stärke ließe eine 1 durch). Sie berührt
+     * nichts sonst: keine Lampe, keinen anderen Hebel, kein Netz des Takts. Verfolgt werden Draht, Verstärker in ihrer
+     * Richtung und die Blöcke, die beide speisen (trace). Für die Teile dieser Maschine – Draht, Verstärker, Komparator,
+     * Fackel, Lampe, Hebel – ist das großzügiger als Minecraft (Draht speist hier jeden Nachbarblock, nicht nur die,
+     * auf die er zeigt, und verbindet sich mit jedem Draht eine Stufe schräg): ein Kontakt hier ist höchstens einer zu
+     * viel, nie einer zu wenig. Ob die Maschine wirklich löscht, prüft MachineProbe in vier Richtungen.
+     */
+    @Test
+    void clearLineFeedsExactlyTheFourGatesAndNothingElse() {
+        Machines.Machine m = LIB.machine(Machines.CLEAR_ACCUMULATOR).orElseThrow();
+        Map<Pos, BlockSpec> c = cells(m.module());
+        Pos lever = m.inputs().getLast().at();
+        assertEquals("L", m.inputs().getLast().name());
+        Net net = trace(c, lever);
+        assertEquals(4, net.gates().size(), "Sperren: " + net.gates());
+        for (Pos gate : net.gates()) {
+            BlockSpec cmp = c.get(gate);
+            assertEquals("comparator", cmp.id(), gate.toString());
+            assertEquals("subtract", cmp.props().get("mode"), gate + " " + cmp);
+            assertEquals("front", cmp.props().get("facing"), gate + " " + cmp);
+            assertEquals("minecraft:repeater[facing=front]", c.get(gate.add(0, 0, -1)).asString(),
+                    "liest die Summenlampe");
+            assertEquals("redstone_lamp", c.get(gate.add(0, 0, -2)).id(), "Summenlampe vor der Sperre");
+            assertEquals("minecraft:repeater[facing=front]", c.get(gate.add(0, 0, 1)).asString(),
+                    "Master hinter der Sperre");
+            assertEquals("repeater", c.get(gate.add(1, 0, 1)).id(), "Riegel am Master");
+        }
+        assertTrue(net.sideFromRepeater(), "Seiteneingang ohne Verstärker davor");
+        assertTrue(net.others().isEmpty(), "Löschleitung trifft " + net.others());
+        Net clock = trace(c, m.inputs().get(m.inputs().size() - 2).at());
+        assertTrue(clock.gates().isEmpty(), "Takt speist eine Sperre");
+        assertTrue(java.util.Collections.disjoint(net.cells(), clock.cells()), "Löschleitung berührt die Taktleitung");
+    }
+
+    /** Ergebnis von trace: besuchte Zellen, von der Seite erreichte Komparatoren, alles andere Erreichte. */
+    private record Net(Set<Pos> cells, Set<Pos> gates, boolean sideFromRepeater, Set<String> others) {
+    }
+
+    /**
+     * Folgt einem Netz ab dem Hebel at: Draht zu Draht (auch eine Stufe schräg), in einen Verstärker nur von hinten,
+     * aus ihm in die Zelle vor ihm. Ein Komparator, von der Seite erreicht, ist eine Sperre; ein Komparator von hinten,
+     * ein Verstärker, auf dessen Seite ein anderer zeigt (Riegel), eine Lampe oder ein Hebel sind „anderes“. Feste
+     * Blöcke, an die Draht grenzt (darunter oder daneben) oder in die ein Verstärker zeigt, gelten als gespeist; was
+     * an einem gespeisten Block hängt oder ihn liest (Verstärker, Komparator, Fackel, Lampe), ist ebenfalls „anderes“,
+     * und Draht neben einem Block, in den ein Verstärker zeigt, wird weiter verfolgt.
+     */
+    private static Net trace(Map<Pos, BlockSpec> c, Pos at) {
+        record Visit(Pos p, Pos src) {
+        }
+        Set<Pos> seen = new HashSet<>();
+        Set<Pos> gates = new HashSet<>();
+        Set<String> others = new HashSet<>();
+        boolean allSidesFromRepeater = true;
+        java.util.ArrayDeque<Visit> todo = new java.util.ArrayDeque<>();
+        int[][] around = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}};
+        seen.add(at);
+        todo.add(new Visit(at.add(0, -1, 0), at));                         // Block, an dem der Hebel hängt
+        for (int[] d : around) {
+            todo.add(new Visit(at.add(d[0], 0, d[2]), at));
+        }
+        while (!todo.isEmpty()) {
+            Visit v = todo.poll();
+            Pos p = v.p();
+            BlockSpec b = c.get(p);
+            if (b == null || seen.contains(p)) {
+                continue;
+            }
+            Pos offset = new Pos(v.src().x() - p.x(), v.src().y() - p.y(), v.src().z() - p.z());
+            switch (b.id()) {
+                case "redstone_wire" -> {
+                    seen.add(p);
+                    todo.add(new Visit(p.add(0, -1, 0), p));
+                    for (int[] d : around) {
+                        for (int dy = -1; dy <= 1; dy++) {
+                            Pos n = p.add(d[0], dy, d[2]);
+                            if (dy == 0 || c.get(n) != null && c.get(n).id().equals("redstone_wire")) {
+                                todo.add(new Visit(n, p));
+                            }
+                        }
+                    }
+                }
+                case "repeater" -> {
+                    Pos in = inputOffset(b);
+                    if (offset.equals(in)) {
+                        seen.add(p);
+                        todo.add(new Visit(p.add(-in.x(), 0, -in.z()), p));
+                    } else if (isDiode(c.get(v.src())) && offset.x() * in.x() + offset.z() * in.z() == 0) {
+                        others.add("Riegel an " + p);
+                    }
+                }
+                case "comparator" -> {
+                    Pos in = inputOffset(b);
+                    if (offset.equals(in)) {
+                        others.add("Komparator von hinten bei " + p);
+                    } else if (!offset.equals(new Pos(-in.x(), 0, -in.z()))) {
+                        gates.add(p);
+                        allSidesFromRepeater &= c.get(v.src()).id().equals("repeater");
+                    }
+                }
+                case "redstone_lamp", "lever" -> others.add(b.id() + " bei " + p);
+                default -> {
+                    // Jeder andere Block gilt als leitend (auch Glas – großzügig); Fackeln und Hebel speist Draht nicht.
+                    BlockSpec s = c.get(v.src());
+                    boolean strong = isDiode(s) || s.id().equals("lever");
+                    if (b.isAir() || NEEDS_FLOOR.contains(b.id()) || b.id().equals("redstone_wall_torch")
+                            || !strong && !s.id().equals("redstone_wire")) {
+                        continue;
+                    }
+                    seen.add(p);
+                    for (int[] d : new int[][] {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}}) {
+                        Pos n = p.add(d[0], d[1], d[2]);
+                        BlockSpec nb = c.get(n);
+                        if (nb == null || n.equals(v.src())) {
+                            continue;
+                        }
+                        Pos back = new Pos(p.x() - n.x(), p.y() - n.y(), p.z() - n.z());
+                        boolean reads = isDiode(nb) && back.equals(inputOffset(nb));
+                        boolean torch = nb.id().equals("redstone_wall_torch") && back.equals(wallOf(nb))
+                                || nb.id().equals("redstone_torch") && d[1] == 1;
+                        if (reads || torch || nb.id().equals("redstone_lamp")) {
+                            others.add(nb.id() + " an gespeistem Block " + p + " bei " + n);
+                        } else if (strong && nb.id().equals("redstone_wire")) {
+                            todo.add(new Visit(n, p));
+                        }
+                    }
+                }
+            }
+        }
+        return new Net(seen, gates, allSidesFromRepeater, others);
+    }
+
+    private static boolean isDiode(BlockSpec b) {
+        return b != null && (b.id().equals("repeater") || b.id().equals("comparator"));
+    }
+
+    /** Wo eine Wandfackel hängt: gegenüber der Seite, in die sie zeigt (lokal). */
+    private static Pos wallOf(BlockSpec torch) {
+        Pos away = inputOffset(torch);
+        return new Pos(-away.x(), 0, -away.z());
+    }
+
+    /** Wo ein Verstärker oder Komparator sein Signal herbekommt (lokal, „facing“ = Seite des Eingangs). */
+    private static Pos inputOffset(BlockSpec b) {
+        return switch (b.props().getOrDefault("facing", "front")) {
+            case "back" -> new Pos(0, 0, 1);
+            case "left" -> new Pos(-1, 0, 0);
+            case "right" -> new Pos(1, 0, 0);
+            default -> new Pos(0, 0, -1);
+        };
+    }
+
+    /**
+     * Fingerabdruck jeder Maschine vor dem Akkumulator mit Löschen (Stand 2fe5a8a, 2026-11-20): Zellenzahl und die
+     * ersten 16 Hexzeichen von SHA-256 über die sortierten Zeilen „x,y,z=block“, wie LogicCompilerTest.TESTED_LAYOUT.
+     * Erzeugt aus den Klassen von 2fe5a8a; der neue Stand ergab für alle 47 dieselben Werte. Die Reihenfolge der
+     * Zellen (Bau-Reihenfolge) sichert dieser Test NICHT – er sortiert vor dem Hashen; gemessen 2026-11-21 war sie
+     * dennoch byte-gleich (Ausgabe aller 47 samt Pins und Ablauf gegen 2fe5a8a). Vorher hielt nichts fest, dass ein Umbau an einer Maschine die
+     * anderen nicht mit ändert – akkumulator_4bit und der mit Löschen teilen sich den Code. Wer hier einen Wert
+     * ändert, hat die Maschine geändert und lässt MachineProbe für sie in allen vier Richtungen neu laufen.
+     */
+    private static final Map<String, String> TESTED_LAYOUT = Map.ofEntries(
+            Map.entry("nicht_gatter", "10 34afd7348cad0785"),
+            Map.entry("oder_gatter", "19 92aca86e098aa64e"),
+            Map.entry("und_gatter", "27 ca9119614d3a61e7"),
+            Map.entry("xor_gatter", "56 a2e3c40d63e6554a"),
+            Map.entry("takt", "21 377e7f05a647579a"),
+            Map.entry("kolbentuer", "24 a6ef9ddb9a4e35b8"),
+            Map.entry("halbaddierer", "118 879b7a45fa4866ac"),
+            Map.entry("rs_speicher", "76 47b664db2583ef14"),
+            Map.entry("automatiktuer", "20 80b54e9b36da5554"),
+            Map.entry("wasserfahrstuhl", "62 7c9f01c423287202"),
+            Map.entry("nand_gatter", "28 2dbdb7d647a4043c"),
+            Map.entry("nor_gatter", "27 0904f7b5afa6df40"),
+            Map.entry("xnor_gatter", "58 85016d6b56fe2ec3"),
+            Map.entry("lampenreihe", "22 a9c6e12d81981b28"),
+            Map.entry("klingel", "5 06d7d39228329ce3"),
+            Map.entry("glocke", "6 04f4b1fddd1b91f0"),
+            Map.entry("abwaerts_fahrstuhl", "62 e9025a179a5b8427"),
+            Map.entry("nachtlicht", "6 0328a222fc4964a3"),
+            Map.entry("t_flipflop", "8 c230dcb2fec163f0"),
+            Map.entry("sammelstelle", "9 e22c0f6711a7fe0f"),
+            Map.entry("kombischloss", "44 7b6b7965a506898b"),
+            Map.entry("pfeilfalle", "10 7fdfc999211ae774"),
+            Map.entry("zaehler", "25 dbedaacde3a282fd"),
+            Map.entry("zuckerrohrfarm", "22 db0163b1b4ef28f0"),
+            Map.entry("volladdierer", "1295 78ca86f19a3ce1c6"),
+            Map.entry("impulsverlaengerer", "62 a01a1ccf5fc8d670"),
+            Map.entry("schmelzanlage", "11 8425c185ca38af10"),
+            Map.entry("item_sortierer", "34 3b4ccdbd21f6ac66"),
+            Map.entry("xp_farm", "1864 0a3c3df5dfceecdf"),
+            Map.entry("bruchsteingenerator", "53 1957141703414712"),
+            Map.entry("weizenfarm", "300 181c9eb87b30e2ff"),
+            Map.entry("huehnerfarm", "67 d41e2673490322d4"), // umlaut-ok
+            Map.entry("eisenfarm", "388 332e5aed36a1c828"),
+            Map.entry("kuerbisfarm", "160 3031ca04265ca127"), // umlaut-ok
+            Map.entry("melonenfarm", "160 9a0966510f2e0092"),
+            Map.entry("bambusfarm", "52 a196dd7dfadf6f6a"),
+            Map.entry("kaktusfarm", "38 335868f05b8d1781"),
+            Map.entry("d_speicher", "25 8fabd42fed42e937"),
+            Map.entry("register_4bit", "144 44069ef98e0b57cd"),
+            Map.entry("alu_1bit", "3361 d7c0710fcf274b77"),
+            Map.entry("vergleicher_2bit", "2375 96e3cbb705de645c"),
+            Map.entry("addierer_2bit", "2545 37f488fdc014d09b"),
+            Map.entry("addierer_4bit", "5399 53e8baad71e0b385"),
+            Map.entry("akkumulator_4bit", "8001 8491ac9ebc496ba5"),
+            Map.entry("anzeige", "12595 33e31e66dd3e03d7"),
+            Map.entry("befehlsknopf", "3 6e6d67c541b61570"),
+            Map.entry("befehlskette", "7 c822ef3ad30d2637"));
+
+    @Test
+    void existingMachinesKeepTheTestedLayout() throws Exception {
+        Set<String> all = new HashSet<>();
+        for (Machines.Machine m : LIB.machines()) {
+            all.add(m.module().name());
+        }
+        assertTrue(all.containsAll(TESTED_LAYOUT.keySet()), "fehlt: " + TESTED_LAYOUT.keySet());
+        for (Map.Entry<String, String> e : TESTED_LAYOUT.entrySet()) {
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            for (Change ch : LIB.machine(e.getKey()).orElseThrow().module().cells()) {
+                lines.add(ch.pos().x() + "," + ch.pos().y() + "," + ch.pos().z() + "=" + ch.block().asString());
+            }
+            lines.sort(null);
+            byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(String.join("\n", lines).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals(e.getValue(), lines.size() + " " + java.util.HexFormat.of().formatHex(hash).substring(0, 16),
+                    e.getKey());
+        }
     }
 
     /**

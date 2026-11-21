@@ -100,6 +100,19 @@ public final class MachineProbe {
         System.exit(failed == 0 ? 0 : 1);
     }
 
+    /**
+     * Wartezeit ab dem fertigen Bau, bevor die Probe etwas schaltet oder entfernt. Der Lag-Wächter
+     * (BuildService.watchForLag, seit 33b7583) misst 3 s nach dem Ende 10 s lang, was im Bau von selbst schaltet, und
+     * baut ab, was über bau.lag-grenze-je-sekunde (50) liegt; RCON-Befehle zählen dabei nicht als Eingriff. Gemessen
+     * 2026-11-20 (Spigot 1.21.11, Nord): Die Probe schaltete schon in diesem Fenster, der Wächter zählte 271
+     * (akkumulator_4bit) bzw. 240 (Akkumulator mit Löschen) Vorgänge je Sekunde und baute beide mitten im Ablauf ab –
+     * „stimmt nach nie“ ab Schritt 3, FEHLER ohne Schaltungsfehler. Mit der Wartezeit misst er echten Leerlauf wie nach
+     * dem Bau eines Spielers (Zeile „lag | gemessen“ im Server-Log), und eine echte Lag-Maschine fällt weiter durch.
+     * 16 statt 13 s: „bereit“ sieht die Probe bis zu 1 s zu spät, und unter Last laufen weniger als 20 Ticks je Sekunde.
+     * Wer die Wartezeit entfernt, prüft große Schaltungen wieder gegen den Wächter statt gegen ihre Wahrheitstabelle.
+     */
+    static final long LAG_WATCH_MS = 16_000;
+
     private static boolean probe(Rcon rcon, String world, Cardinal dir, Pos corner, Machines.Machine m)
             throws Exception {
         return probe(rcon, world, dir, corner, m, null, settleMs(m));
@@ -160,6 +173,7 @@ public final class MachineProbe {
             System.out.println("  " + reply.strip());
         }
         waitBuilt(rcon, m.module().cells().size());
+        long built = System.currentTimeMillis();
         Map<Pos, BlockSpec> cells = new LinkedHashMap<>();
         for (CompiledBuild.Change c : m.module().cells()) {
             cells.put(c.pos(), c.block());
@@ -187,6 +201,11 @@ public final class MachineProbe {
         if (wrong > 0) {
             System.out.println("  " + wrong + " Zellen weichen ab");
             return false;
+        }
+        // Erst nach der Leerlauf-Messung des Lag-Wächters schalten oder entfernen (siehe LAG_WATCH_MS).
+        long rest = built + LAG_WATCH_MS - System.currentTimeMillis();
+        if (rest > 0) {
+            Thread.sleep(rest);
         }
         for (Pos p : without) {
             Pos w = world(corner, o, p);
