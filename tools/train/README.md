@@ -22,6 +22,12 @@ Optional echte LLM-Pläne von dev01 dazu (`plugins/Baumeister/pläne/`, die letz
 `--pläne <ordner>` anhängen. Nur Pläne, die die strenge Prüfung bestehen, kommen hinein; Anbau-, Plot- und
 Folgeaufträge bleiben draußen (dort fehlt der Bauplatz bzw. das Gedächtnis aus dem Gespräch).
 
+Aus demselben Ordner kommen Reparaturrunden (Art `llm_reparatur`): Folgen auf einen Auftrag Versuch 0, 1 …
+desselben Spielers, wird das letzte Paar zum Gespräch Nutzer → verworfener Plan → Rückmeldung des Prüfers →
+korrigierter Plan – genau so, wie das Plugin die Korrekturrunde schickt (`PlanPrompt.repairConversation`,
+Rückmeldung aus `PlanReview`). Nur, wenn der letzte Versuch die strenge Prüfung besteht. `train_qlora.py` lernt
+dabei nur auf die letzte Antwort; der verworfene Plan steht maskiert im Prompt.
+
 Ins Lehrset kommt nur, was **ohne jeden Befund** durchgeht: angenommen im ersten Versuch, keine Nachbesserung durch
 PlanReview (Hohlmachen, weggelassene Blöcke, Stützen), keine Compiler-Warnung, kein Linter-Hinweis. Die festen
 Testaufträge des Messgeräts (`src/test/resources/dataset/bench-orders.txt`) sind ausgeschlossen.
