@@ -5,6 +5,7 @@
 // Schnittstelle Version 1, Gegenstück im Plugin CompanionVoiceLink.java – beide Seiten gleich halten:
 //   POST /baumeister/v1/begleiter/sagen  {"spieler","text"} → 200 {"ok":true}; 400 bei ungültigem Inhalt
 //   GET  /baumeister/v1/begleiter/gehoert → hält bis kHeardHold, dann 200 {"saetze":[{"spieler","text"}]}  umlaut-ok
+//        Abfrage ?imspiel=Name1,Name2&begleiter=Name (beides optional, siehe query_in_game, query_companion_name)
 // Prüfungen (ASVS V5.1.3, Eingaben vom Netz prüfen, auch von 127.0.0.1): spieler wie ein Minecraft-Name (3–16 Zeichen
 // A–Z, a–z, 0–9, _), text 1–400 Byte UTF-8. Vorgelesen wird nur, was dem eingetragenen Spieler gilt (Controller): Auf
 // einem geteilten Server spräche sonst jeder fremde Begleiter aus diesen Lautsprechern.
@@ -45,6 +46,10 @@ inline constexpr std::string_view kCompanionVoicePath = "/baumeister/v1/begleite
 inline constexpr std::chrono::milliseconds kHeardHold{20'000};
 inline constexpr std::size_t kHeardMax = 16;
 inline constexpr std::size_t kCompanionTextMax = 400;
+// Begleitername für den Vortext der Erkennung (AK-4, 2026-11-20). Vorher stand dort fest „Vera“: Ein anderer
+// begleiter.name im Plugin wurde schlechter erkannt, und ohne erkannten Namen nimmt das Plugin die Anrede nicht an.
+inline constexpr std::string_view kDefaultCompanionName = "Vera";
+inline constexpr std::size_t kCompanionNameMaxChars = 16;  // wie CompanionSettings.NAME im Plugin
 
 struct Spoken {
     std::string player;
@@ -91,6 +96,9 @@ struct CompanionHandlers {
     std::function<void(const Spoken&)> say;
     // Bei jedem Abholen (/gehoert): Spieler, die laut Plugin gerade über Simple Voice Chat sprechen (?imspiel=…).
     std::function<void(const std::vector<std::string>&)> in_game;
+    // Bei jedem Abholen: Begleitername laut Plugin (?begleiter=…), schon geprüft – sonst
+    // kDefaultCompanionName. Auch ohne Parameter gerufen: Ein älteres Plugin schickt keinen, dann gilt „Vera“.
+    std::function<void(const std::string&)> companion_name;
     HearFn hear;
     VoiceFn voice;
 };
@@ -104,6 +112,18 @@ std::string query_player(std::string_view target);
 
 // Namen aus „…?imspiel=A,B“ (Plugin: CompanionVoiceLink.heardUri); ungültige fallen weg, höchstens 32.
 std::vector<std::string> query_in_game(std::string_view target);
+
+// Gültiger Begleitername, UTF-8 (ASVS V5.1.3/V5.1.4: Positivliste für Länge und Zeichen): 2–16 Zeichen, vorn ein
+// Buchstabe, danach Buchstaben oder Leerzeichen, hinten kein Leerzeichen. Buchstaben sind A–Z, a–z und die
+// lateinischen U+00C0–U+024F ohne × und ÷ – nur 1- und 2-Byte-Folgen, strikt dekodiert (keine überlangen Folgen).
+// Enger als das Plugin (jeder Unicode-Buchstabe): Die Erkennung ist fest Deutsch, „Вера“ bliebe auch im Vortext fremd.
+// Wer die Liste erweitert, prüft, dass kein Steuer- oder Satzzeichen in den Vortext von Whisper gelangt.
+bool valid_companion_name(std::string_view utf8);
+
+// Begleitername aus „…?begleiter=Name“ (Plugin: CompanionVoiceLink.heardUri, URLEncoder: „+“ = Leerzeichen, %XX).
+// Fehlt er, ist er falsch kodiert, länger als 96 Zeichen roh oder ungültig: kDefaultCompanionName. Fail-closed auf die
+// Vorgabe, nie eine Ausnahme – ein kaputter Name darf die Abholung der Sätze nicht stören.
+std::string query_companion_name(std::string_view target);
 
 // Spricht der eingetragene Spieler gerade im Spiel? Dann ruht die Sprechtaste der App (Wunsch 2026-11-04) – sonst kam
 // jeder Satz doppelt an.

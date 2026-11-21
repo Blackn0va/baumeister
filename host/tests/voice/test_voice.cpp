@@ -16,7 +16,11 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
+#include <memory>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <thread>
 #include <string>
 #include <vector>
@@ -270,4 +274,146 @@ TEST_CASE("Sprechen: echte Erkennung einer deutschen Aufnahme (nur mit SWBH_WHIS
                          << wav->seconds() << " s");
     CHECK(lower.find("vera") != std::string::npos);
     CHECK(lower.find("fackeln") != std::string::npos);
+}
+
+namespace {
+
+// Ersatz für whisper (SpeechInput::Options::open_recognizer): „erkennt“ immer den Vortext, mit dem er gerade läuft.
+// So zeigt die Antwort von recognize(), welchen Vortext die echte Erkennung an dieser Stelle bekommen hätte.
+class EchoTranscriber final : public Transcriber {
+public:
+    explicit EchoTranscriber(std::string prompt) : prompt_(std::move(prompt)) {}
+
+    std::optional<std::string> transcribe(std::span<const float>, std::string&) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return prompt_;
+    }
+
+    void set_prompt(std::string prompt) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        prompt_ = std::move(prompt);
+    }
+
+private:
+    std::mutex mutex_;
+    std::string prompt_;
+};
+
+// Was beim Öffnen ankam; hold hält das Öffnen an wie whisper beim Laden der 574 MB.
+struct OpenLog {
+    std::mutex m;
+    std::condition_variable cv;
+    int opened = 0;
+    std::string prompt;
+    bool hold = false;
+    bool entered = false;
+    std::string last_status;
+};
+
+// Gibt ein angehaltenes Öffnen frei, auch wenn eine Prüfung vorher abbricht – sonst wartete stop() ewig darauf.
+struct ReleaseOpen {
+    std::shared_ptr<OpenLog> log;
+    ~ReleaseOpen() {
+        {
+            std::lock_guard<std::mutex> lock(log->m);
+            log->hold = false;
+        }
+        log->cv.notify_all();
+    }
+};
+
+void start_echo(SpeechInput& s, const std::shared_ptr<OpenLog>& log) {
+    SpeechInput::Options o;
+    o.key = *parse_talk_key("f24");  // F24 belegt keine Anwendung (wie der Haltetasten-Test oben)
+    o.tones = false;
+    o.open_recognizer = [log](const Recognizer::Options& ro, std::string&) -> std::unique_ptr<Transcriber> {
+        std::unique_lock<std::mutex> lock(log->m);
+        ++log->opened;
+        log->prompt = ro.prompt;
+        log->entered = true;
+        log->cv.notify_all();
+        log->cv.wait(lock, [&log] { return !log->hold; });
+        return std::make_unique<EchoTranscriber>(ro.prompt);
+    };
+    s.start(std::move(o), [](std::string) {}, [log](bool, std::string text) {
+        std::lock_guard<std::mutex> lock(log->m);
+        log->last_status = std::move(text);
+    });
+}
+
+bool wait_running(const SpeechInput& s) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!s.running()) {
+        if (std::chrono::steady_clock::now() > until) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return true;
+}
+
+// Satz aus dem Spiel erkennen lassen (derselbe Arbeitsthread wie das Mikrofon) – beim Echo-Ersatz kommt der Vortext.
+std::string heard(SpeechInput& s) {
+    std::string error;
+    const std::optional<std::string> text = s.recognize(speech_in_noise(0.3f), error);
+    REQUIRE_MESSAGE(text.has_value(), error);
+    return *text;
+}
+
+bool starts_with(const std::string& text, const std::string& prefix) { return text.rfind(prefix, 0) == 0; }
+
+std::string status_of(OpenLog& log) {
+    std::lock_guard<std::mutex> lock(log.m);
+    return log.last_status;
+}
+
+}  // namespace
+
+// AK-4 (2026-11-20), Prüfbefund 2026-11-21: Vorher setzte der Controller den Vortext selbst (fest „Vera“, dann den
+// Namen) – das sah kein Test. Jetzt baut SpeechInput ihn aus set_companion_name, und das prüft dieser Fall.
+TEST_CASE("Begleitername: die Erkennung nimmt den Namen aus dem Plugin, beim Laden und nach einem Wechsel") {
+    auto log = std::make_shared<OpenLog>();
+    SpeechInput s;
+    CHECK(s.set_companion_name("Lotte"));
+    CHECK_FALSE(s.set_companion_name("Lotte"));  // gleicher Name: kein Wechsel (der Controller schreibt dann nichts)
+    start_echo(s, log);
+    REQUIRE_MESSAGE(wait_running(s), status_of(*log));
+    {
+        std::lock_guard<std::mutex> lock(log->m);
+        CHECK(starts_with(log->prompt, "Hey Lotte,"));  // geladen mit dem Namen
+    }
+    CHECK(starts_with(heard(s), "Hey Lotte,"));
+    CHECK(s.set_companion_name("Anna Lena"));
+    CHECK(starts_with(heard(s), "Hey Anna Lena,"));  // Wechsel im Lauf
+    CHECK(s.set_companion_name(""));                // leer = Vorgabe
+    CHECK(starts_with(heard(s), "Hey Vera,"));
+    std::lock_guard<std::mutex> lock(log->m);
+    CHECK(log->opened == 1);  // ohne das Modell neu zu laden
+}
+
+TEST_CASE("Begleitername: setzen wartet nicht auf das Laden, ein Wechsel währenddessen geht nicht verloren") {
+    auto log = std::make_shared<OpenLog>();
+    log->hold = true;
+    SpeechInput s;
+    const ReleaseOpen release{log};  // nach s angelegt, also vor s abgebaut
+    start_echo(s, log);
+    {
+        std::unique_lock<std::mutex> lock(log->m);
+        REQUIRE(log->cv.wait_for(lock, std::chrono::seconds(10), [&log] { return log->entered; }));
+    }
+    // Das Öffnen hängt noch: Der Long-Poll-Thread des Servers darf hier nicht warten.
+    const auto t0 = std::chrono::steady_clock::now();
+    CHECK(s.set_companion_name("Lotte"));
+    CHECK(std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(500));
+    {
+        std::lock_guard<std::mutex> lock(log->m);
+        log->hold = false;
+    }
+    log->cv.notify_all();
+    REQUIRE_MESSAGE(wait_running(s), status_of(*log));
+    {
+        std::lock_guard<std::mutex> lock(log->m);
+        CHECK(starts_with(log->prompt, "Hey Vera,"));  // geladen mit dem Namen von vor dem Wechsel
+    }
+    CHECK(starts_with(heard(s), "Hey Lotte,"));  // der Wechsel greift vor der ersten Erkennung
 }

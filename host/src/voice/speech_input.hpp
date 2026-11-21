@@ -9,11 +9,13 @@
 // Mitschnitt des Raums. Der Pegel ist deshalb nur während Aufnahme und Mikrofontest zu sehen.
 //
 // Threads: Haltetaste (Hook-Thread) → Mikrofon (eigener Thread) → Erkennung im Arbeitsthread dieser Klasse. on_text
-// und on_status laufen im Arbeitsthread; status() ist aus jedem Thread lesbar. Fehler: als Status, nie als Ausnahme.
+// und on_status laufen im Arbeitsthread; status() und set_companion_name gehen aus jedem Thread. Fehler: als Status,
+// nie als Ausnahme.
 
 #pragma once
 
 #include "voice/push_to_talk.hpp"
+#include "voice/recognizer.hpp"
 #include "voice/signal.hpp"
 
 #include <atomic>
@@ -71,10 +73,14 @@ public:
         TalkKey key;
         TalkMode mode = TalkMode::Hold;
         std::string microphone;  // Gerätename, leer = Windows-Standard
-        std::string prompt;
         double gain_db = 0;      // Verstärkung von Hand
         bool auto_gain = true;
         bool tones = true;
+        // Erkennung öffnen; leer = Recognizer::open (whisper). Der Test setzt hier einen Ersatz ein, der den Vortext
+        // zurückgibt – so ist der Weg Begleitername → Vortext ohne Modell prüfbar. Den Vortext baut SpeechInput selbst
+        // aus dem Begleiternamen (set_companion_name); vorher stand hier ein fertiger Vortext, den der Controller fest
+        // mit „Vera“ füllte, und kein Test sah, was er hineinschrieb.
+        std::function<std::unique_ptr<Transcriber>(const Recognizer::Options&, std::string& error)> open_recognizer;
     };
     using TextFn = std::function<void(std::string text)>;
     using StatusFn = std::function<void(bool error, std::string text)>;
@@ -99,6 +105,14 @@ public:
     // bereit ist oder die Erkennung scheitert; "" = nichts verstanden.
     std::optional<std::string> recognize(std::vector<float> pcm, std::string& error, int timeout_ms = 20000);
 
+    // Begleitername für den Vortext der Erkennung (Plugin, ?begleiter=; 2026-11-20). Aus jedem Thread, auch vor und
+    // während start()/stop(): legt nur den Namen unter einem eigenen kleinen Mutex ab und kehrt sofort zurück. Vorher
+    // wartete der Long-Poll-Thread dafür auf speech_apply_mutex_, den apply_speech über stop() samt join hält
+    // (Prüfbefund 2026-11-21). Das Laden nimmt den Namen mit; ein Wechsel gilt ab der nächsten Erkennung, ohne das
+    // Modell neu zu laden (574 MB laden und Shader aufwärmen – so lange hörte die App nichts). Den Namen prüft der
+    // Aufrufer (server::valid_companion_name); leer = kDefaultCompanionName. true = er hat sich geändert.
+    bool set_companion_name(std::string name);
+
     // Sprechtaste ruhen lassen bis until (Spieler spricht im Spiel über Simple Voice Chat; Wunsch 2026-11-04). Gedrückt
     // wird dann weder aufgenommen noch getönt; eine
     // schon laufende Aufnahme endet normal. Mit einer Frist statt eines Schalters, damit ein verstummtes Plugin die
@@ -107,6 +121,10 @@ public:
 
 private:
     struct Impl;
+    // Begleitername außerhalb von Impl: start() ersetzt Impl, der Name überlebt das und ist ohne Impl setzbar. Nie neu
+    // zugewiesen – deshalb aus jedem Thread lesbar.
+    struct Name;
+    const std::shared_ptr<Name> name_;
     std::unique_ptr<Impl> impl_;
 };
 

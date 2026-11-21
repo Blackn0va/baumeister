@@ -52,6 +52,12 @@ void Utterance::append(std::span<const float> frames) {
 
 TalkMode parse_talk_mode(std::string_view text) { return text == "umschalten" ? TalkMode::Toggle : TalkMode::Hold; }
 
+struct SpeechInput::Name {
+    std::mutex mutex;  // nur value und rev – nie gehalten, während geladen, erkannt oder gewartet wird
+    std::string value{kDefaultCompanionName};
+    std::uint64_t rev = 0;  // zählt jeden Wechsel; der Arbeitsthread vergleicht mit dem zuletzt übernommenen
+};
+
 struct SpeechInput::Impl {
     // Was der Arbeitsthread tun soll.
     struct Reply {
@@ -72,7 +78,7 @@ struct SpeechInput::Impl {
     Options o;
     TextFn on_text;
     StatusFn on_status;
-    std::unique_ptr<Recognizer> recognizer;
+    std::unique_ptr<Transcriber> recognizer;
     std::unique_ptr<Microphone> mic;
     PushToTalk ptt;
 
@@ -89,6 +95,28 @@ struct SpeechInput::Impl {
     std::thread worker;
     std::thread test_thread;  // Mikrofontest; stop() wartet auf ihn (abgelöst griffe er nach einem Neustart ins Leere)
     std::atomic<bool> ready{false};
+    // Begleitername (SpeechInput::name_, von start() hereingereicht) und der Stand, mit dem recognizer läuft. Beides
+    // nur im Arbeitsthread gelesen bzw. geschrieben: recognizer gehört ihm, nur er reicht den Vortext weiter.
+    std::shared_ptr<SpeechInput::Name> name;
+    std::uint64_t applied_name = 0;
+
+    // Vortext für den Namen von jetzt; applied_name merkt sich den Stand.
+    std::string take_prompt() {
+        std::lock_guard<std::mutex> lock(name->mutex);
+        applied_name = name->rev;
+        return recognizer_prompt(name->value);
+    }
+
+    // Vortext nachziehen, falls sich der Name seit dem Laden oder der letzten Erkennung geändert hat.
+    void refresh_prompt() {
+        {
+            std::lock_guard<std::mutex> lock(name->mutex);
+            if (name->rev == applied_name) {
+                return;
+            }
+        }
+        recognizer->set_prompt(take_prompt());
+    }
 
     void status(bool error, std::string text) {
         if (error) {
@@ -295,12 +323,12 @@ struct SpeechInput::Impl {
         ro.model = o.model;
         ro.gpu = o.gpu;
         ro.gpu_device = o.gpu_device;
-        ro.prompt = o.prompt;
+        ro.prompt = take_prompt();
         set_state(SpeechState::Loading);
         status(false, "Spracherkennung lädt …");
         const auto t0 = std::chrono::steady_clock::now();
         std::string error;
-        recognizer = Recognizer::open(ro, error);
+        recognizer = o.open_recognizer ? o.open_recognizer(ro, error) : Recognizer::open(ro, error);
         if (!recognizer) {
             set_state(SpeechState::Error);
             status(true, error);
@@ -343,6 +371,9 @@ struct SpeechInput::Impl {
                     continue;
                 }
             }
+            // Vor jeder Erkennung (Mikrofon, Test, Ton aus dem Spiel): ein inzwischen gewechselter Begleitername gilt
+            // ab hier. Außerhalb von mutex – set_prompt nimmt nur den kleinen Mutex des Recognizers.
+            refresh_prompt();
             if (auto_stop) {
                 end_recording();  // Mikrofon schließen darf nicht im Mikrofon-Thread passieren (join auf sich selbst)
                 continue;
@@ -408,13 +439,16 @@ struct SpeechInput::Impl {
     }
 };
 
-SpeechInput::SpeechInput() : impl_(std::make_unique<Impl>()) {}
+SpeechInput::SpeechInput() : name_(std::make_shared<Name>()), impl_(std::make_unique<Impl>()) {
+    impl_->name = name_;
+}
 
 SpeechInput::~SpeechInput() { stop(); }
 
 void SpeechInput::start(Options options, TextFn on_text, StatusFn on_status) {
     stop();
     impl_ = std::make_unique<Impl>();
+    impl_->name = name_;
     impl_->o = std::move(options);
     impl_->on_text = std::move(on_text);
     impl_->on_status = std::move(on_status);
@@ -475,6 +509,19 @@ std::optional<std::string> SpeechInput::recognize(std::vector<float> pcm, std::s
     }
     error = reply->error;
     return reply->text;
+}
+
+bool SpeechInput::set_companion_name(std::string name) {
+    if (name.empty()) {
+        name = std::string(kDefaultCompanionName);
+    }
+    std::lock_guard<std::mutex> lock(name_->mutex);
+    if (name == name_->value) {
+        return false;
+    }
+    name_->value = std::move(name);
+    ++name_->rev;
+    return true;
 }
 
 void SpeechInput::pause_until(std::chrono::steady_clock::time_point until) {

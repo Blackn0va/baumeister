@@ -40,10 +40,71 @@ class CompanionVoiceLinkTest {
     void heardUriNamesPlayersInVoiceChat() {
         // Nutzer 2026-11-04: Im Voice-Chat soll die App-Taste ruhen – die App erfährt es über diese Liste.
         assertEquals(HEARD + "?imspiel=Blackkn0va,Steve",
-                CompanionVoiceLink.heardUri(HEARD, List.of("Blackkn0va", "Steve")).toString());
-        assertEquals(HEARD, CompanionVoiceLink.heardUri(HEARD, List.of()));
-        assertEquals(HEARD + "?imspiel=ok_1", CompanionVoiceLink.heardUri(HEARD, List.of("a b", "x", "ok_1"))
+                CompanionVoiceLink.heardUri(HEARD, List.of("Blackkn0va", "Steve"), null).toString());
+        assertEquals(HEARD, CompanionVoiceLink.heardUri(HEARD, List.of(), null));
+        assertEquals(HEARD + "?imspiel=ok_1", CompanionVoiceLink.heardUri(HEARD, List.of("a b", "x", "ok_1"), null)
                 .toString(), "ungültige Namen fallen weg");
+    }
+
+    /**
+     * AK-4 (2026-11-20): Der Begleitername geht mit jedem Abholen an die App, damit ihr Vortext der Erkennung ihn
+     * nennt. Kodiert wie hear() den Spieler (Leerzeichen „+“, Umlaute %C3%xx) – das lassen Relay und App durch
+     * (PathRules).
+     */
+    @Test
+    void heardUriCarriesTheCompanionName() {
+        assertEquals(HEARD + "?imspiel=Steve&begleiter=Lotte",
+                CompanionVoiceLink.heardUri(HEARD, List.of("Steve"), "Lotte").toString());
+        assertEquals(HEARD + "?begleiter=Lotte", CompanionVoiceLink.heardUri(HEARD, List.of(), "Lotte").toString(),
+                "auch ohne Spieler im Voice-Chat");
+        assertEquals(HEARD + "?begleiter=J%C3%BCrgen+Maria",  // umlaut-ok: URL-Kodierung
+                CompanionVoiceLink.heardUri(HEARD, List.of(), "Jürgen Maria").toString());
+        for (String bad : new String[] {null, "", "x", "Ve*ra", "Vera1", " Vera", "Vera&imspiel=Steve",
+                "Siebzehnbuchstabe"}) {
+            assertEquals(HEARD + "?imspiel=Steve", CompanionVoiceLink.heardUri(HEARD, List.of("Steve"), bad)
+                    .toString(), "ungültiger Name fällt weg: " + bad);
+        }
+    }
+
+    /**
+     * Vom Eintrag in config.yml bis auf die Leitung: from() nimmt begleiter.name, das Abholen schickt ihn mit. Ohne
+     * diese Prüfung fiele ein from(), das den Namen vergisst (und immer „Vera“ schickt), keinem Test auf.
+     */
+    @Test
+    void longPollSendsTheConfiguredCompanionName() throws Exception {
+        assertEquals("begleiter=Lotte", firstPollQuery("begleiter:\n  name: Lotte\n"));
+        assertEquals("begleiter=Vera", firstPollQuery(""), "ohne Eintrag die Vorgabe");
+        assertEquals("begleiter=Vera", firstPollQuery("begleiter:\n  name: \"L0tte\"\n"),
+                "ungültiger Eintrag: wie CompanionSettings die Vorgabe");
+    }
+
+    /** Rohe Abfrage der ersten Abholung eines Links aus from(config) – der Fake-Host antwortet leer. */
+    private static String firstPollQuery(String yaml) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        List<String> queries = new CopyOnWriteArrayList<>();
+        CountDownLatch first = new CountDownLatch(1);
+        server.createContext(CompanionVoiceLink.HEARD_PATH, ex -> {
+            queries.add(String.valueOf(ex.getRequestURI().getRawQuery()));
+            first.countDown();
+            byte[] body = "{\"saetze\":[]}".getBytes(StandardCharsets.UTF_8);  // umlaut-ok: JSON-Schlüssel ASCII
+            ex.sendResponseHeaders(200, body.length);
+            ex.getResponseBody().write(body);
+            ex.close();
+        });
+        server.setExecutor(Executors.newCachedThreadPool());
+        server.start();
+        YamlConfiguration c = new YamlConfiguration();
+        c.loadFromString(yaml);
+        CompanionVoiceLink link = CompanionVoiceLink.from(c,
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions"));
+        try {
+            link.listen((p, t) -> { });
+            assertTrue(first.await(10, TimeUnit.SECONDS), "keine Abholung");
+            return queries.getFirst();
+        } finally {
+            link.stop();
+            server.stop(0);
+        }
     }
 
     /**

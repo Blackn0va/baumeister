@@ -70,6 +70,20 @@ class PathRulesTest {
         assertFalse(PathRules.allowed("/baumeister/v1/begleiter,x"), "im Pfad bleibt das Komma verboten");
     }
 
+    /**
+     * Seit 2026-11-20 hängt das Plugin den Begleiternamen an („&amp;begleiter=Lotte“, URLEncoder: Leerzeichen „+“,
+     * Umlaute %C3%xx), damit die App ihn im Vortext der Erkennung nennt. Das Relay reicht ihn ohne eigene Regel durch –
+     * dieser Test hält fest, dass das so bleibt. Wer „+“ oder „&amp;“ aus der Abfrage nimmt, beendet jeden Long-Poll
+     * mit 404 und damit Veras Gehör.
+     */
+    @Test
+    void companionNameRidesAlongInTheQuery() {
+        assertTrue(PathRules.allowed("/baumeister/v1/begleiter/gehoert?imspiel=Alex&begleiter=Lotte"));  // umlaut-ok
+        assertTrue(PathRules.allowed("/baumeister/v1/begleiter/gehoert?begleiter=J%C3%BCrgen+Maria"));  // umlaut-ok
+        assertFalse(PathRules.allowed("/baumeister/v1/begleiter/gehoert?begleiter=Lo%0Atte"),  // umlaut-ok: URL
+                "kodierter Zeilenumbruch bleibt verboten");
+    }
+
     @Test
     void logFormDropsTheQueryAndOddCharacters() {
         assertEquals("/baumeister/v1/begleiter/hoeren", LocalExchange.loggable(  // umlaut-ok: URL-Pfad

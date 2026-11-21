@@ -128,7 +128,11 @@ pfade = {
                 '/baumeister/v1/begleiter/gehoert?imspiel=Alex', '/baumeister/v1/begleiter/hoeren?spieler=Alex',
                 '/baumeister/v1/begleiter/gehoert?imspiel=J%C3%BCrgen',
                 # Komma (2026-11-08): das Plugin listet die Spieler im Voice-Chat so (CompanionVoiceLink.heardUri).
-                '/baumeister/v1/begleiter/gehoert?imspiel=Alex,Steve'],
+                '/baumeister/v1/begleiter/gehoert?imspiel=Alex,Steve',
+                # Begleitername (2026-11-20): „&“ zwischen zwei Parametern, „+“ für das Leerzeichen und %C3%xx für
+                # Umlaute, so wie URLEncoder in CompanionVoiceLink.heardUri kodiert.
+                '/baumeister/v1/begleiter/gehoert?imspiel=Alex&begleiter=Lotte',
+                '/baumeister/v1/begleiter/gehoert?begleiter=J%C3%BCrgen+Maria'],
     'verboten': ['/', '/v1', '/healthz', '/health/', '/baumeister/v2/stadt', '/baumeister/v1', '/../etc/passwd',
                  '/baumeister/v1/../../x', '/v1/%2e%2e/x', '/v1/%2E%2E/x', '//v1/chat', '/v1/chat\\..\\x',
                  'http://evil/v1/chat', '/v1/chat completions', '/baumeister/v1/stadt#x',
