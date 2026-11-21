@@ -245,4 +245,37 @@ class FarmGuideTest {
         assertTrue(reply.startsWith("Ich baue dir die Eisenfarm. Leg schon bereit: 3 Betten"), reply);
         assertTrue(reply.endsWith("Die Anleitung kommt, sobald alles steht."), reply);
     }
+
+    /**
+     * Mehrsorten-Sortierer (2026-11-21): Zahl der Filter, Lage von Einwurf und Rest-Truhe und die Sorten aus dem Namen
+     * stimmen mit dem Bau überein. Gespiegelt gibt es keinen Hinweis (links/rechts vertauscht), der Ein-Sorten-Sortierer
+     * behält seine Antwort ohne Hinweis.
+     */
+    @Test
+    void multiSorterGuideMatchesTheBuild() {
+        for (int n = Machines.MULTI_SORTER_MIN; n <= Machines.MULTI_SORTER_MAX; n++) {
+            String module = Machines.MULTI_SORTER + n;
+            Map<Pos, BlockSpec> c = cells(module);
+            String t = text(module);
+            assertTrue(t.contains("der " + n + " mittleren Trichter"), t);
+            long hoppersOverChests = find(c, "chest").stream().filter(p -> p.y() == 1)
+                    .filter(p -> c.get(p.add(0, 1, 1)) != null && c.get(p.add(0, 1, 1)).id().equals("hopper")).count();
+            assertEquals(n, hoppersOverChests, module);
+            // „Trichter vorn links“: Einwurf bei x=0, z=0; „Truhe hinten rechts“: die einzige Truhe oben, ganz rechts.
+            assertEquals("hopper", c.get(new Pos(0, 3, 0)).id());
+            List<Pos> top = find(c, "chest").stream().filter(p -> p.y() == 3).toList();
+            assertEquals(1, top.size());
+            assertEquals(machine(module).module().size().x() - 4, top.getFirst().x());
+            assertTrue(top.getFirst().z() > 0, "Rest hinten");
+            assertTrue(FarmGuide.acceptReply(module).orElseThrow().length() <= 200);
+            assertTrue(guide(module).prepare().contains("18 Stück"));
+        }
+        FarmGuide.Guide full = guide("item_sortierer_2:cobblestone,sand");
+        assertTrue(full.prepare().isEmpty(), "vorbefüllt: nichts bereitlegen");
+        assertTrue(String.join(" ", full.steps()).contains("von links nach rechts: cobblestone, sand."));
+        assertTrue(guide("item_sortierer_3:sand").steps().getFirst().startsWith("Füll jeden leeren der 3"));
+        assertTrue(FarmGuide.of("item_sortierer_3_gespiegelt").isEmpty());
+        assertTrue(FarmGuide.of("item_sortierer_9").isEmpty());
+        assertTrue(FarmGuide.acceptReply("item_sortierer").isEmpty());
+    }
 }

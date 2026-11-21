@@ -79,12 +79,32 @@ public final class MachineProbe {
         try (Rcon rcon = new Rcon(port, props.getProperty("rcon.password"))) {
             // Abstand aus der Größe beider Nachbarn statt fest 16: Der Volladdierer (26 × 28) ragte sonst in drei
             // Nachbarflächen, und deren Räumen (±12) hätte ihn nicht erfasst.
-            int x = 0;
-            int previous = 0;
+            // Namen außerhalb der Bibliothek (Mehrsorten-Sortierer „item_sortierer_5“, „item_sortierer_3:sand,dirt“,
+            // 2026-11-21) über machine() – vorher prüfte die Probe nur, was machines() aufzählt, und überging einen
+            // unbekannten Namen stumm mit „ALLE BESTANDEN“.
+            List<Machines.Machine> todo = new ArrayList<>();
+            Set<String> listed = new HashSet<>();
             for (Machines.Machine m : lib.machines()) {
-                if (!only.isEmpty() && !only.contains(m.module().name())) {
+                listed.add(m.module().name());
+                if (only.isEmpty() || only.contains(m.module().name())) {
+                    todo.add(m);
+                }
+            }
+            for (String n : only) {
+                if (listed.contains(n)) {
                     continue;
                 }
+                var extra = lib.machine(n);
+                if (extra.isPresent()) {
+                    todo.add(extra.get());
+                } else {
+                    System.out.println("FEHLER    " + n + " – gibt es nicht");
+                    failed++;
+                }
+            }
+            int x = 0;
+            int previous = 0;
+            for (Machines.Machine m : todo) {
                 int radius = radius(m);
                 x += previous == 0 ? 0 : previous + radius + 4;
                 previous = radius;

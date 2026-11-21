@@ -26,6 +26,25 @@ class MachinesTest {
     private static final Set<String> NEEDS_FLOOR = Set.of("redstone_wire", "repeater", "comparator", "redstone_torch",
             "lever");
 
+    /**
+     * Alle Maschinen der Bibliothek plus jede Fassung des Mehrsorten-Sortierers, die nur über den Namen entsteht
+     * (item_sortierer_2 … _8, mit und ohne Sorten): Die allgemeinen Bauregeln unten gelten für jede, nicht nur für die
+     * eine in der Bibliothek.
+     */
+    private static final List<Machines.Machine> WITH_SORTERS = withSorters();
+
+    private static List<Machines.Machine> withSorters() {
+        java.util.List<Machines.Machine> out = new java.util.ArrayList<>(LIB.machines());
+        for (int n = Machines.MULTI_SORTER_MIN; n <= Machines.MULTI_SORTER_MAX; n++) {
+            if (n != Machines.MULTI_SORTER_PROBED) {
+                out.add(LIB.machine(Machines.MULTI_SORTER + n).orElseThrow());
+            }
+        }
+        out.add(LIB.machine("item_sortierer_3:cobblestone,sand,oak_planks").orElseThrow());
+        out.add(LIB.machine("item_sortierer_8:sand,dirt").orElseThrow());
+        return List.copyOf(out);
+    }
+
     private static Map<Pos, BlockSpec> cells(ModuleLibrary.Module m) {
         Map<Pos, BlockSpec> out = new HashMap<>();
         for (Change c : m.cells()) {
@@ -383,7 +402,7 @@ class MachinesTest {
     /**
      * Fingerabdruck jeder Maschine vor dem Akkumulator mit Löschen (Stand 2fe5a8a, 2026-11-20): Zellenzahl und die
      * ersten 16 Hexzeichen von SHA-256 über die sortierten Zeilen „x,y,z=block“, wie LogicCompilerTest.TESTED_LAYOUT.
-     * Erzeugt aus den Klassen von 2fe5a8a; der neue Stand ergab für alle 47 dieselben Werte. Die Reihenfolge der
+     * Erzeugt aus den Klassen von 2fe5a8a; der neue Stand ergab für alle 47 dieselben Werte (seit T-016, 2026-11-21: 48 Einträge, item_sortierer_3 neu). Die Reihenfolge der
      * Zellen (Bau-Reihenfolge) sichert dieser Test NICHT – er sortiert vor dem Hashen; gemessen 2026-11-21 war sie
      * dennoch byte-gleich (Ausgabe aller 47 samt Pins und Ablauf gegen 2fe5a8a). Vorher hielt nichts fest, dass ein Umbau an einer Maschine die
      * anderen nicht mit ändert – akkumulator_4bit und der mit Löschen teilen sich den Code. Wer hier einen Wert
@@ -418,6 +437,8 @@ class MachinesTest {
             Map.entry("impulsverlaengerer", "62 a01a1ccf5fc8d670"),
             Map.entry("schmelzanlage", "11 8425c185ca38af10"),
             Map.entry("item_sortierer", "34 3b4ccdbd21f6ac66"),
+            // Mehrsorten-Sortierer (T-016, 2026-11-21): MachineProbe in vier Richtungen auf Spigot 1.21.11.
+            Map.entry("item_sortierer_3", "114 b26956ee7a36ebc8"),
             Map.entry("xp_farm", "1864 0a3c3df5dfceecdf"),
             Map.entry("bruchsteingenerator", "53 1957141703414712"),
             Map.entry("weizenfarm", "300 181c9eb87b30e2ff"),
@@ -475,6 +496,142 @@ class MachinesTest {
         // F zeigt in den Komparator (kein Behälter), H unter F gibt in die Truhe davor.
         assertEquals("right", c.get(new Pos(0, 2, 1)).props().get("facing"));
         assertEquals("front", c.get(new Pos(0, 1, 1)).props().get("facing"));
+    }
+
+    /**
+     * Mehrsorten-Sortierer: Jede Scheibe ist Block für Block die geprüfte des Ein-Sorten-Sortierers, nur um
+     * MULTI_SORTER_STRIDE verschoben – ohne dessen Einwurf, Linientrichter und Rest-Truhe, die es einmal für die ganze
+     * Linie gibt. Vorher gab es nur eine Sorte (Gedächtnis „Offen“). Wer eine Scheibe umbaut, ohne den Ein-Sorten-
+     * Sortierer mitzuändern, sieht es hier – und hat eine ungeprüfte Schaltung.
+     */
+    @Test
+    void multiSorterRepeatsTheTestedSliceForEveryKind() {
+        Map<Pos, BlockSpec> single = cells(LIB.machine("item_sortierer").orElseThrow().module());
+        Set<Pos> shared = Set.of(new Pos(0, 3, 0), new Pos(0, 3, 1), new Pos(0, 3, 2));
+        for (int n = Machines.MULTI_SORTER_MIN; n <= Machines.MULTI_SORTER_MAX; n++) {
+            ModuleLibrary.Module m = LIB.machine(Machines.MULTI_SORTER + n).orElseThrow().module();
+            Map<Pos, BlockSpec> c = cells(m);
+            int last = (n - 1) * Machines.MULTI_SORTER_STRIDE;
+            assertEquals(new Pos(last + 4, 4, 4), m.size(), "n=" + n);
+            for (int k = 0; k < n; k++) {
+                int dx = k * Machines.MULTI_SORTER_STRIDE;
+                for (Map.Entry<Pos, BlockSpec> e : single.entrySet()) {
+                    if (shared.contains(e.getKey()) || e.getKey().y() == 0) {
+                        continue;
+                    }
+                    Pos q = e.getKey().add(dx, 0, 0);
+                    assertEquals(e.getValue().asString(), c.get(q) == null ? null : c.get(q).asString(),
+                            "n=" + n + " Scheibe " + k + " bei " + q);
+                }
+            }
+            // Linie: nach rechts bis zum letzten Filter, der letzte Trichter gibt nach hinten in den Rest.
+            for (int x = 0; x <= last; x++) {
+                assertEquals(x == last ? "back" : "right", c.get(new Pos(x, 3, 1)).props().get("facing"), "x=" + x);
+            }
+            assertEquals("chest", c.get(new Pos(last, 3, 2)).id());
+            assertEquals("back", c.get(new Pos(0, 3, 0)).props().get("facing"));
+            // Zwischen zwei Scheiben bleibt die Spalte frei (außer Linie und Boden): sonst koppeln Draht und Fackel.
+            for (int k = 0; k + 1 < n; k++) {
+                int gap = k * Machines.MULTI_SORTER_STRIDE + 4;
+                for (int y = 1; y <= 2; y++) {
+                    for (int z = 0; z <= 3; z++) {
+                        assertEquals(null, c.get(new Pos(gap, y, z)), "n=" + n + " Lücke bei " + gap + "," + y + "," + z);
+                    }
+                }
+            }
+            long chests = c.values().stream().filter(b -> b.id().equals("chest")).count();
+            assertEquals(n + 1, chests, "n=" + n + ": je Sorte eine Truhe plus Rest");
+            assertTrue(m.size().x() <= 57, "n=" + n + " passt ins Logik-Raster");
+        }
+    }
+
+    /** Nur 2–8 Sorten, nur bekannte, keine doppelten, nicht mehr Sorten als Scheiben – sonst gibt es das Bauteil nicht. */
+    @Test
+    void multiSorterNameRejectsWhatItCannotBuild() {
+        for (String bad : List.of("item_sortierer_1", "item_sortierer_9", "item_sortierer_0", "item_sortierer_10",
+                "item_sortierer_3:", "item_sortierer_2:sand,dirt,stone", "item_sortierer_3:sand,sand",
+                "item_sortierer_3:keine_sorte", "item_sortierer_3:command_block", "item_sortierer_3:sand;dirt",
+                "item_sortierer_3:sand,dirt_gespiegelt", "item_sortierer_3:diamond_sword",
+                "item_sortierer_2:sand,ender_pearl", "item_sortierer_2:egg", "item_sortierer_2:oak_sign")) {
+            assertTrue(LIB.machine(bad).isEmpty(), bad);
+        }
+        assertTrue(LIB.machine("ITEM_SORTIERER_4:Minecraft:Sand").isPresent());
+        assertTrue(LIB.machine("item_sortierer_3:cobblestone,sand,oak_planks").isPresent());
+        // Der Ein-Sorten-Sortierer heißt weiter so und ist kein Mehrsorten-Sortierer mit einer Scheibe.
+        assertEquals(34, LIB.machine("item_sortierer").orElseThrow().module().cells().size());
+        // Spiegeln über ModuleTransforms greift auch für den Namen mit Sorten.
+        ModuleLibrary lib = new ModuleTransforms(LIB);
+        assertTrue(lib.find("item_sortierer_3:sand,dirt_gespiegelt").isPresent());
+    }
+
+    /**
+     * Stapelliste (tiers/item-stack-64.txt): nur bekannte Gegenstände, die typischen 1er- und 16er-Stapel fehlen, die
+     * Sorten der Probe sind drin. Fehlte die Liste oder enthielte sie Schwerter, nähme der Sortierer sie still an.
+     */
+    @Test
+    void multiSorterStackListHoldsOnlyKnownSixtyFourStacks() {
+        for (String ok : List.of("cobblestone", "sand", "oak_planks", "andesite", "gravel", "oak_log", "stone", "glass",
+                "granite", "dirt", "iron_ingot", "wheat_seeds")) {
+            assertTrue(Machines.stacksTo64(ok), ok);
+        }
+        for (String no : List.of("diamond_sword", "ender_pearl", "egg", "snowball", "oak_sign", "water_bucket",
+                "bucket", "totem_of_undying", "shulker_box", "keine_sorte")) {
+            assertFalse(Machines.stacksTo64(no), no);
+        }
+        // Jeder Eintrag ist ein bekannter Gegenstand (dieselbe Datengenerator-Fassung wie item-ids.txt).
+        try (java.io.InputStream in = Machines.class.getResourceAsStream("/tiers/item-stack-64.txt")) {
+            assertNotNull(in, "tiers/item-stack-64.txt fehlt");
+            List<String> ids = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).lines()
+                    .map(String::trim).filter(t -> !t.isEmpty() && !t.startsWith("#")).toList();
+            assertTrue(ids.size() > 1000, "Einträge: " + ids.size());
+            for (String id : ids) {
+                assertTrue(BlockTiers.knownItems().contains(id), id);
+            }
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /**
+     * Wie die Sorten in den Bau kommen: ohne Angabe ohne Blockdaten (Stufe „alle“, wie der Ein-Sorten-Sortierer), mit
+     * Angabe als Behälterinhalt der Filter – Stufe „Inhalte“, nie „Befehle“. Je Filter 18 Stück der Sorte und vier
+     * umbenannte Platzhalter = 22, die Schwelle der Scheibe; die Filter ohne Angabe bleiben leer.
+     */
+    @Test
+    void multiSorterKindsAreContainerContentsNotCommands() {
+        ModuleLibrary.Module empty = LIB.machine("item_sortierer_5").orElseThrow().module();
+        for (Change c : empty.cells()) {
+            assertEquals(null, c.block().nbt(), "ohne Sorten keine Blockdaten: " + c.pos());
+            assertEquals(Tier.EVERYONE, BlockTiers.place(c.block(), BlockTiers.WorldFacts.OVERWORLD).tier(),
+                    c.block().asString());
+        }
+        ModuleLibrary.Module full = LIB.machine("item_sortierer_3:cobblestone,sand").orElseThrow().module();
+        Map<Pos, BlockSpec> c = cells(full);
+        Tier max = Tier.EVERYONE;
+        for (BlockSpec b : c.values()) {
+            Tier t = BlockTiers.place(b, BlockTiers.WorldFacts.OVERWORLD).tier();
+            max = t.ordinal() > max.ordinal() ? t : max;
+        }
+        assertEquals(Tier.CONTENTS, max);
+        for (int k = 0; k < 3; k++) {
+            BlockSpec f = c.get(new Pos(k * Machines.MULTI_SORTER_STRIDE, 2, 1));
+            assertEquals("hopper", f.id());
+            if (k == 2) {
+                assertEquals(null, f.nbt(), "dritter Filter ohne Angabe bleibt leer");
+                assertEquals(null, c.get(new Pos(k * Machines.MULTI_SORTER_STRIDE, 1, 1)).nbt(), "H ohne Wartezeit");
+                continue;
+            }
+            assertEquals(Tier.CONTENTS, BlockTiers.place(f, BlockTiers.WorldFacts.OVERWORLD).tier());
+            String data = Snbt.write(f.nbt());
+            assertTrue(data.contains(k == 0 ? "minecraft:cobblestone" : "minecraft:sand"), data);
+            assertEquals(1, data.split("count:18", -1).length - 1, data);
+            assertEquals(4, data.split("Sortierer-Platzhalter", -1).length - 1, data);
+            assertEquals(5, data.split("Slot:", -1).length - 1, data);
+            // H darunter wartet, bis die Fackel steht (gemessen: ohne lief F beim Bau 4–8 Stück aus).
+            BlockSpec h = c.get(new Pos(k * Machines.MULTI_SORTER_STRIDE, 1, 1));
+            assertEquals("{TransferCooldown:" + Machines.SORTER_FILLED_COOLDOWN + "}", Snbt.write(h.nbt()));
+            assertEquals(Tier.CONTENTS, BlockTiers.place(h, BlockTiers.WorldFacts.OVERWORLD).tier());
+        }
     }
 
     /**
@@ -619,7 +776,7 @@ class MachinesTest {
      */
     @Test
     void everyChestCanBeOpenedAndReached() {
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             Map<Pos, BlockSpec> c = cells(m.module());
             Pos s = m.module().size();
             c.forEach((p, b) -> {
@@ -647,7 +804,7 @@ class MachinesTest {
 
     @Test
     void machineDescriptionsStayShortForThePrompt() {
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             assertTrue(m.module().description().length() <= 220,
                     m.module().name() + ": " + m.module().description().length() + " Zeichen");
         }
@@ -666,7 +823,7 @@ class MachinesTest {
 
     @Test
     void allCellsLieInsideTheSizeAndOnlyOnePerPosition() {
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             Set<Pos> seen = new HashSet<>();
             Pos s = m.module().size();
             for (Change c : m.module().cells()) {
@@ -680,7 +837,7 @@ class MachinesTest {
 
     @Test
     void wiresTorchesAndRepeatersStandOnSomethingSolid() {
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             Map<Pos, BlockSpec> c = cells(m.module());
             c.forEach((p, b) -> {
                 if (NEEDS_FLOOR.contains(b.id()) && !"wall".equals(b.props().get("face"))) {
@@ -695,7 +852,7 @@ class MachinesTest {
 
     @Test
     void pinsPointAtTheRightBlocks() {
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             Map<Pos, BlockSpec> c = cells(m.module());
             for (Machines.Pin in : m.inputs()) {
                 assertTrue(Set.of("lever", "stone_pressure_plate", "stone_button").contains(c.get(in.at()).id()),
@@ -793,7 +950,7 @@ class MachinesTest {
     void machinesCompileThroughThePlanCompilerInEveryDirection() throws Exception {
         // Grenzen wie config.yml (bau.max-ausdehnung 192): Vorher 6000/48 – addierer_4bit ist 110 breit.
         PlanCompiler compiler = new PlanCompiler(id -> true, "stone", new PlanCompiler.Limits(150000, 192), LIB);
-        for (Machines.Machine m : LIB.machines()) {
+        for (Machines.Machine m : WITH_SORTERS) {
             for (String facing : new String[] {"front", "back", "left", "right"}) {
                 CompiledBuild b = compiler.compile(PlanParser.parse("{\"steps\":[{\"op\":\"module\",\"name\":\""
                         + m.module().name() + "\",\"pos\":[0,0,0],\"facing\":\"" + facing + "\"}]}"));
