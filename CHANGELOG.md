@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Client-Mod mit Gedächtnis:** Wie im Plugin merkt sich der Client den letzten Bau eine Stunde lang im Umkreis von
+  48 Blöcken. Ein Nachtrag wie „mach das Dach rot“ ändert diesen Bau, statt einen neuen zu planen;
+  `/kbau rückgängig` nimmt den Nachtrag zurück und vergisst ihn. Unsinnige KI-Werte in den Einstellungen fallen
+  auf die Vorgabe zurück, die Wartezeit auf die KI ist einstellbar (Vorgabe 10 min).
 - **Eigener Begleitername auch beim Sprechen:** Heißt die Begleiterin im Plugin anders als Vera (`begleiter.name`),
   nimmt die Spracherkennung der Host-App diesen Namen in ihren Vortext. Vorher stand dort fest „Vera“, ein anderer
   Name wurde schlechter verstanden. Der Name kommt über die bestehende Verbindung; ein ungültiger fällt auf „Vera“

@@ -89,7 +89,7 @@ geprüft · ⚠️ läuft mit Grenzen · ❌ geht nicht
 | **Rechte und Schutz** | ✅ jeder Block im Namen des Spielers geprüft (Stufen, Grundstücke), fail-closed | 🧪 gegen WorldGuard und PlotSquared nur im Code und per Test, nicht mit echtem Spieler |
 | **Komfort** | ✅ Warteschlange, Helfer | 🧪 Vorschau (Partikel, „ja“/„nein“) und Fortschrittsbalken mit einem echten Spieler |
 | **Baumeister-Host** (KI auf dem GPU-PC) | ✅ Vulkan auf Intel Arc gemessen, Verbindung über TLS mit gepinnten Zertifikaten | ⚠️ NVIDIA/CUDA mit 14B nicht in jedem Lauf geprüft · eigenes Modell: Training steht aus |
-| **Client-Mod** (Fabric) | ✅ Minecraft 26.2, im echten Client geprüft | – |
+| **Client-Mod** (Fabric) | ✅ Minecraft 26.2, im echten Client geprüft · Nachträge mit Gedächtnis („mach das Dach rot“), KI-Werte geprüft | 🧪 Nachtrag und Rückgängig des Nachtrags nur per Test, nicht im echten Spiel |
 
 Jede Zeile hat ihren Beleg im [Prüfprotokoll des Handbuchs](docs/handbuch.md#stand). Tests heute: Plugin 1 674
 Unit-Tests grün (2026-11-17), Relay 144 grün (2026-11-19), Host 14 Testprogramme.
