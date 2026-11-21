@@ -206,4 +206,53 @@ final class RelayFixture implements AutoCloseable {
     public void close() {
         relay.close();
     }
+
+    /**
+     * Schreibt die Logzeilen des Relays mit, solange sie offen ist. Die Gründe (frist, plugin_liest_nicht …) stehen
+     * nur im Log – im abbruch von Kanal v1 gibt es kein Feld dafür. Vor der Fixture öffnen, sonst fehlen die ersten
+     * Zeilen.
+     */
+    static final class LogCapture extends java.util.logging.Handler implements AutoCloseable {
+
+        private final List<String> lines = Collections.synchronizedList(new ArrayList<>());
+
+        LogCapture() {
+            RelayLog.LOG.addHandler(this);
+        }
+
+        @Override
+        public void publish(java.util.logging.LogRecord r) {
+            lines.add(String.valueOf(r.getMessage()));
+        }
+
+        @Override
+        public void flush() {
+            // nichts zu leeren
+        }
+
+        @Override
+        public void close() {
+            RelayLog.LOG.removeHandler(this);
+        }
+
+        boolean has(String... parts) {
+            synchronized (lines) {
+                for (String l : lines) {
+                    boolean all = true;
+                    for (String p : parts) {
+                        all &= l.contains(p);
+                    }
+                    if (all) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /** Wartet, bis eine Zeile alle Teile enthält. */
+        void await(String... parts) {
+            RelayFixture.await(() -> has(parts), "Logzeile mit " + String.join(" + ", parts) + " in " + lines);
+        }
+    }
 }
