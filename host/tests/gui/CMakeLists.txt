@@ -14,3 +14,7 @@ swbh_add_test(swbh_test_city_view SOURCES test_city_view.cpp
 # Einstellungen-Dialog (Fernverbindung, Ortswahl) – eigenes Programm aus demselben Grund wie oben.
 swbh_add_test(swbh_test_settings_dialog SOURCES test_settings_dialog.cpp
     LIBS swbh::gui_qt Qt6::Widgets)
+# Verdrahtung (T-007): Begleitername Long-Poll → Erkennung (gui/companion_wiring liegt in gui_qt, ist aber Qt-frei) und
+# Plan/Meldungen der Fensterabfrage (gui/window_feed). Ohne QApplication, deshalb ohne Plattform-Plugin.
+swbh_add_test(swbh_test_gui_wiring SOURCES test_window_wiring.cpp
+    LIBS swbh::gui_qt swbh::voice swbh::server)

@@ -713,15 +713,9 @@ server::ApiResponse Controller::route(const server::HttpRequest& r, const std::f
         return server::handle_city(r, city_);
     }
     if (server::is_companion_path(r.target)) {
-        server::CompanionHandlers h;
-        h.say = [this](const server::Spoken& s) { companion_said(s); };
-        h.hear = [this](const std::string& p, std::vector<float> pcm, std::string& e) {
-            return hear_from_game(p, std::move(pcm), e);
-        };
-        h.voice = [this](const std::string& t, std::string& e) { return voice_for_game(t, e); };
-        h.in_game = [this](const std::vector<std::string>& names) { game_voice(names); };
-        h.companion_name = [this](const std::string& name) { companion_name(name); };
-        return server::handle_companion(r, heard_, gone, h);
+        // Verdrahtung in gui/companion_wiring – dort samt Weiterleitung des Begleiternamens getestet (T-007).
+        return server::handle_companion(
+            r, heard_, gone, companion_handlers(static_cast<CompanionHooks&>(*this), speech_, name_log_));
     }
     if (server::is_research_path(r.target)) {
         return server::handle_research(
@@ -942,7 +936,8 @@ void Controller::apply_speech() {
     o.microphone = cfg.microphone;
     // Kein Vortext mehr von hier: Vorher stand an dieser Stelle fest recognizer_prompt("Vera"), ein anderer
     // begleiter.name wurde schlechter erkannt (bis 2026-11-20). Jetzt baut SpeechInput den Vortext aus dem Namen, den
-    // companion_name ablegt – dort ist er getestet (test_voice, „Begleitername …“).
+    // gui/companion_wiring beim Abholen ablegt – dort ist er getestet (test_voice, „Begleitername …“; die Weiterleitung
+    // in test_window_wiring).
     o.mode = voice::parse_talk_mode(cfg.talk_mode);
     o.gain_db = cfg.mic_gain_db;
     o.auto_gain = cfg.auto_gain;
@@ -975,22 +970,9 @@ void Controller::game_voice(const std::vector<std::string>& names) {
     }
 }
 
-void Controller::companion_name(const std::string& name) {
-    // Jedes Abholen (≤ 20 s) meldet den Namen. set_companion_name legt ihn nur ab (eigener kleiner Mutex) – vorher
-    // nahm diese Stelle speech_apply_mutex_, den apply_speech über stop() samt join hält, und die Abholung hing so
-    // lange (Prüfbefund 2026-11-21). Wer hier wieder auf apply_speech wartet, hält damit den Long-Poll des Plugins auf.
-    if (!speech_.set_companion_name(name)) {
-        return;
-    }
-    // Nur bei einem Wechsel und höchstens eine Zeile je Minute: Ein Client, der abwechselnd Namen schickt, schrieb
-    // sonst je Abholung eine Zeile. name ist geprüft (server::valid_companion_name: nur Buchstaben und Leerzeichen).
-    const std::optional<std::size_t> skipped = name_log_.allow(std::chrono::steady_clock::now());
-    if (!skipped) {
-        return;
-    }
-    const std::string more = *skipped > 0 ? " (" + std::to_string(*skipped) + " Wechsel davor nicht gemeldet)" : "";
-    console(ConsoleKind::Info,
-            "Begleitername vom Plugin: „" + name + "“ – die Spracherkennung achtet auf diesen Namen" + more + ".");
+void Controller::companion_name_line(const std::string& line) {
+    // Ablegen beim Sprechen und Drosseln: gui/companion_wiring (forward_companion_name).
+    console(ConsoleKind::Info, line);
 }
 
 void Controller::companion_heard(std::string text) {

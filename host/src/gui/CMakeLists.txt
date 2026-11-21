@@ -14,12 +14,14 @@ swbh_add_module(gui_core
         console_throttle.hpp console_throttle.cpp
         exit_report.hpp exit_report.cpp
         simple_mode.hpp simple_mode.cpp
+        window_feed.hpp window_feed.cpp
     PUBLIC_DEPS
         swbh::base swbh::llm swbh::tunnel swbh::relay)
 
 swbh_add_module(gui_qt
     SOURCES
         style.hpp style.cpp
+        companion_wiring.hpp companion_wiring.cpp
         controller.hpp controller.cpp
         main_window.hpp main_window.cpp
         settings_dialog.hpp settings_dialog.cpp
