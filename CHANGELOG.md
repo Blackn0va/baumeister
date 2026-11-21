@@ -33,6 +33,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Nachtrag setzt nicht mehr auf einem Bau auf, den es nicht gibt.
 
 ### Neu
+- **Item-Sortierer für mehrere Sorten:** `item_sortierer_N` sortiert 2 bis 8 Sorten in je eine Kiste, den Rest in den
+  Überlauf – auch mit den Sorten im Namen (`item_sortierer_3:coal,iron_ingot,gold_ingot`). Sorten, die sich nicht
+  bis 64 stapeln, lehnt er ab. Auf dem Spigot-Testserver in allen vier Richtungen geprüft. <!-- umlaut-ok: Maschinen-ID -->
 - **Relay mit belegten Grenzen:** Jede Schutzgrenze des Relays hat jetzt einen eigenen Test: die Fristen für die
   Antwort der App und für den Kopf einer Anfrage, ein Plugin, das nicht liest, hängendes Schreiben, zu viele lokale
   Verbindungen und das Speicherbudget. Am Verhalten ändert sich nichts.

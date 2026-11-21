@@ -1649,7 +1649,8 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
   Modellplan wirkt erst mit der neuen Host-App auf dem Spiele-PC.
 - Logik (bewusst offen): Ausgänge ohne Schilder (nur Reihenfolge links → rechts). Ein mehrstelliges Rechenwerk aus
   verketteten Volladdierern geht nicht (keine Rückführung, 3 Bit bräuchten 6 Eingänge). Ob ein echtes LLM mehrere
-  Formeln mit „;“ nutzt, ungeprüft. Impulsverlängerer nur mit ~1,2 s Puls geprüft; Item-Sortierer nur eine Sorte.
+  Formeln mit „;“ nutzt, ungeprüft. Impulsverlängerer nur mit ~1,2 s Puls geprüft; Item-Sortierer seit 353c4bc für 2–8 Sorten
+  (item_sortierer_N, Spigot 4/4, Paper 26.2 nicht live).
 - Bauformen: Mauer und Baum nicht im Spiel gebaut, Burg/Brücke/Garten nur als Schnellauftrag; mit echtem LLM prüfen,
   ob es die ops nutzt. Burg-Hof leer, Brücke ohne Rampen. Gerade Mauern ab 9 haben seit 9b75e5f ein Tor (live geprüft, noch nicht auf dev01).
 - Plan-Prüfer und Anbau mit fester Wand (die frühere Idee „Anbau deterministisch vorbereiten“ ist umgesetzt) mit
