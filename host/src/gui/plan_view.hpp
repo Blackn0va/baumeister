@@ -7,10 +7,13 @@
 //
 // NÄHERUNG, kein zweiter Compiler: Die Grundformen (fill, walls, hollow, line, set, door, cylinder, sphere, roof)
 // rechnen genau wie PlanCompiler.java des Plugins (box, line, cylinder mit inDisc, sphere mit inBall, Dach mit
-// Überstand und Schichten). house und skyscraper zeigen Hülle, Decken, Fenster und Dach, aber keine Einrichtung;
-// module und logic kennen ihre Maße nur im Plugin und erscheinen als Markierung. Blockkatalog, Ersatzblöcke und
-// Warnungen des Plugins fehlen hier – maßgeblich ist, was der Server baut. Wer hier „genauer“ werden will, baut den
-// Compiler nach und muss ihn bei jeder Plugin-Änderung nachziehen; das war für eine Vorschau bewusst nicht gewollt.
+// Überstand, Schichten und Platte am First, Betten und hohe Pflanzen zweiteilig). house und skyscraper rechnen seit
+// T-017 (2026-11-21) Zelle für Zelle wie das Plugin, samt Fenstern, Leiter, Einrichtung und Lampen – gemessen gegen
+// 50 echte Pläne von dev01 (probes/plan_preview). BEWUSST vereinfacht bleiben: module und logic (Maße und Zellen
+// kennt nur die Bibliothek des Plugins) als Markierung, die Bauformen castle/wall/bridge/garden/tree (plan/Structures,
+// gut 1 100 Zeilen) als Hinweis, Blockkatalog und Ersatzblöcke des Servers (ein unbekannter Name wird dort Stein),
+// Prüfungen und Nachbesserungen von PlanReview. Maßgeblich ist, was der Server baut. Wer Bauformen oder Bibliothek
+// hier nachbaut, muss sie bei jeder Plugin-Änderung nachziehen; das war für eine Vorschau bewusst nicht gewollt.
 //
 // Grenzen gegen Ausreißer: Die Grammatik erlaubt Koordinaten -64 … 200, ein fill über den ganzen Würfel wären
 // 18,6 Mio. Blöcke. Ein Schritt über kMaxStepVolume wird übersprungen (Hinweis), die ganze Vorschau hört bei
@@ -95,8 +98,13 @@ struct PlanBlocks {
     std::optional<std::string_view> at(int x, int y, int z) const;
 };
 
-// Plan-JSON → Blöcke. Leerer oder unlesbarer Text, fehlende steps: ok = false.
+// Plan-JSON → Blöcke. Leerer oder unlesbarer Text, fehlende steps: ok = false. Eine abgeschnittene Antwort
+// (max_tokens) zeigt die vollständigen Schritte, wie JsonRepair im Plugin sie baut.
 PlanBlocks rasterize_plan(std::string_view json_text);
+
+// Abgeschnittenes Plan-JSON hinter dem letzten vollständigen Schritt kappen und schließen (wie JsonRepair im Plugin).
+// std::nullopt, wenn der Text nicht abgeschnitten aussieht (vollständig, kein „{“, keine Schrittliste).
+std::optional<std::string> cut_truncated_plan(std::string_view text);
 
 struct ViewCell {
     int block = -1;  // Index in PlanBlocks::palette, -1 = leer
