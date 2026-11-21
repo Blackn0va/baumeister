@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Burg mit Hof, Bogenbrücke mit Rampen:** Eine Burg ab Hofseite 9 bekommt einen gepflasterten Weg vom Tor zu einem
+  Brunnen in der Mitte; Mauern, Türme und Tor bleiben wie vorher. Liegt das Deck einer Bogenbrücke über dem Boden,
+  führt an beiden Enden eine Treppe hinauf – vorher endete sie in der Luft.
 - **Doku für Spieler und Entwickler:** [Spielen](docs/spielen.md) erklärt mit Bildern, was man sagen kann und was der
   Baumeister nicht tut; [Entwicklung](docs/entwicklung.md) zeigt Aufbau, Ablauf eines Auftrags, Pakete und Tests. Das
   README beginnt mit „Wo fange ich an?“ und sagt je Bereich ehrlich, was geht und was noch nicht. Neue Bilder:
