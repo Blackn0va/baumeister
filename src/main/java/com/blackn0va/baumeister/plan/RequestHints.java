@@ -316,6 +316,11 @@ public final class RequestHints {
         return hits;
     }
 
+    /** Bauteilnamen, die der Auftrag ausdrücklich nennt (gleiche Erkennung wie der Maschinenwunsch), ohne Doppelte. */
+    static List<String> namedModules(String prompt, Collection<String> moduleNames) {
+        return findNames(tokens(normalize(prompt)), moduleNames).stream().map(NameHit::name).distinct().toList();
+    }
+
     public static Hints parse(String prompt, Collection<String> moduleNames) {
         String n = normalize(prompt);
         OptionalInt floors = OptionalInt.empty();

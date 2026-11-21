@@ -44,6 +44,8 @@ import java.util.Optional;
  * Aufruf (Host-App oder llama-server läuft, nach mvn test-compile):
  *   java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.dataset.PlanBench
  *        --url http://127.0.0.1:8080/v1/chat/completions --modell qwen25-7b [--nur 5] [--ziel target/bench]
+ *        [--muster "Turm|Kirche"]   (nur Aufträge, deren Text den regulären Ausdruck enthält – zum Ausprobieren;
+ *                                    eine Messung für den Vergleich läuft immer über alle 24)
  *
  * Threads: ein Auftrag nach dem anderen (die Host-App rechnet ohnehin nacheinander, parallel verfälschte die
  * Zeiten). Fehler: Ist der Server nicht erreichbar, bricht der Lauf mit Exitcode 1 ab, statt Aufträge als verworfen
@@ -114,9 +116,16 @@ public final class PlanBench {
             if (v instanceof GiveUp g) {
                 return new Outcome(order, "verworfen", clean, g.reason(), millis, tokens, tps, answers);
             }
+            // Korrekturrunde wie BuildService und ClientPlanner (PlanPrompt.repairConversation über PlanJudge): gekürzte
+            // Nutzernachricht ohne Scan und Modulbeschreibungen, nur der letzte Plan. Vorher hängte das Messgerät Plan
+            // und Fehler an das volle Gespräch an – gemessen 2026-11-21 lief so die Korrektur der Zuckerrohrfarm bei
+            // 8 191 von 8 192 Token in den Kontext (truncated = 1); allein deren erste Nutzernachricht hat 3 015 Token
+            // (/tokenize), die das Plugin in der Korrektur weglässt. Wer das zurückdreht, misst eine Korrekturrunde, die
+            // es im Plugin nicht gibt.
             Repair rep = (Repair) v;
-            messages.add(LlmProtocol.message("assistant", rep.assistant()));
-            messages.add(LlmProtocol.message("user", rep.llmRequest()));
+            List<JsonObject> next = new ArrayList<>(List.of(messages.getFirst()));
+            next.addAll(judge.repairConversation(order, rep.assistant(), rep.llmRequest()));
+            messages = next;
         }
         throw new IllegalStateException("bench_ohne_urteil");
     }
@@ -125,12 +134,14 @@ public final class PlanBench {
         String url = "http://127.0.0.1:8080/v1/chat/completions";
         String model = "unbenannt";
         int only = Integer.MAX_VALUE;
+        java.util.regex.Pattern pattern = null;
         Path out = Path.of("target", "bench");
         for (int i = 0; i + 1 < args.length; i += 2) {
             switch (args[i]) {
                 case "--url" -> url = args[i + 1];
                 case "--modell" -> model = args[i + 1];
                 case "--nur" -> only = Integer.parseInt(args[i + 1]);
+                case "--muster" -> pattern = java.util.regex.Pattern.compile(args[i + 1]);
                 case "--ziel" -> out = Path.of(args[i + 1]);
                 default -> {
                     System.err.println("Unbekannter Schalter: " + args[i]);
@@ -141,6 +152,10 @@ public final class PlanBench {
         PlanJudge judge = new PlanJudge();
         PlanBench bench = new PlanBench(judge, URI.create(url));
         List<String> orders = BenchOrders.load();
+        if (pattern != null) {
+            java.util.regex.Pattern p = pattern;
+            orders = orders.stream().filter(o -> p.matcher(o).find()).toList();
+        }
         orders = orders.subList(0, Math.min(only, orders.size()));
         Files.createDirectories(out);
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
