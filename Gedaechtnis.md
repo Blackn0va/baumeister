@@ -727,6 +727,13 @@ Stand: 2026-11-17
   nach Lehrset-Maßstab: Die Annahme lebt von PlanReview. 8/24 Antworten liefen bis an die Kappung (~1950 Token,
   je ~410 s – Dorf, Burg mit Bäumen, zwei Maschinen, Brunnen, Schmiede, Stall, Marktstand, Bauernhof) und gingen nur
   über die Syntaxreparatur durch. 5311 s gesamt, 22 261 Token, 4,2 Token/s. Ergebnis: `target/bench/` (nicht im Repo).
+- Schlanker Prompt (T-015, 2026-11-21, PlanBench vorher/nachher gleiche Startzeile): Tokens 22 416 → 15 032 (−33 %),
+  Zeit 4 968 s → 3 108 s (−37 %), Kappungen 2 → 0, verworfen 3 → 4, sauber 10 → 9. MODULE LIBRARY und TECHNICAL
+  RULES hängen an `PlanPrompt.offersModules` (Maschinenwunsch ODER Modulname ODER MACHINE_WORDS ohne PLAIN_WORDS
+  tür/tor/licht/lampe). Falle: Wer ein technisches Wort aus MACHINE_WORDS nimmt oder die Bedingung auf machineWanted
+  verengt, nimmt Aufträgen wie „Pistontür“, „Lampe mit Tageslichtsensor“, „Zugbrücke“ die Bauteile (PlanPromptTest).
+  Zu viel Liste durch Teilwörter (Glockenturm, Kornspeicher, Mausefalle) ist bewusst hingenommen – so war es vorher
+  immer. Offen: Türen bei Wachturm/Leuchtturm/Stall; Zuckerrohrfarm wird um das Modul herum gebaut.
 - Gegenprobe Lehrset-Filter: Generator mit absichtlich schwebenden Laternen – Filter an: Tests grün, 23 Pläne
   verworfen („ohne Halt weggelassen“); Filter aus: `everyGeneratedPlanPassesStrictReview` rot; zurückgestellt: grün.
   Richter selbst: eingemauertes Wasser, Klotz in der Luft, Hochhaus ohne skyscraper, Vollzylinder → abgelehnt, Turm

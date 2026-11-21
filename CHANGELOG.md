@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Geändert
+- **Schlankerer KI-Prompt:** Modulliste und Maschinenregeln gehen nur noch bei Technik-Aufträgen mit (Maschine,
+  Modulname, Wörter wie Kolben, Farm, Sensor, Zugbrücke); ein schlichtes Haus bekommt sie nicht mehr. Gemessen mit
+  PlanBench auf dem lokalen Modell: 33 % weniger Tokens, 37 % weniger Rechenzeit, keine abgeschnittenen Antworten
+  mehr (vorher 2), dafür 1 verworfener Plan mehr (4 statt 3).
 - **Plan-Vorschau der Host-App wie der echte Bau:** Häuser und Hochhäuser zeigt die Vorschau jetzt so, wie das
   Plugin sie baut (Fenster, Leiter, Einrichtung, Lampen, Dachplatten, hohles fill, Betten, Aliasnamen);
   abgeschnittene Antworten zeigen die vollständigen Schritte statt nichts. Gemessen an 50 echten Plänen:
