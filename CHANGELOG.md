@@ -4,6 +4,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 
 ## [Unveröffentlicht]
 
+### Behoben
+- **Client-Mod:** Ein Bau, der vor dem ersten Block gestoppt wird, bleibt nicht mehr im Gedächtnis – der nächste
+  Nachtrag setzt nicht mehr auf einem Bau auf, den es nicht gibt.
+
 ### Neu
 - **Relay mit belegten Grenzen:** Jede Schutzgrenze des Relays hat jetzt einen eigenen Test: die Fristen für die
   Antwort der App und für den Kopf einer Anfrage, ein Plugin, das nicht liest, hängendes Schreiben, zu viele lokale
