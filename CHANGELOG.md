@@ -5,6 +5,12 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Geändert
+- **Weniger verworfene KI-Pläne bei Maschinen:** Setzt die KI eine Lampe oder einen Hebel genau dorthin, wo die
+  Maschine oder Schaltung schon ihre eigene Lampe bzw. ihren Hebel hat, fällt der überflüssige Schritt weg –
+  vorher wurde deshalb der ganze Plan verworfen. Ein anderer Block oder Zustand dort bleibt eine Absage.
+- **Vorbilder mit Dach:** Treppenreihen eines Dachs werden im Lehrset ein Dach-Schritt statt vieler Linien.
+- **Logik in Stockwerken in allen vier Richtungen geprüft:** 24/24 auf dem Spigot-Testserver, bis 16 Lampen in
+  vier Stockwerken.
 - **KI ohne Host schneller:** Ist der Spiele-PC mit der KI aus, sagt der Baumeister nach dem ersten bekannten
   Ausfall sofort ab und nennt den Schnellbau ohne KI (Pyramide, Burg, Hochhaus …), statt jedes Mal 13 s zu
   warten. Sobald der Host wieder antwortet, gilt er wieder als da. Eine abgeschnittene KI-Antwort fragt er
