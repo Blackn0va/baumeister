@@ -87,8 +87,11 @@ class PlanDecompilerTest {
             PlanDecompiler.Verify v = PlanDecompiler.verify(r.json(), local, COMPILER, 60);
             assertTrue(v.exact(), () -> front + ": " + v + "\n" + r.json());
             // Form statt Einzelblöcke: Das Original hat 12 Schritte (das Dach rechnet der Compiler aus Treppen);
-            // zurück kommen die Dachtreppen als Reihen, der Rest als fill/walls/cylinder.
+            // zurück kommt das Dach seit 2026-11-21 wieder als ein roof-Schritt (vorher Treppenreihen als line/fill),
+            // der Rest als fill/walls/cylinder.
             assertTrue(r.steps() <= 45, () -> r.steps() + " Schritte, " + r.ops());
+            assertEquals(1, r.ops().get("roof"), () -> "Dach: " + r.ops() + "\n" + r.json());
+            assertEquals(0, MiniVorbilder.stairsSteps(r.json()), r::json);
             assertTrue(r.ops().getOrDefault("cylinder", 0) >= 1, () -> "Rohr nicht erkannt: " + r.ops());
             assertEquals(1, r.ops().get("door"), () -> "Tür: " + r.ops());
         }

@@ -21,7 +21,7 @@ import java.util.TreeMap;
 
 /**
  * Rückübersetzer: ein fertiges Bauwerk (Blöcke je Stelle, lokal, aus {@link StructureFile#toLocal}) → Plan-JSON aus
- * wenigen Schritten (fill, walls, cylinder, line, set, door), so wie das LLM ihn schreiben soll.
+ * wenigen Schritten (fill, walls, cylinder, roof, line, set, door), so wie das LLM ihn schreiben soll.
  *
  * Warum: Echte Bauten von Spielern sollen ins Lehrset des eigenen Modells. Block für Block wären es tausende Schritte
  * – das Modell lernte, endlos zu schreiben (Grundlinie 2026-11-01: schon 8/24 Antworten liefen bis an die
@@ -35,6 +35,10 @@ import java.util.TreeMap;
  *    zerstörte richtige Zellen (×2) minus fremde Zellen, die der Schritt mitschreibt (×0,1; sie werden später
  *    überschrieben). Ein Schritt schreibt NIE in eine Stelle, die im Original Luft ist – sonst stimmte der Rückbau
  *    nicht, und eine Luftlücke müsste wieder herausgeschnitten werden.
+ *    Dächer (roof, gable oder hip) treten im selben Wettbewerb an: Aus Treppenreihen, die sich gegenüberstehen (hohe
+ *    Seite zur Mitte), entsteht die Grundfläche, und der Kandidat sind genau die Zellen, die PlanCompiler.roof dafür
+ *    schreibt (Schleifen hier nachgebildet, verify prüft gegen den echten Compiler). Vorher (bis 2026-11-21) wurden
+ *    Dachtreppen zu Dutzenden line-Schritten – das Modell lernte aus Vorbildern nie den roof-Schritt.
  * 3. Was danach noch falsch ist: gleiche Blöcke in Reihe als line, der Rest als set.
  * 4. Türen zuletzt als door (der Compiler setzt beide Hälften).
  *
@@ -57,6 +61,10 @@ public final class PlanDecompiler {
     /** = height maximum in plan-schema.json; ein höherer Zylinder wäre für das Modell nicht schreibbar. */
     static final int MAX_CYLINDER_HEIGHT = 48;
     static final int MAX_PRIMITIVES = 120;
+    /** = PlanCompiler.MAX_ROOF_LAYERS (dort privat): Höhere Dächer baut der Compiler nur bis zu dieser Schicht. */
+    static final int MAX_ROOF_LAYERS = 24;
+    /** Mindestzahl verschiedener Höhen mit Dachtreppen – darunter ist es eine Bank oder Stufe, kein Dach. */
+    static final int MIN_ROOF_LAYERS = 2;
 
     /**
      * @param json     Plan-JSON (design, reply, mode new, steps)
@@ -210,6 +218,11 @@ public final class PlanDecompiler {
      * Lehrplan darf höchstens 40 haben (System-Prompt „5 to 40 steps“).
      */
     public static Result decompile(Map<Pos, BlockSpec> local, String design, String reply, int budget) {
+        return decompile(local, design, reply, budget, true);
+    }
+
+    /** roofs = false: wie vor der Dach-Erkennung – nur für die Gegenprobe im Test („Bau ohne Dach unverändert“). */
+    static Result decompile(Map<Pos, BlockSpec> local, String design, String reply, int budget, boolean roofs) {
         Map<Pos, BlockSpec> cells = new TreeMap<>(StructureFile::order);
         int dropped = 0;
         for (Map.Entry<Pos, BlockSpec> e : local.entrySet()) {
@@ -233,6 +246,8 @@ public final class PlanDecompiler {
         List<Piece> doorSteps = doors(g);
         int room = budget == Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.max(0, budget - doorSteps.size());
 
+        List<Roof> roofShapes = roofs ? roofs(g) : List.of();
+        List<Roof> placed = new ArrayList<>();
         for (int n = 0; n < Math.min(MAX_PRIMITIVES, room); n++) {
             Box best = null;
             for (int id = 1; id < g.palette.size(); id++) {
@@ -244,6 +259,26 @@ public final class PlanDecompiler {
                         best = b;
                     }
                 }
+            }
+            Roof bestRoof = null;
+            for (Roof r : roofShapes) {
+                // Zwei Dächer über derselben Fläche lehnt der Compiler ab (checkStackedRoofs) – hier gar nicht erst.
+                if (placed.stream().anyMatch(r::overlaps)) {
+                    continue;
+                }
+                Roof s = scored(g, r);
+                if (bestRoof == null || s.gain() > bestRoof.gain()) {
+                    bestRoof = s;
+                }
+            }
+            if (bestRoof != null && bestRoof.gain() >= MIN_GAIN && (best == null || bestRoof.gain() > best.gain())) {
+                for (int k = 0; k < bestRoof.cells().length; k++) {
+                    g.write(bestRoof.cells()[k], bestRoof.ids()[k]);
+                }
+                placed.add(bestRoof);
+                steps.add(bestRoof.json().deepCopy());
+                ops.merge("roof", 1, Integer::sum);
+                continue;
             }
             if (best == null || best.gain() < MIN_GAIN) {
                 break;
@@ -587,6 +622,305 @@ public final class PlanDecompiler {
             case "right" -> "left";
             default -> "front";
         };
+    }
+
+    // ---------------------------------------------------------------- Dächer
+
+    /**
+     * Ein Dach-Kandidat: fertiger roof-Schritt, Grundfläche samt Überstand (x0..x1, z0..z1) und die Zellen, die der
+     * Compiler dafür schreibt – je Rasterindex die Palette-id, −1 für einen Block, den das Original nirgends hat.
+     */
+    private record Roof(JsonObject json, int x0, int z0, int x1, int z1, int[] cells, int[] ids, double gain) {
+
+        boolean overlaps(Roof o) {
+            return x0 <= o.x1 && o.x0 <= x1 && z0 <= o.z1 && o.z0 <= z1;
+        }
+    }
+
+    /**
+     * Dach-Kandidaten aus geraden, unteren Treppen. Gesucht wird die unterste Schicht: eine Reihe Treppen mit der
+     * hohen Seite nach hinten (Satteldach mit First entlang x, Walmdach) bzw. nach rechts (First entlang z), und in
+     * derselben Höhe die nächste gegenüberliegende Reihe. Daraus die Grundfläche, dann je Form, Überstand und
+     * Giebelblock genau ein Kandidat. Ob er passt, entscheidet nicht diese Suche, sondern der Gewinn im Wettbewerb –
+     * was sich nicht eindeutig als Dach lesen lässt (Luft unter einer Dachzelle, zu wenig Treffer), bleibt wie vorher.
+     */
+    private static List<Roof> roofs(Grid g) {
+        Map<String, Roof> out = new LinkedHashMap<>();
+        for (int id = 1; id < g.palette.size(); id++) {
+            BlockSpec s = g.palette.get(id);
+            String facing = s.props().get("facing");
+            if (!s.isStairs() || s.props().size() != 1 || !("back".equals(facing) || "right".equals(facing))) {
+                continue;
+            }
+            boolean alongX = "back".equals(facing);
+            Integer partner = g.ids.get(new BlockSpec(s.id(), Map.of("facing", alongX ? "front" : "left")));
+            if (partner == null) {
+                continue;
+            }
+            for (int i : g.cellsOf[id]) {
+                int x = i % g.sx;
+                int z = (i / g.sx) % g.sz;
+                int y = i / (g.sx * g.sz);
+                // Reihe gleicher Treppen (jeder Zustand: Ecken eines Walmdachs tragen shape=outer_…) entlang der Achse.
+                int a = alongX ? x : z;
+                int lo = a;
+                int hi = a;
+                while (lo > 0 && sameStairs(g, s.id(), alongX ? lo - 1 : x, y, alongX ? z : lo - 1)) {
+                    lo--;
+                }
+                int end = alongX ? g.sx : g.sz;
+                while (hi + 1 < end && sameStairs(g, s.id(), alongX ? hi + 1 : x, y, alongX ? z : hi + 1)) {
+                    hi++;
+                }
+                if (a != (lo + hi) / 2) {
+                    continue;  // je Reihe nur einmal, von ihrer Mitte aus
+                }
+                // Liegt schräg darunter dieselbe Treppe, ist das schon eine obere Schicht.
+                if (y > 0 && (alongX ? z : x) > 0
+                        && g.target[alongX ? g.idx(x, y - 1, z - 1) : g.idx(x - 1, y - 1, z)] == id) {
+                    continue;
+                }
+                int far = -1;
+                for (int t = (alongX ? z : x) + 1; t < (alongX ? g.sz : g.sx); t++) {
+                    if (g.target[alongX ? g.idx(x, y, t) : g.idx(t, y, z)] == partner) {
+                        far = t;
+                        break;
+                    }
+                }
+                if (far < 0) {
+                    continue;
+                }
+                int x0 = alongX ? lo : x;
+                int x1 = alongX ? hi : far;
+                int z0 = alongX ? z : lo;
+                int z1 = alongX ? far : hi;
+                // Satteldach nur, wenn der Compiler den First genauso legt (entlang der längeren Seite, bei Gleichstand x).
+                if (alongX == (x1 - x0 >= z1 - z0)) {
+                    roofVariants(g, s.id(), "gable", x0, y, z0, x1, z1, out);
+                }
+                roofVariants(g, s.id(), "hip", x0, y, z0, x1, z1, out);
+            }
+        }
+        return new ArrayList<>(out.values());
+    }
+
+    private static boolean sameStairs(Grid g, String stairs, int x, int y, int z) {
+        int t = g.target[g.idx(x, y, z)];
+        return t != 0 && g.palette.get(t).id().equals(stairs);
+    }
+
+    /**
+     * Überstand 1 (Vorgabe im Prompt) vor 0 und 2; ohne Giebelblock sind alle Überstände dieselben Zellen, dann nur der
+     * erste. Mit Giebelblock (nur gable) je Überstand der häufigste Block an den Giebelstellen.
+     */
+    private static void roofVariants(Grid g, String stairs, String shape, int x0, int y, int z0, int x1, int z1,
+            Map<String, Roof> out) {
+        boolean plain = false;
+        for (int o : new int[] {1, 0, 2}) {
+            if (x0 + o > x1 - o || z0 + o > z1 - o) {
+                continue;
+            }
+            if (!plain) {
+                plain = true;
+                add(out, roofCandidate(g, stairs, shape, x0, y, z0, x1, z1, o, null));
+            }
+            if (shape.equals("gable")) {
+                BlockSpec gable = gableBlock(g, x0, y, z0, x1, z1, o);
+                if (gable != null) {
+                    add(out, roofCandidate(g, stairs, shape, x0, y, z0, x1, z1, o, gable));
+                }
+            }
+        }
+    }
+
+    private static void add(Map<String, Roof> out, Roof r) {
+        if (r != null) {
+            out.putIfAbsent(r.json().toString(), r);
+        }
+    }
+
+    /** Häufigster Block an den Giebelstellen; null, wenn dort Luft oder nur Treppen/Türen stehen. */
+    private static BlockSpec gableBlock(Grid g, int x0, int y, int z0, int x1, int z1, int o) {
+        List<int[]> spots = new ArrayList<>();
+        roofCells(x0, y, z0, x1, z1, o, "gable", true, (x, yy, z, kind) -> {
+            if (kind == 'g') {
+                spots.add(new int[] {x, yy, z});
+            }
+        });
+        Map<Integer, Integer> count = new HashMap<>();
+        for (int[] p : spots) {
+            if (!g.inside(p[0], p[1], p[2])) {
+                return null;
+            }
+            int t = g.target[g.idx(p[0], p[1], p[2])];
+            if (t == 0) {
+                return null;
+            }
+            count.merge(t, 1, Integer::sum);
+        }
+        return count.entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> g.palette.get(e.getKey()))
+                .filter(b -> !b.isStairs() && !b.isDoor()).orElse(null);
+    }
+
+    /** Zelle eines Dachs: kind 's' Schräge (facing), 't' First, 'g' Giebel. */
+    private interface RoofCell {
+        void put(int x, int y, int z, char kind, String facing);
+    }
+
+    /** Kurzform für Aufrufer, die die Richtung nicht brauchen. */
+    private interface RoofSpot {
+        void put(int x, int y, int z, char kind);
+    }
+
+    private static void roofCells(int x0, int y, int z0, int x1, int z1, int o, String shape, boolean gable,
+            RoofSpot spot) {
+        roofCells(x0, y, z0, x1, z1, o, shape, gable, (x, yy, z, kind, facing) -> spot.put(x, yy, z, kind));
+    }
+
+    /**
+     * Die Schleifen aus PlanCompiler.roof (gable/hip), Grundfläche schon samt Überstand. Wer dort etwas ändert, muss es
+     * hier nachziehen – sonst passt der Kandidat nicht mehr zum Rückbau und verify zeigt die Abweichung (der Test
+     * „Dachschritt ergibt beim Kompilieren dieselben Zellen“ fällt dann).
+     */
+    private static void roofCells(int x0, int baseY, int z0, int x1, int z1, int o, String shape, boolean gable,
+            RoofCell cell) {
+        if (shape.equals("hip")) {
+            for (int i = 0; i < MAX_ROOF_LAYERS; i++) {
+                int xa = x0 + i;
+                int xb = x1 - i;
+                int za = z0 + i;
+                int zb = z1 - i;
+                if (xa > xb || za > zb) {
+                    break;
+                }
+                int y = baseY + i;
+                if (xa == xb || za == zb) {
+                    for (int z = za; z <= zb; z++) {
+                        for (int x = xa; x <= xb; x++) {
+                            cell.put(x, y, z, 't', "");
+                        }
+                    }
+                    break;
+                }
+                for (int x = xa; x <= xb; x++) {
+                    cell.put(x, y, za, 's', "back");
+                    cell.put(x, y, zb, 's', "front");
+                }
+                for (int z = za + 1; z < zb; z++) {
+                    cell.put(xa, y, z, 's', "right");
+                    cell.put(xb, y, z, 's', "left");
+                }
+            }
+            return;
+        }
+        boolean ridgeAlongX = (x1 - x0) >= (z1 - z0);
+        int lo = ridgeAlongX ? z0 : x0;
+        int hi = ridgeAlongX ? z1 : x1;
+        int ridgeLo = ridgeAlongX ? x0 : z0;
+        int ridgeHi = ridgeAlongX ? x1 : z1;
+        int wallLo = (ridgeAlongX ? z0 : x0) + o;
+        int wallHi = (ridgeAlongX ? z1 : x1) - o;
+        int gableA = (ridgeAlongX ? x0 : z0) + o;
+        int gableB = (ridgeAlongX ? x1 : z1) - o;
+        for (int i = 0; i < MAX_ROOF_LAYERS && lo + i <= hi - i; i++) {
+            int y = baseY + i;
+            int a = lo + i;
+            int b = hi - i;
+            for (int r = ridgeLo; r <= ridgeHi; r++) {
+                if (a == b) {
+                    putRoof(cell, ridgeAlongX, r, y, a, 't', "");
+                } else {
+                    putRoof(cell, ridgeAlongX, r, y, a, 's', ridgeAlongX ? "back" : "right");
+                    putRoof(cell, ridgeAlongX, r, y, b, 's', ridgeAlongX ? "front" : "left");
+                }
+            }
+            if (gable) {
+                for (int t = Math.max(a + 1, wallLo); t <= Math.min(b - 1, wallHi); t++) {
+                    putRoof(cell, ridgeAlongX, gableA, y, t, 'g', "");
+                    putRoof(cell, ridgeAlongX, gableB, y, t, 'g', "");
+                }
+            }
+        }
+    }
+
+    private static void putRoof(RoofCell cell, boolean ridgeAlongX, int r, int y, int t, char kind, String facing) {
+        if (ridgeAlongX) {
+            cell.put(r, y, t, kind, facing);
+        } else {
+            cell.put(t, y, r, kind, facing);
+        }
+    }
+
+    /**
+     * Kandidat oder null: null, sobald eine Dachzelle außerhalb des Bauwerks oder in Luft des Originals läge, oder wenn
+     * weniger als RING_SHARE der Dachzellen schon im Original genau so stehen.
+     */
+    private static Roof roofCandidate(Grid g, String stairs, String shape, int x0, int y, int z0, int x1, int z1, int o,
+            BlockSpec gable) {
+        BlockSpec block = BlockSpec.of(stairs);
+        // Wie PlanCompiler.slabFor: Treppe → gleichnamige Platte (type=bottom fällt in BlockStates.normalize weg).
+        BlockSpec top = BlockSpec.of(stairs.substring(0, stairs.length() - "_stairs".length()) + "_slab");
+        Map<Integer, BlockSpec> cells = new LinkedHashMap<>();
+        boolean[] bad = {false};
+        java.util.Set<Integer> slopeLayers = new java.util.HashSet<>();
+        roofCells(x0, y, z0, x1, z1, o, shape, gable != null, (x, yy, z, kind, facing) -> {
+            if (!g.inside(x, yy, z) || g.target[g.idx(x, yy, z)] == 0) {
+                bad[0] = true;
+                return;
+            }
+            if (kind == 's') {
+                slopeLayers.add(yy);
+            }
+            cells.put(g.idx(x, yy, z), switch (kind) {
+                case 's' -> new BlockSpec(stairs, Map.of("facing", facing));
+                case 't' -> top;
+                default -> gable;
+            });
+        });
+        // Ein Dach steigt an: Treppenlagen auf mindestens MIN_ROOF_LAYERS Höhen. Vorher (Runde 1 von T-014) wurden zwei
+        // Bankreihen Rücken an Rücken (back/front ohne Lücke, eine Lage) zu roof – Zellen exakt, aber das Lehrset
+        // nannte eine Bank „Dach“. Wer die Grenze auf 1 senkt, bringt dem Modell Sitzbänke als Dächer bei
+        // (PlanDecompilerRoofTest.doubleBenchIsNoRoof).
+        if (bad[0] || cells.isEmpty() || slopeLayers.size() < MIN_ROOF_LAYERS) {
+            return null;
+        }
+        int[] idx = new int[cells.size()];
+        int[] ids = new int[cells.size()];
+        int k = 0;
+        int same = 0;
+        for (Map.Entry<Integer, BlockSpec> e : cells.entrySet()) {
+            idx[k] = e.getKey();
+            ids[k] = g.ids.getOrDefault(e.getValue(), -1);
+            if (ids[k] == g.target[idx[k]]) {
+                same++;
+            }
+            k++;
+        }
+        if (same < RING_SHARE * cells.size()) {
+            return null;
+        }
+        S s = step("roof", block).from(x0 + o, y, z0 + o).to(x1 - o, y, z1 - o);
+        s.json.addProperty("shape", shape);
+        s.json.addProperty("overhang", o);
+        if (gable != null) {
+            s.json.addProperty("gable_block", text(gable));
+        }
+        return new Roof(s.json, x0, z0, x1, z1, idx, ids, 0);
+    }
+
+    /** Gewinn wie bei den Formen: neu richtig +1, zerstört −2, fremd (später überschrieben) −0,1. */
+    private static Roof scored(Grid g, Roof r) {
+        double gain = 0;
+        for (int k = 0; k < r.cells().length; k++) {
+            int i = r.cells()[k];
+            int t = g.target[i];
+            if (r.ids()[k] == t) {
+                gain += g.state[i] == t ? 0 : 1;
+            } else {
+                gain -= g.state[i] == t ? 2 : 0.1;
+            }
+        }
+        return new Roof(r.json(), r.x0(), r.z0(), r.x1(), r.z1(), r.cells(), r.ids(), gain);
     }
 
     // ---------------------------------------------------------------- Ausgabe
