@@ -1,5 +1,6 @@
 package com.blackn0va.baumeister.dataset;
 
+import com.blackn0va.baumeister.plan.LlmProtocol;
 import com.blackn0va.baumeister.plan.Machines;
 import com.blackn0va.baumeister.plan.PlanCompiler;
 import com.blackn0va.baumeister.plan.PlanPrompt;
@@ -83,6 +84,19 @@ public final class PlanJudge {
     /** Nutzernachricht genau wie BuildService ohne Gedächtnis und ohne Recherche. */
     public String userMessage(String order) {
         return PlanPrompt.userMessage(order, site, AHEAD, modules, null, null, 0, null);
+    }
+
+    /**
+     * Nachrichten der Korrekturrunde ohne System-Prompt (der steht im Lehrset als eigene Datei): über
+     * PlanPrompt.repairConversation, dieselbe Stelle, die BuildService und ClientPlanner rufen – damit die gekürzte
+     * Nutzernachricht und die Rechte-Zeile wortgleich bleiben, wenn sich der Prompt dort ändert.
+     */
+    public List<com.google.gson.JsonObject> repairConversation(String order, String broken, String request) {
+        List<com.google.gson.JsonObject> first = List.of(LlmProtocol.message("system", systemPrompt),
+                LlmProtocol.message("user", userMessage(order)));
+        List<com.google.gson.JsonObject> round = PlanPrompt.repairConversation(first, order, moduleNames, broken,
+                request);
+        return new java.util.ArrayList<>(round.subList(1, round.size()));
     }
 
     /** Urteil wie im Plugin; repairAttempts = llm.reparatur-versuche (Vorgabe 1). */

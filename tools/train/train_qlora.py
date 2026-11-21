@@ -5,7 +5,8 @@ kleine GPUs schnell planen und weniger Pläne verworfen werden (dev01 2026-10-31
 
 Eingabe: das Ausgabeverzeichnis von DatasetGenerator (train.jsonl, eval.jsonl, system-prompt.txt). Jeder Eintrag
 wird als Gespräch system → user → assistant mit der Chatvorlage des Grundmodells gesetzt – derselbe System-Prompt
-und dieselbe Nutzernachricht, die das Plugin schickt. Gelernt wird NUR auf den Antwort-Token (Plan-JSON); der Rest
+und dieselbe Nutzernachricht, die das Plugin schickt; Reparaturrunden als system → user → assistant (verworfen) →
+user (Rückmeldung) → assistant. Gelernt wird NUR auf den Token der letzten Antwort (Plan-JSON); der Rest
 ist mit -100 maskiert. Wer das Maskieren entfernt, bringt dem Modell bei, den System-Prompt nachzuplappern, und
 verbraucht ~97 % der Rechenzeit für Token, die es nie erzeugen soll.
 
@@ -48,17 +49,30 @@ def load_rows(path: Path) -> list[dict]:
     return rows
 
 
+def split_row(system: str, row: dict) -> tuple[list[dict], str]:
+    """Gespräch bis vor die letzte Antwort (mit System-Prompt) und die letzte Antwort selbst.
+
+    Gelernt wird nur auf die LETZTE Nachricht. Vorher nahm encode() die erste user- und die erste
+    assistant-Nachricht – bei einer Reparaturrunde (user → kaputter Plan → Rückmeldung → korrigierter Plan,
+    DatasetGenerator „llm_reparatur“) hätte das Modell den kaputten Plan gelernt. Wer das zurückdreht, bringt dem
+    Modell genau die Fehler bei, die der Prüfer verworfen hat. Einrundige Einträge ergeben dasselbe wie vorher.
+    """
+    messages = row["messages"]
+    if not messages or messages[-1]["role"] != "assistant":
+        raise SystemExit(f"Eintrag endet nicht mit einer Antwort: {row.get('auftrag', '?')}")
+    history = [{"role": m["role"], "content": m["content"]} for m in messages[:-1]]
+    return [{"role": "system", "content": system}] + history, messages[-1]["content"]
+
+
 def encode(tokenizer, system: str, row: dict, max_len: int):
     """Token und Labels eines Eintrags; None, wenn er zu lang ist.
 
     Prompt-Teil über apply_chat_template mit add_generation_prompt=True – genau so, wie llama.cpp im Host die
-    Vorlage aus der GGUF setzt. Die Antwort wird angehängt und mit END_OF_TURN abgeschlossen.
+    Vorlage aus der GGUF setzt. Die Antwort wird angehängt und mit END_OF_TURN abgeschlossen. Bei Reparaturrunden
+    steht der kaputte Plan im Prompt-Teil und ist damit maskiert.
     """
-    user = next(m["content"] for m in row["messages"] if m["role"] == "user")
-    answer = next(m["content"] for m in row["messages"] if m["role"] == "assistant")
-    prompt_ids = tokenizer.apply_chat_template(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        add_generation_prompt=True, tokenize=True)
+    conversation, answer = split_row(system, row)
+    prompt_ids = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=True)
     if isinstance(prompt_ids, dict):  # neuere transformers liefern BatchEncoding
         prompt_ids = prompt_ids["input_ids"]
     answer_ids = tokenizer(answer + END_OF_TURN, add_special_tokens=False)["input_ids"]
@@ -75,14 +89,9 @@ def check_template(tokenizer, system: str, row: dict) -> None:
     Sonst setzt das Training die Antwort anders, als die Vorlage es im Host tut, und das Modell lernt ein Format,
     das es beim Planen nie sieht.
     """
-    user = next(m["content"] for m in row["messages"] if m["role"] == "user")
-    answer = next(m["content"] for m in row["messages"] if m["role"] == "assistant")
-    full = tokenizer.apply_chat_template(
-        [{"role": "system", "content": system}, {"role": "user", "content": user},
-         {"role": "assistant", "content": answer}], tokenize=False)
-    prompt = tokenizer.apply_chat_template(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        add_generation_prompt=True, tokenize=False)
+    conversation, answer = split_row(system, row)
+    full = tokenizer.apply_chat_template(conversation + [{"role": "assistant", "content": answer}], tokenize=False)
+    prompt = tokenizer.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
     if not full.startswith(prompt + answer + END_OF_TURN):
         raise SystemExit("Chatvorlage passt nicht zur Annahme prompt + antwort + <|im_end|> – Abbruch. "
                          "Anderes Grundmodell? Dann END_OF_TURN und encode() anpassen.")
@@ -195,6 +204,10 @@ def main() -> int:
         targets = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
     check_template(tokenizer, system, train_rows[0])
+    # Reparaturrunden setzen die Vorlage über mehrere Runden – die Annahme prompt + antwort muss auch dort halten.
+    multi = next((r for r in train_rows + eval_rows if len(r["messages"]) > 2), None)
+    if multi is not None:
+        check_template(tokenizer, system, multi)
     lora = LoraConfig(r=args.rang, lora_alpha=2 * args.rang, lora_dropout=0.05, target_modules=targets,
                       task_type="CAUSAL_LM")
     model = get_peft_model(model, lora)

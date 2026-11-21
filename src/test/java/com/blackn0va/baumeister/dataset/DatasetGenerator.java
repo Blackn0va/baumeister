@@ -49,8 +49,22 @@ import java.util.function.Function;
  */
 public final class DatasetGenerator {
 
-    /** Ein Eintrag im Lehrset. kind = Art für Statistik und Aufteilung. */
-    public record Sample(String kind, String order, String json) {
+    /**
+     * Ein Eintrag im Lehrset. kind = Art für Statistik und Aufteilung, json = die Antwort, auf die gelernt wird.
+     *
+     * broken/request: nur bei einer Reparaturrunde (PlanImport.collectRepairs) – der verworfene Plan und die
+     * Rückmeldung des Prüfers, die das Plugin in der Korrekturrunde schickte (PlanReview.Repair.llmRequest). Bei allen
+     * anderen Einträgen null, dann bleibt es beim Gespräch Nutzer → Assistent.
+     */
+    public record Sample(String kind, String order, String json, String broken, String request) {
+
+        public Sample(String kind, String order, String json) {
+            this(kind, order, json, null, null);
+        }
+
+        boolean repair() {
+            return broken != null;
+        }
     }
 
     /** Ein Kandidat vor der Prüfung. */
@@ -950,6 +964,9 @@ public final class DatasetGenerator {
             PlanImport.Result imported = PlanImport.collect(plans, judge, gen.benchOrders);
             samples.addAll(imported.samples());
             stats.put("llm_angenommen", imported.stats());
+            PlanImport.Result repairs = PlanImport.collectRepairs(plans, judge, gen.benchOrders);
+            samples.addAll(repairs.samples());
+            stats.put("llm_reparatur", repairs.stats());
         }
         if (models != null) {
             VorbildImport.Result imported = VorbildImport.collect(models, judge, gen.benchOrders);
@@ -981,7 +998,17 @@ public final class DatasetGenerator {
             line.addProperty("auftrag", s.order());
             JsonArray messages = new JsonArray();
             String user = judge.userMessage(s.order());
-            messages.add(com.blackn0va.baumeister.plan.LlmProtocol.message("user", user));
+            if (s.repair()) {
+                // Reparaturrunde genau wie im Plugin (PlanPrompt.repairConversation): gekürzte Nutzernachricht, der
+                // verworfene Plan, die Rückmeldung. Gelernt wird nur auf die letzte Antwort (train_qlora.py maskiert
+                // alles davor). Wer hier die erste Nachricht der ersten Runde einsetzt, lehrt eine Korrektur auf ein
+                // Gespräch, das das Plugin nie schickt.
+                List<JsonObject> round = judge.repairConversation(s.order(), s.broken(), s.request());
+                round.forEach(messages::add);
+                user = round.getFirst().get("content").getAsString();
+            } else {
+                messages.add(com.blackn0va.baumeister.plan.LlmProtocol.message("user", user));
+            }
             messages.add(com.blackn0va.baumeister.plan.LlmProtocol.message("assistant", s.json()));
             line.add("messages", messages);
             boolean ev = isEval(s);
