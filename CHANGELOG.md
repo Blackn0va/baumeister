@@ -5,6 +5,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Behoben
+- **Kein Stillstand mehr bei fernen Zielen:** Die Prüfsumme des Bauplatzes (Vorschau bestätigen) und `/bm ort`
+  laden ihre Chunks jetzt vorher, statt sie mitten im Server-Takt zu laden oder zu erzeugen. Lässt sich ein Chunk
+  nicht laden, wird nicht gebaut bzw. nicht teleportiert – ein ungeladener Bereich zählt nie als leer.
 - **Client-Mod:** Ein Bau, der vor dem ersten Block gestoppt wird, bleibt nicht mehr im Gedächtnis – der nächste
   Nachtrag setzt nicht mehr auf einem Bau auf, den es nicht gibt.
 
