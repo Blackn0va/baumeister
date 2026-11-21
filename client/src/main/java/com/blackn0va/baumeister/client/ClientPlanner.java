@@ -37,7 +37,11 @@ import java.util.function.Consumer;
  * demselben Prüfer samt Nachbesserung (PlanReview). Vorher gab es nur den Weg über das Server-Plugin; Wunsch
  * 2026-10-31.
  *
- * Nicht dabei (Server-Sachen): Recherche im Internet, Gedächtnis für Folgeaufträge, Plot-Modus.
+ * Gedächtnis für Folgeaufträge wie im Plugin (seit 2026-11-21, AK-5): llm() bekommt den vorigen Plan samt Auftrag
+ * (Previous) und gibt ihn über PlanPrompt.userMessage an das LLM; hasMemory=true lässt mode "update" als Umbau gelten.
+ * Welche Bauten zählen (Frist, Umkreis, Welt), entscheidet ClientMemory.
+ *
+ * Nicht dabei (Server-Sachen): Recherche im Internet, Plot-Modus.
  *
  * Threads: quick() auf dem Client-Thread; llm() rechnet im HttpClient-Pool und vervollständigt dort – der Aufrufer
  * springt selbst zurück auf den Client-Thread. Fehler: PlanException mit deutschem Satz.
@@ -48,11 +52,19 @@ final class ClientPlanner {
      * Fertig geprüfter Bau. reply = Antwortsatz des Plans für den Chat. fixes = Nachbesserungen ohne LLM
      * (PlanAutoFix wie im Plugin), rounds = LLM-Antworten (0 = Schnellauftrag) – beides für Chat und App.
      */
-    record Planned(CompiledBuild build, String reply, List<String> warnings, List<String> fixes, int rounds) {
+    record Planned(CompiledBuild build, String reply, List<String> warnings, List<String> fixes, int rounds,
+            String json, boolean update) {
 
-        Planned(CompiledBuild build, String reply, List<String> warnings) {
-            this(build, reply, warnings, List.of(), 0);
+        Planned(CompiledBuild build, String reply, List<String> warnings, String json) {
+            this(build, reply, warnings, List.of(), 0, json, false);
         }
+    }
+
+    /**
+     * Voriger Bau für das Gedächtnis: Plan (JSON, Koordinaten wie der neue Scan), sein Auftrag und wie lange er her ist
+     * – genau die drei Werte, die PlanPrompt.userMessage im Plugin aus BuildService.Memory bekommt.
+     */
+    record Previous(String planJson, String prompt, long minutesAgo) {
     }
 
     private static final Gson GSON = new Gson();
@@ -98,32 +110,38 @@ final class ClientPlanner {
         var plan = PlanParser.parse(json.get());
         CompiledBuild build = compiler.compile(plan);
         PlanReview.checkOverbuild(survey, prompt, build, settings.maxOverbuild);
-        return Optional.of(new Planned(build, plan.reply(), build.warnings()));
+        // Schnellaufträge sind nie ein Umbau (im Plugin ebenso: acceptPlan baut sie als neuen Bau), sie kommen aber
+        // ins Gedächtnis – „mach ihn höher“ nach dem Hochhaus soll das Hochhaus kennen.
+        return Optional.of(new Planned(build, plan.reply(), build.warnings(), json.get()));
     }
 
     /**
      * LLM mit Prüfer und höchstens repairAttempts Nachbesserungen. say: Zwischenstand für den Chat (beliebiger Thread).
      * request: über ihn bricht /kbau stop die laufende Anfrage samt weiterer Runden ab (PlanRequest).
+     * previous: voriger Bau aus dem Gedächtnis oder null (frischer Auftrag).
      */
-    CompletableFuture<Planned> llm(String prompt, SiteSurvey survey, Consumer<String> say, PlanRequest request) {
+    CompletableFuture<Planned> llm(String prompt, SiteSurvey survey, Previous previous, Consumer<String> say,
+            PlanRequest request) {
         List<String> names = modules.all().stream().map(ModuleLibrary.Module::name).toList();
+        boolean memory = previous != null;
         PlanReview review = new PlanReview(compiler, modules, new PlanReview.Context(prompt,
-                RequestHints.parse(prompt, names), survey, false, settings.maxOverbuild, settings.repairAttempts,
+                RequestHints.parse(prompt, names), survey, memory, settings.maxOverbuild, settings.repairAttempts,
                 PlanReview.LintMode.STRICT));
         List<JsonObject> messages = new ArrayList<>();
         messages.add(LlmProtocol.message("system", systemPrompt));
         messages.add(LlmProtocol.message("user", PlanPrompt.userMessage(prompt, survey, settings.distanceAhead,
-                modules, null, null, 0, null)));
+                modules, memory ? previous.planJson() : null, memory ? previous.prompt() : null,
+                memory ? previous.minutesAgo() : 0, null)));
         CompletableFuture<Planned> result = new CompletableFuture<>();
-        ask(review, messages, 0, say, result, request);
+        ask(review, messages, 0, memory, say, result, request);
         return result;
     }
 
-    private void ask(PlanReview review, List<JsonObject> messages, int attempt, Consumer<String> say,
+    private void ask(PlanReview review, List<JsonObject> messages, int attempt, boolean memory, Consumer<String> say,
             CompletableFuture<Planned> result, PlanRequest request) {
         JsonObject body = LlmProtocol.body(messages, schema, settings.temperature, settings.maxTokens);
         HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(settings.llmUrl))
-                .timeout(Duration.ofMinutes(10))
+                .timeout(Duration.ofSeconds(settings.llmTimeoutSeconds))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body), StandardCharsets.UTF_8))
                 .build();
@@ -141,8 +159,18 @@ final class ClientPlanner {
                 return;
             }
             if (err != null) {
+                // sendAsync liefert die Ursache in einer CompletionException – vorher stand nur deren Name in der
+                // Chatzeile, auch bei einer abgelaufenen Wartezeit (gemessen 2026-11-21, ClientPlannerTest).
+                Throwable cause = err instanceof java.util.concurrent.CompletionException && err.getCause() != null
+                        ? err.getCause() : err;
+                if (cause instanceof java.net.http.HttpTimeoutException) {
+                    result.completeExceptionally(new PlanException("Der Baumeister-Host hat binnen "
+                            + settings.llmTimeoutSeconds + " s nicht geantwortet (llmTimeoutSeconds). Ist das Modell "
+                            + "geladen oder rechnet es noch an einem anderen Auftrag?"));
+                    return;
+                }
                 result.completeExceptionally(new PlanException("Der Baumeister-Host ist nicht erreichbar ("
-                        + settings.llmUrl + "): " + err.getClass().getSimpleName()
+                        + settings.llmUrl + "): " + cause.getClass().getSimpleName()
                         + ". Läuft die App und ist das Modell geladen?"));
                 return;
             }
@@ -166,13 +194,14 @@ final class ClientPlanner {
                 List<JsonObject> next = PlanPrompt.repairConversation(messages, review.prompt(),
                         modules.all().stream().map(ModuleLibrary.Module::name).toList(), rep.assistant(),
                         rep.llmRequest());
-                ask(review, next, attempt + 1, say, result, request);
+                ask(review, next, attempt + 1, memory, say, result, request);
             } else if (v instanceof PlanReview.GiveUp g) {
                 result.completeExceptionally(new PlanException("Kein brauchbarer Plan: " + g.playerText()));
             } else {
                 PlanReview.Accept a = (PlanReview.Accept) v;
+                // update nur mit Gedächtnis – wie BuildService.handleReply: ohne vorigen Bau ist „update“ ein Neubau.
                 result.complete(new Planned(a.build(), a.plan().reply(), a.build().warnings(), a.repairs(),
-                        attempt + 1));
+                        attempt + 1, a.json(), memory && a.plan().isUpdate()));
             }
         });
     }

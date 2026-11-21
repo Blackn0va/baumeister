@@ -47,6 +47,12 @@ final class ClientBuild {
     final boolean undo;
     final Map<BlockPos, BlockState> originals = new LinkedHashMap<>();
     /**
+     * Gedächtnis vor diesem Bau (ClientBuilder.remember) – Rückgängig setzt es zurück (ClientBuilder.undoMemory).
+     * remembered = der Bau kam überhaupt ins Gedächtnis; memoryBefore null heißt dann „vorher leer“.
+     */
+    ClientMemory.Entry<Map<BlockPos, BlockState>> memoryBefore;
+    boolean remembered;
+    /**
      * Die Welt (ClientLevel), in der der Bau angelegt wurde – nur als Identität verglichen (sameWorld). Vorher hing der
      * Bau an keiner Welt: Nach einem Dimensions-, Welt- oder Serverwechsel baute tick() mit den absoluten Koordinaten
      * in der neuen Welt weiter, und /kbau rückgängig schrieb die alten Zustände dort hinein. Object statt ClientLevel,

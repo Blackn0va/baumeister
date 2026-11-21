@@ -40,6 +40,8 @@ final class ClientSettings {
     int maxExtent = 192;
     int maxBlocks = 150_000;
     int maxOverbuild = 12;
+    /** Wartezeit auf eine LLM-Antwort in Sekunden; vorher fest 10 min in ClientPlanner.ask (AK-6). */
+    int llmTimeoutSeconds = 600;
     /** Abstand des Bauplatzes vor den Füßen (wie bau.abstand im Plugin). */
     int distanceAhead = 3;
     /** Ergebnis an die App melden (/baumeister/v1/ergebnis, wie gui.ergebnis-melden im Plugin). */
@@ -113,6 +115,28 @@ final class ClientSettings {
         if (maxBlocks <= 0) {
             fixed.add(corrected("maxBlocks", maxBlocks, d.maxBlocks));
             maxBlocks = d.maxBlocks;
+        }
+        // KI-Werte (AK-6, 2026-11-21): Vorher ungeprüft – temperature NaN oder negativ ging so an den Host, maxTokens 0
+        // ließ jede Antwort leer zurückkommen, ein negatives repairAttempts schaltete die Nachbesserung still ab.
+        if (!(temperature >= 0 && temperature <= 2)) {
+            fixed.add(corrected("temperature", temperature, d.temperature));
+            temperature = d.temperature;
+        }
+        if (maxTokens <= 0) {
+            fixed.add(corrected("maxTokens", maxTokens, d.maxTokens));
+            maxTokens = d.maxTokens;
+        }
+        if (repairAttempts < 0) {
+            fixed.add(corrected("repairAttempts", repairAttempts, d.repairAttempts));
+            repairAttempts = d.repairAttempts;
+        }
+        if (maxOverbuild < 0) {
+            fixed.add(corrected("maxOverbuild", maxOverbuild, d.maxOverbuild));
+            maxOverbuild = d.maxOverbuild;
+        }
+        if (llmTimeoutSeconds <= 0) {
+            fixed.add(corrected("llmTimeoutSeconds", llmTimeoutSeconds, d.llmTimeoutSeconds));
+            llmTimeoutSeconds = d.llmTimeoutSeconds;
         }
         if (!validLlmUrl(llmUrl)) {
             fixed.add(corrected("llmUrl", llmUrl, d.llmUrl));

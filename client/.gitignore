@@ -2,3 +2,5 @@
 .gradle/
 build/
 run/
+# Minecraft-Logger aus ClientFollowUpTest (Bootstrap im Unit-Test, 2026-11-21)
+logs/
