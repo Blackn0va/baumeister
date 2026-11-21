@@ -1,5 +1,7 @@
 package com.blackn0va.baumeister.dataset;
 
+import com.blackn0va.baumeister.plan.BlockCatalog;
+import com.blackn0va.baumeister.plan.BlockTiers;
 import com.blackn0va.baumeister.plan.LlmProtocol;
 import com.blackn0va.baumeister.plan.Machines;
 import com.blackn0va.baumeister.plan.PlanCompiler;
@@ -16,9 +18,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Eine Prüfkette für Lehrsatz, Import und Messgerät: dieselbe Nachricht an das LLM wie im Plugin (PlanPrompt mit
@@ -47,18 +50,51 @@ public final class PlanJudge {
     static final int AHEAD = 3;
     static final int MAX_OVERBUILD = 12;
 
+    /**
+     * Blockkatalog wie auf dem Server: nur echte Block-IDs (tiers/block-ids.txt, dieselbe Freigabeliste, die BlockTiers
+     * im Plugin lädt), dazu Luft wie BlockTiers.knownBlock. Mit allIds, damit BlockRules.resolve wie
+     * BukkitBlockCatalog über ItemNames im ganzen Register sucht.
+     *
+     * Vorher stand hier (wie in LlmProbe) Material.getMaterial(id) != null – Material.isBlock() braucht ab 1.21 die
+     * Server-Registry, der Enum-Name allein kennt aber auch jeden Gegenstand. Damit galten redstone, string,
+     * wheat_seeds als Block mit eigener Zelle, während der Server (BukkitBlockCatalog, isBlock) sie über
+     * BlockRules.resolve auflöst – Alias (redstone → redstone_wire), ItemNames oder Ersatzblock, jeweils mit Warnung
+     * (Beifund T-017: 2 198 Zellen Scheinabweichung in einem Plan, 2026-11-21).
+     * Wer das zurückdreht, nimmt Pläne ins Lehrset, die das Plugin nur mit Warnung baut, und PlanBench zählt sie als
+     * sauber – das Modell lernte Gegenstandsnamen statt Blocknamen.
+     */
+    public static final BlockCatalog SERVER_BLOCKS = new BlockCatalog() {
+        private final Set<String> ids = loadBlockIds();
+
+        @Override
+        public boolean isBlock(String id) {
+            return BlockTiers.knownBlock(id);
+        }
+
+        @Override
+        public Set<String> allIds() {
+            return ids;
+        }
+    };
+
     private final Machines modules = new Machines();
     private final List<String> moduleNames = modules.all().stream().map(m -> m.name()).toList();
-    // Wie LlmProbe: Material.isBlock() braucht ab 1.21 die Server-Registry, ohne Server reicht der Enum-Name.
-    private final PlanCompiler compiler = new PlanCompiler(
-            id -> org.bukkit.Material.getMaterial(id.toUpperCase(Locale.ROOT)) != null, "stone",
-            new PlanCompiler.Limits(MAX_BLOCKS, MAX_EXTENT), modules);
+    private final PlanCompiler compiler;
     private final SiteSurvey site = SiteSurvey.scan(SCAN_MIN, SCAN_MAX,
             p -> p.y() >= 0 ? "air" : p.y() == -1 ? "grass_block" : "dirt");
     private final String systemPrompt = resource("/system-prompt.txt");
     private final String schema = resource("/plan-schema.json");
     private final com.google.gson.JsonObject schemaJson = com.google.gson.JsonParser.parseString(schema)
             .getAsJsonObject();
+
+    public PlanJudge() {
+        this(SERVER_BLOCKS);
+    }
+
+    /** Mit anderem Katalog – nur für Tests und die Gegenprobe gegen den alten Material-Katalog. */
+    PlanJudge(BlockCatalog catalog) {
+        compiler = new PlanCompiler(catalog, "stone", new PlanCompiler.Limits(MAX_BLOCKS, MAX_EXTENT), modules);
+    }
 
     public Machines modules() {
         return modules;
@@ -151,6 +187,17 @@ public final class PlanJudge {
         } catch (com.blackn0va.baumeister.plan.PlanException e) {
             throw new IllegalArgumentException("Teil lässt sich nicht übersetzen: " + e.getMessage(), e);
         }
+    }
+
+    private static Set<String> loadBlockIds() {
+        Set<String> out = new HashSet<>();
+        for (String line : resource("/tiers/block-ids.txt").lines().toList()) {
+            String id = line.strip();
+            if (!id.isEmpty() && !id.startsWith("#")) {
+                out.add(id);
+            }
+        }
+        return Set.copyOf(out);
     }
 
     private static String resource(String name) {
