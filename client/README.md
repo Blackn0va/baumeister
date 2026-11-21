@@ -39,7 +39,9 @@ Standort des ersten Auftrags („mach das Dach rot“, „bau noch einen Turm dr
 Das LLM liefert dann den vollständigen neuen Plan; was der alte Bau gesetzt hat und der neue nicht mehr enthält, räumt
 die Mod zuerst weg – nur, wo noch derselbe Block steht. Kürzt das Modell den alten Bau, ohne dass du Wegnehmen
 verlangt hast, bleibt er stehen (Anbau). `/kbau rückgängig` nach dem Nachtrag stellt den Bau davor wieder her, und
-das Gedächtnis zeigt wieder auf ihn; nach dem Rückgängig des einzigen Baus ist es leer.
+das Gedächtnis zeigt wieder auf ihn; nach dem Rückgängig des einzigen Baus ist es leer. Ein mit `/kbau stop`
+abgebrochener Bau, von dem noch kein Block stand, fällt aus dem Gedächtnis – der nächste Nachtrag setzt dann auf dem
+Bau davor auf.
 
 Neu geplant wird in einer anderen Welt, Dimension oder auf einem anderen Server, nach Ablauf der Stunde und bei einem
 neuen eigenständigen Bauwerk („bau mir ein Haus“). Das Gedächtnis liegt nur im Speicher, nie auf der Platte – nach
@@ -71,6 +73,7 @@ Die Plan-Logik kommt unverändert aus dem Plugin (`../src/main/java`, Pakete `pl
   Übernahme 74 s (811/811), Rückgängig 70 s – jede Stelle geprüft
 - ⏳ Mit LLM im echten Spiel (Host auf dem GPU-PC) noch nicht gelaufen; Flüssigkeiten gehen nur per Befehl
 - ✅ Gedächtnis für Nachträge (2026-11-21) in Unit-Tests: gefälschter Host (`ClientPlannerTest`), Frist/Umkreis/Welt
-  (`ClientMemoryTest`), Nachtrag und Rückgängig mit echten Blockzuständen (`ClientFollowUpTest`)
+  (`ClientMemoryTest`), Nachtrag und Rückgängig mit echten Blockzuständen (`ClientFollowUpTest`), Verdrahtung im
+  echten `ClientBuilder` – Start, Prüfdurchgang, Stopp, Rückgängig (`ClientBuilderMemoryTest`, 2026-11-21)
 - ⏳ Nachtrag im echten Spiel mit LLM noch nicht gelaufen
 - ⏳ Recherche und Plot-Modus gibt es nur im Plugin
