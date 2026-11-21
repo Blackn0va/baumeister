@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 
 ## [Unveröffentlicht]
 
+### Geändert
+- **KI ohne Host schneller:** Ist der Spiele-PC mit der KI aus, sagt der Baumeister nach dem ersten bekannten
+  Ausfall sofort ab und nennt den Schnellbau ohne KI (Pyramide, Burg, Hochhaus …), statt jedes Mal 13 s zu
+  warten. Sobald der Host wieder antwortet, gilt er wieder als da. Eine abgeschnittene KI-Antwort fragt er
+  einmal mit mehr Platz nach, statt den Plan zu verwerfen.
+- **Weniger KI-Runden:** Eine ungültige Seite (facing) bei Mauer, Burg und Garten richtet der Baumeister selbst
+  auf die Vorgabe. Alle Selbstkorrekturen loggen einheitlich `plan | <art>_gerichtet`, eine gekürzte Größe
+  erscheint in den Nachbesserungen.
+- **Lehrset mit Reparaturrunden:** Der DatasetGenerator nimmt Aufträge, die erst nach einer Rückmeldung des
+  Prüfers gelangen, als Gespräch über mehrere Runden auf; `train_qlora.py` lernt dort nur die korrigierte Antwort.
+
 ### Behoben
 - **Kein Stillstand mehr bei fernen Zielen:** Die Prüfsumme des Bauplatzes (Vorschau bestätigen) und `/bm ort`
   laden ihre Chunks jetzt vorher, statt sie mitten im Server-Takt zu laden oder zu erzeugen. Lässt sich ein Chunk
