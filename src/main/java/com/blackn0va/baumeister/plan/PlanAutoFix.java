@@ -244,6 +244,99 @@ public final class PlanAutoFix {
         }
     }
 
+    // ---------------------------------------------------------------- Doppelte Modulzelle
+
+    /**
+     * set-Schritte, die genau den Block auf eine Modul- oder Logikzelle setzen, der dort schon steht, fallen weg.
+     * Vorher meldete PlanLinter.buriedModules sie als Überbau, und der Plan ging in die Reparaturrunde bzw. wurde
+     * verworfen: gemessen auf dev01 seit 2026-11-01, 4 von 14 verworfenen Plänen – „(set redstone_lamp) overwrites
+     * 1 block(s) of the module register_4bit“, „(set lever) overwrites 1 block(s) of the logic circuit“. Das LLM
+     * setzt die Ausgangslampe oder den Eingangshebel, den die Maschine selbst schon hat; der Schritt ist überflüssig,
+     * nicht schädlich.
+     *
+     * Gleich heißt: dieselbe Block-ID, und jeder Zustand, den der set ausdrücklich verlangt (BlockSpec.explicit),
+     * hat im Modul denselben Wert; Daten (NBT) nur, wenn sie gleich sind. Ein Hebel mit anderer Ausrichtung oder
+     * eine Lampe auf einer Redstoneleitung bleibt ein Überbau-Befund wie bisher – dort hätte der set die Maschine
+     * tatsächlich verändert. Wer hier auf „gleiche ID genügt“ lockert, baut einen gedrehten Hebel stillschweigend
+     * nicht, obwohl das LLM ihn anders wollte, und verliert den Hinweis an das LLM.
+     *
+     * Nur set: fill und Bauformen überschreiben mehr als eine Zelle, ein Teil davon wäre echter Überbau.
+     *
+     * Der übersetzte Bau kennt je Zelle nur den Endzustand (PlanCompiler.order: eine Action je Zelle, ohne
+     * Geschichte) – was das Modul dort hatte, liefert deshalb ein zweiter Bau ohne den set-Schritt. Gemessen
+     * 2026-11-21: Eine Lampe auf der Lampe von register_4bit steht im Bau als Action von Schritt 1 (dem Modul), die des
+     * set taucht gar nicht auf; ein Vergleich über die Actions fand nie etwas.
+     *
+     * @param compiler derselbe Compiler, der build übersetzt hat
+     */
+    public static Optional<Fixed> moduleCells(String json, BuildPlan plan, CompiledBuild build, List<Issue> issues,
+            PlanCompiler compiler) {
+        Map<Integer, String> drop = new java.util.TreeMap<>();
+        for (Issue i : issues) {
+            int w = i.step() - 1;
+            if (i.rule() != Rule.MODULE_BURIED || w < 0 || w >= plan.steps().size() || i.pos() == null
+                    || plan.steps().get(w).op() != Op.SET || drop.containsKey(w)) {
+                continue;
+            }
+            sameModuleBlock(json, plan, build, w, i.pos(), compiler).ifPresent(note -> drop.put(w, note));
+        }
+        if (drop.isEmpty()) {
+            return Optional.empty();
+        }
+        return withoutSteps(json, List.copyOf(drop.keySet()), "").map(f -> new Fixed(f.json(),
+                List.copyOf(drop.values())));
+    }
+
+    /** Leer, wenn der set-Schritt w an p etwas anderes setzt als das Modul bzw. die Schaltung, die dort zuvor stand. */
+    private static Optional<String> sameModuleBlock(String json, BuildPlan plan, CompiledBuild build, int w, Pos p,
+            PlanCompiler compiler) {
+        BlockSpec want = cellAt(build, p).map(CompiledBuild.Change::block).orElse(null);
+        Optional<Fixed> rest = withoutSteps(json, List.of(w), "");
+        if (want == null || rest.isEmpty()) {
+            return Optional.empty();
+        }
+        CompiledBuild.Change before;
+        try {
+            before = cellAt(compiler.compile(PlanParser.parse(rest.get().json())), p).orElse(null);
+        } catch (PlanException e) {
+            // Ohne den Schritt nicht übersetzbar: dann wird nicht gerichtet, der Befund bleibt wie bisher.
+            return Optional.empty();
+        }
+        // group = Schrittnummer + 1 bei module/logic (PlanCompiler.compile); 0 heißt: kein Bauteil schrieb zuletzt.
+        int victimIndex = before == null ? -1 : before.group() - 1;
+        if (victimIndex < 0 || victimIndex >= w) {
+            return Optional.empty();
+        }
+        BuildPlan.Step victim = plan.steps().get(victimIndex);
+        if (victim.op() != Op.MODULE && victim.op() != Op.LOGIC) {
+            return Optional.empty();
+        }
+        BlockSpec have = before.block();
+        if (!want.id().equals(have.id()) || want.nbt() != null && !want.nbt().equals(have.nbt())) {
+            return Optional.empty();
+        }
+        for (String key : want.explicit()) {
+            if (!want.props().get(key).equals(have.props().get(key))) {
+                return Optional.empty();
+            }
+        }
+        String what = victim.op() == Op.LOGIC ? "die Logikschaltung „" + victim.expr() + "“"
+                : "das Modul „" + victim.name() + "“";
+        return Optional.of("Schritt " + (w + 1) + ": set " + want.id() + " weggelassen – " + what + " hat dort "
+                + "schon diesen Block");
+    }
+
+    private static Optional<CompiledBuild.Change> cellAt(CompiledBuild build, Pos p) {
+        for (CompiledBuild.Action a : build.actions()) {
+            for (CompiledBuild.Change c : a.changes()) {
+                if (c.pos().equals(p)) {
+                    return Optional.of(c);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     // ---------------------------------------------------------------- Vollklötze
 
     /**

@@ -275,6 +275,20 @@ public final class PlanReview {
                         f.dz(), f.clamped()));
             }
             List<Issue> issues = lint(plan, build);
+            // Lampe auf der Ausgangslampe, Hebel auf dem Eingangshebel: der set fällt weg (PlanAutoFix.moduleCells),
+            // statt als Überbau in die Reparaturrunde zu gehen. Ein anderer Block auf der Modulzelle bleibt Befund.
+            Optional<PlanAutoFix.Fixed> cells = PlanAutoFix.moduleCells(json, plan, build, issues,
+                    compiler);
+            if (cells.isPresent()) {
+                json = cells.get().json();
+                assistant = json;
+                plan = PlanParser.parse(json);
+                build = compiler.compile(plan);
+                repairs.addAll(cells.get().notes());
+                issues = lint(plan, build);
+                LOG.info(() -> "plan | modulzelle_gerichtet | " + String.join("; ", cells.get().notes()) + " versuch="
+                        + attempt);
+            }
             // Vollklötze macht der Baumeister selbst hohl (PlanAutoFix.hollowSolids) statt einer Reparaturrunde.
             Optional<PlanAutoFix.Fixed> hollow = PlanAutoFix.hollowSolids(json, issues);
             if (hollow.isPresent()) {
