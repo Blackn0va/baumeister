@@ -16,7 +16,8 @@ import java.util.Properties;
  * volle Wahrheitstabelle über MachineProbe (Eingang an = Redstone-Block statt Hebel, jede Lampe abfragen).
  *
  *   java -cp "target/classes;target/test-classes;lib/*" com.blackn0va.baumeister.LogicProbe C:\swb\baumeister-testserver [richtung] [formel …]
- * Formel „mehr“ = {@link #MULTI}, „alle“ = beide Listen. Exit 0 = alle bestanden.
+ * Formel „mehr“ = {@link #MULTI}, „alle“ = beide Listen, „3d“ = {@link #THREE_D}, „3dmax“ = {@link #THREE_D_MAX},
+ * „3dalle“ = beide Stockwerk-Listen. Exit 0 = alle bestanden.
  */
 public final class LogicProbe {
 
@@ -56,6 +57,40 @@ public final class LogicProbe {
                     + "D7 = A&B&C",
             "3d S0 = A0 ^ B0; S1 = A1 ^ B1 ^ (A0 & B0); C = A1&B1 | (A1|B1)&A0&B0");
 
+    /**
+     * Obergrenzen (2026-11-21, AK-15): vier Stockwerke – einmal voll (4-zu-16-Dekoder, 16 Lampen, je Stockwerk
+     * 4 Ausgänge), einmal erzwungen über „3d“ (2-zu-4-Dekoder, jede Lampe ein Stockwerk). Vorher endete die Probe bei
+     * 3 Stockwerken und 8 Lampen; die Grenze „16 Ausgänge, 4 Stockwerke“ war am Server nie gebaut.
+     */
+    public static final List<String> THREE_D_MAX = List.of(
+            decoder4to16(),
+            "3d D0 = !A&!B; D1 = A&!B; D2 = !A&B; D3 = A&B");
+
+    /** Argument „3dalle“: {@link #THREE_D} und {@link #THREE_D_MAX}. */
+    private static List<String> allThreeD() {
+        List<String> all = new ArrayList<>(THREE_D);
+        all.addAll(THREE_D_MAX);
+        return all;
+    }
+
+    /** „D0 = !A&!B&!C&!D; … D15 = A&B&C&D“ – Bit 0 = A. */
+    private static String decoder4to16() {
+        StringBuilder sb = new StringBuilder();
+        for (int n = 0; n < 16; n++) {
+            if (n > 0) {
+                sb.append("; ");
+            }
+            sb.append('D').append(n).append(" = ");
+            for (int bit = 0; bit < 4; bit++) {
+                if (bit > 0) {
+                    sb.append('&');
+                }
+                sb.append((n >> bit & 1) == 1 ? "" : "!").append((char) ('A' + bit));
+            }
+        }
+        return sb.toString();
+    }
+
     /** Je Stockwerk über dem ersten: 2 Fackeln und 1 Verstärker mehr im Weg (≈ 0,5 s), großzügig gerechnet. */
     private static final int SETTLE_PER_FLOOR_MS = 600;
 
@@ -77,6 +112,10 @@ public final class LogicProbe {
             formulas = MULTI;
         } else if (formulas.equals(List.of("3d"))) {
             formulas = THREE_D;
+        } else if (formulas.equals(List.of("3dmax"))) {
+            formulas = THREE_D_MAX;
+        } else if (formulas.equals(List.of("3dalle"))) {
+            formulas = allThreeD();
         } else if (formulas.equals(List.of("alle"))) {
             formulas = new ArrayList<>(DEFAULT);
             formulas.addAll(MULTI);
