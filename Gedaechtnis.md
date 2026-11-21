@@ -1362,6 +1362,12 @@ Stand: 2026-11-17
   PlanDecompiler baut keine Zylinder über 48. Gegenprobe: ohne Umsortieren DatasetGeneratorTest
   .quickSkyscraperIsRenderedInGrammarOrder rot; Lehrset danach 0/4000 nicht grammatikgerecht (Python-Gegenleser).
   Im Plugin harmlos (Schnellaufträge laufen nicht durch die Grammatik), deshalb dort nicht geändert.
+- Lehrset-Katalog (T-019, 2026-11-21): PlanJudge zählte jeden Namen mit `Material.getMaterial != null` als Block –
+  auch Gegenstände (redstone, potato, string); ohne allIds keine ItemNames-Suche. Jetzt `PlanJudge.SERVER_BLOCKS`
+  (BlockTiers.knownBlock + tiers/block-ids.txt), also dieselbe Auflösung wie BukkitBlockCatalog. Gemessen: Lehrset
+  0/4000 geändert, PlanBench 2/66 Urteile. Gegenprobe: PlanJudgeItemTest mit altem Katalog 3/5 rot. Falle:
+  `PlanJudge.loadBlockIds` liest block-ids.txt ein zweites Mal (BlockTiers.knownBlocks ist paketprivat) – beide
+  synchron halten. `LlmProbe` hat noch den alten Material-Katalog.
 - Testaufträge sind auch als Teilstück gesperrt (DatasetGenerator.nearBench): „Bau mir einen Wachturm aus Holz“ stand
   vorher fast wörtlich im Lehrset.
 - Lehrset: 21 % der Einträge (793 von 3805, 2026-11-01) sind Aufträge, die das Plugin als Schnellauftrag ohne LLM

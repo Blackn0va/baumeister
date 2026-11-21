@@ -31,6 +31,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   nicht laden, wird nicht gebaut bzw. nicht teleportiert – ein ungeladener Bereich zählt nie als leer.
 - **Client-Mod:** Ein Bau, der vor dem ersten Block gestoppt wird, bleibt nicht mehr im Gedächtnis – der nächste
   Nachtrag setzt nicht mehr auf einem Bau auf, den es nicht gibt.
+- **Lehrset-Prüfer (PlanJudge):** Gegenstände wie `redstone`, `potato` oder `string` zählen nicht mehr als Block,
+  sondern werden wie vom Plugin auf dem Server aufgelöst (Alias, ItemNames, Ersatzblock). Gemessen: Lehrset
+  unverändert, 2 von 66 PlanBench-Urteilen geändert.
 
 ### Neu
 - **Item-Sortierer für mehrere Sorten:** `item_sortierer_N` sortiert 2 bis 8 Sorten in je eine Kiste, den Rest in den
