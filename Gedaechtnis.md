@@ -550,6 +550,10 @@ Stand: 2026-11-17
 - Rückgängig mit Prüfung (2026-11-14, 5c224a9, xor_gatter, ein Block danach Gold, einer abgebaut): altes JAR
   überschreibt das Gold, neues lässt es stehen (`verändert_behalten=1`), übrige 55 Zellen weg.
 - Paper-26.2-Regression (2026-11-14, Stand e1e6a0a = dev01): MachineProbe 47 × 4 = 188/188 BESTANDEN.
+- Paper 26.2 neue Maschinen (T-018, 2026-11-21, fremd-paper, Paper 26.2-135, Stand 58287a1): MachineProbe
+  akkumulator_mit_loeschen, item_sortierer_3, _3:coal,iron_ingot,gold_ingot, _8 (+ akkumulator_4bit, item_sortierer als
+  Vergleich) 24/24; LogicProbe 3dalle 6 × 4 = 24/24; lag je_s=0.0 überall. Kein Paper-eigener Fehler. Nicht gemessen:
+  item_sortierer_2 und _4 bis _7, andere Sortenlisten.
 - Lag-Wächter live (Paper-Kopie, waechter.jar): Taktgeber 18,3/s; Grenze 10 → „lag | maschine_abgebaut“, 21 Blöcke
   zurück, 0 Verstärker übrig; Grenze 100 → bleibt stehen. Vorlagen dort geladen=263 fehlend=0 (ac4717c).
 - Lag-Leerlauf eingebauter Maschinen (Spigot, 8 s): takt 18,3/s, nachtlicht 0,3/s, 45 weitere 0/s. Schematics bisher:
