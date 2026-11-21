@@ -78,6 +78,11 @@ final class ClientBuilder {
         return job;
     }
 
+    /** Für Tests: das Gedächtnis dieses Builders (was der nächste Nachtrag sähe). */
+    ClientMemory<Map<BlockPos, BlockState>> memory() {
+        return memory;
+    }
+
     boolean planning() {
         return planning;
     }
@@ -191,13 +196,27 @@ final class ClientBuilder {
             // Sie reichen durch Wände.
             next.targets.sort(java.util.Comparator.comparingInt(t -> t.pos().getY()));
         }
+        launch(next, planned, mc.level, mc.level.getMinY(), feet, o.forward(), shiftX, shiftZ, mem,
+                mc.level::getBlockState);
+    }
+
+    /**
+     * Zweite Hälfte von begin(): Tiefe prüfen, Gedächtnis, Bau übernehmen, ansagen. Ohne Minecraft-Instanz (world nur
+     * als Identität, worldAt statt mc.level), damit ClientBuilderMemoryTest den echten Weg aus begin() geht. Vorher
+     * rief der Test remember() direkt auf – ohne den Aufruf hier blieben alle Tests grün (Gegenprobe des Dirigenten
+     * 2026-11-21).
+     */
+    void launch(ClientBuild next, ClientPlanner.Planned planned, Object world, int minY, BlockPos feet,
+            Cardinal facing, int shiftX, int shiftZ, ClientMemory.Entry<Map<BlockPos, BlockState>> mem,
+            java.util.function.Function<BlockPos, BlockState> worldAt) {
+        String prompt = next.order;
         int lowest = next.targets.stream().mapToInt(t -> t.pos().getY()).min().orElse(feet.getY());
-        if (lowest <= mc.level.getMinY()) {
+        if (lowest <= minY) {
             say.accept("Hier geht das nicht so tief – der Bau reicht bis ans Grundgestein. Such dir mehr Boden darunter.");
             results.send(prompt, "abgesagt", "zu tief", 0);
             return;
         }
-        remember(memory, next, mc.level, feet, o.forward(), shiftX, shiftZ, planned, mem, mc.level::getBlockState);
+        remember(memory, next, world, feet, facing, shiftX, shiftZ, planned, mem, worldAt);
         next.fixes = planned.fixes();
         next.rounds = planned.rounds();
         job = next;
@@ -335,11 +354,22 @@ final class ClientBuilder {
         }
         job.state = ClientBuild.State.CANCELLED;
         lastFinished = job;
+        if (job.originals.isEmpty()) {
+            // Abgebrochen, bevor ein Block stand: Rückgängig verweigert diesen Bau (undo, originals leer), also darf er
+            // auch nicht im Gedächtnis bleiben. Vorher plante der nächste Nachtrag auf einem Bau, den es nicht gibt –
+            // und räumte bei mode "update" womöglich den Bau davor weg. Wer das entfernt, hat das wieder.
+            undoMemory(memory, job);
+        }
         say.accept("Gestoppt bei " + job.next + "/" + job.total() + ". /kbau rückgängig räumt weg, was gesetzt wurde.");
         results.send(job.order, "abgebrochen", job.next + " von " + job.total() + " Schritten", job.placed);
     }
 
     void undo(Minecraft mc) {
+        undo(mc.level);
+    }
+
+    /** level nur als Identität (sameWorld) – so prüft ClientBuilderMemoryTest Rückgängig ohne Spielstart. */
+    void undo(Object level) {
         if (job != null && job.active()) {
             say.accept("Erst /kbau stop – rückgängig geht nach dem Bau.");
             return;
@@ -348,7 +378,7 @@ final class ClientBuilder {
             say.accept("Ich habe nichts, was ich zurückbauen könnte.");
             return;
         }
-        if (!ClientBuild.sameWorld(lastFinished, mc.level)) {
+        if (!ClientBuild.sameWorld(lastFinished, level)) {
             // Die Originale gelten nur in der Welt des Baus. Vorher schrieb rückgängig sie an dieselben Koordinaten
             // der neuen Welt (Nether, fremder Server) und riss dort fremde Blöcke ab.
             say.accept("Der letzte Bau steht in einer anderen Welt – rückgängig geht nur dort.");
@@ -440,9 +470,18 @@ final class ClientBuilder {
         if (--verifyWait > 0) {
             return;
         }
+        verifyPass(mc.level::getBlockState);
+    }
+
+    /**
+     * Prüfdurchgang nach dem letzten Ziel: Abweichungen einmal nachbauen, danach DONE und lastFinished. Aus tick()
+     * gelöst und ohne Minecraft-Instanz (worldAt statt mc.level), damit ClientBuilderMemoryTest einen Bau bis zum
+     * Rückgängig über den echten Weg führt statt lastFinished von Hand zu setzen.
+     */
+    void verifyPass(java.util.function.Function<BlockPos, BlockState> worldAt) {
         List<ClientBuild.Target> wrong = new ArrayList<>();
         for (ClientBuild.Target t : job.targets) {
-            var now = mc.level.getBlockState(t.pos());
+            var now = worldAt.apply(t.pos());
             if (!ClientBuild.sameIntent(now, t.state()) && !(t.companion() && now.is(t.state().getBlock()))) {
                 wrong.add(t);
             }
@@ -454,7 +493,7 @@ final class ClientBuilder {
                 sample.append(' ').append(t.pos().toShortString()).append(" soll=")
                         .append(net.minecraft.commands.arguments.blocks.BlockStateParser.serialize(t.state()))
                         .append(" ist=").append(net.minecraft.commands.arguments.blocks.BlockStateParser.serialize(
-                                mc.level.getBlockState(t.pos())));
+                                worldAt.apply(t.pos())));
             }
             LOG.info(() -> "bau | abweichungen | anzahl=" + wrong.size() + " durchgang=" + job.passes + sample);
         }
