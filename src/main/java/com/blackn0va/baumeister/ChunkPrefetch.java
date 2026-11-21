@@ -26,8 +26,9 @@ import org.bukkit.plugin.Plugin;
  * (der Normalfall mit einem Spieler daneben), läuft then sofort, im selben Tick – wie vorher.
  *
  * Threads: ensure() und then auf dem Server-Thread; Paper vervollständigt im eigenen Thread, der Rückruf springt über
- * mainThread zurück. Fehler: Ein Chunk, der sich nicht laden lässt, wird geloggt und übersprungen (fail-open: Dann lädt
- * ihn das Lesen synchron wie früher – langsamer, aber nicht falsch).
+ * mainThread zurück. Fehler: Ein Chunk, der sich nicht laden lässt, wird geloggt und übersprungen. Für BuildJob und
+ * SiteFrame ist das fail-open (das Lesen lädt ihn synchron wie früher – langsamer, aber nicht falsch); Prüfsumme
+ * (SiteFingerprint) und /bm ort (PlaceRegistry.arrival) fragen danach host.loaded() und sind fail-closed (2026-11-21).
  */
 final class ChunkPrefetch {
 
@@ -150,7 +151,7 @@ final class ChunkPrefetch {
                     host.loadNow(cx(k), cz(k));
                     holdOne(k);  // sonst darf der Server ihn bis zum Lesen wieder entladen
                 } catch (RuntimeException e) {
-                    // fail-open, siehe Kopf: Das Lesen lädt ihn dann selbst.
+                    // siehe Kopf: fail-open für BuildJob/SiteFrame, Prüfsumme und /bm ort fragen loaded() (fail-closed).
                     LOG.log(Level.WARNING, "chunks | laden_fehlgeschlagen | cx=" + cx(k) + " cz=" + cz(k), e);
                 }
             }

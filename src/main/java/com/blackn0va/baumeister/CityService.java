@@ -143,7 +143,7 @@ final class CityService {
             LOG.info(() -> "orte | strasse | ort=" + c.place() + " gesucht=" + Texts.clean(street, 64) + " gefunden="
                     + h.street() + " nr=" + h.number() + " fehlt=" + h.numberMissing() + " x=" + at.getBlockX()
                     + " z=" + at.getBlockZ());
-            BaumeisterCommand.arrive(sender, at, label);
+            BaumeisterCommand.arrive(plugin, sender, at, label);
         }));
         return true;
     }

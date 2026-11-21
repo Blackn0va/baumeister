@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -409,11 +410,38 @@ public final class PlaceRegistry {
         return new Page(all.subList(from, Math.min(all.size(), from + size)), p, pages, all.size());
     }
 
+    /** Ergebnis von arrival: loaded = false heißt, der Zielchunk ließ sich nicht laden; dann ist y leer. */
+    record Arrival(boolean loaded, OptionalInt y) {
+    }
+
+    /**
+     * safeY erst, wenn der Chunk der Zielsäule geladen ist (ChunkPrefetch: Paper asynchron, Spigot im nächsten
+     * Tick), dann then. Absturz-Audit 2026-10-30 (AK-8): Vorher las /bm ort die Säule sofort; ein ferner Ort wurde
+     * dabei synchron im Server-Thread geladen bzw. erzeugt. Lässt er sich nicht laden, wird nichts gelesen –
+     * fail-closed: kein Teleport ins Ungeprüfte, eine ungeladene Säule ist nicht „frei“. Wer das Vorladen entfernt,
+     * holt den Stillstand zurück (ArrivalAndFingerprintLoadTest).
+     */
+    static void arrival(ChunkPrefetch.Host host, int x, int y, int z, int minY, int maxY, BlockProbe probe,
+            Consumer<Arrival> then) {
+        int cx = x >> 4;
+        int cz = z >> 4;
+        ChunkPrefetch.ensure(host, new long[] {ChunkPrefetch.key(cx, cz)}, 1, p -> {
+            try {
+                then.accept(host.loaded(cx, cz) ? new Arrival(true, safeY(x, y, z, minY, maxY, probe))
+                        : new Arrival(false, OptionalInt.empty()));
+            } finally {
+                if (p != null) {
+                    p.release();
+                }
+            }
+        });
+    }
+
     /**
      * Sichere Ankunftshöhe: ab dem Zielblock nach oben die erste Stelle, an der Fuß- und Kopfblock frei sind. Vorher
      * (/tp auf gemerkte Koordinaten) landete man nach einem Umbau in der neuen Decke und erstickte. Nach unten wird
      * bewusst nicht gesucht – ein Ort in der Luft ist ein Aussichtspunkt, kein Fehler. Leer, wenn bis zur Weltdecke
-     * nichts frei ist.
+     * nichts frei ist. Liest ohne Ladeprüfung – von /bm ort nur über arrival aufrufen.
      */
     static OptionalInt safeY(int x, int y, int z, int minY, int maxY, BlockProbe probe) {
         int start = Math.max(minY, Math.min(maxY - 2, y));

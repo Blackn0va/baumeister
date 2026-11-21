@@ -72,6 +72,15 @@ class ComfortFlowTest {
         }
 
         @Override
+        public void loadSite(Req r, Runnable then) {
+            then.run();  // Bauplatz immer geladen; das Vorladen prüft ArrivalAndFingerprintLoadTest
+        }
+
+        @Override
+        public void previewOffered(Req r) {
+        }
+
+        @Override
         public void build(Req r, String plan) {
             built.add(r.name() + ":" + plan + ":v" + r.version());
         }

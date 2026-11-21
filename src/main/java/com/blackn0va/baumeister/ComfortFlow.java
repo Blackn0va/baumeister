@@ -51,8 +51,20 @@ final class ComfortFlow<R, P> {
         /** Neu planen lassen; preview = nur zeigen, nicht bauen. */
         void plan(R request, boolean preview);
 
-        /** Prüfsumme des Bauplatzes jetzt (SiteFingerprint). */
+        /**
+         * Prüfsumme des Bauplatzes jetzt (SiteFingerprint.ofLoaded); SiteFingerprint.UNREADABLE, wenn er nicht
+         * geladen ist.
+         */
         long fingerprint(R request);
+
+        /**
+         * Bauplatz vorladen (SiteFingerprint.whenLoaded), dann then auf dem Server-Thread – sofort, wenn er schon
+         * geladen ist. Ohne Bauplatz (kein Rahmen) sofort.
+         */
+        void loadSite(R request, Runnable then);
+
+        /** Eine Vorschau ist angelegt (Partikel-Takt starten). */
+        void previewOffered(R request);
 
         /** Bestätigten Plan bauen. Die Rechteprüfung läuft dort wie bei jedem Bau vor dem ersten Block. */
         void build(R request, P plan);
@@ -85,13 +97,19 @@ final class ComfortFlow<R, P> {
         /** Bestätigte Vorschau in die Warteschlange gestellt. */
         QUEUED,
         /** Beschäftigt und nicht einreihbar; die Vorschau bleibt offen. */
-        KEPT
+        KEPT,
+        /** Bauplatz wird erst geladen; danach wird verglichen und gebaut (oder abgelehnt). */
+        LOADING,
+        /** Bauplatz ließ sich nicht laden – fail-closed nicht gebaut. */
+        UNREADABLE
     }
 
     private final Port<R, P> port;
     private final OrderQueue<Queued<R, P>> queue;
     private final BuildPreview<Confirmable<R, P>> previews;
     private final long previewMillis;
+    /** Wie viele Vorschauen bzw. „ja“ gerade auf ihren Bauplatz warten; solange rückt niemand nach (pump). */
+    private int loading;
 
     ComfortFlow(Port<R, P> port, int queueMax, int queuePerOwner, long previewMillis, LongSupplier clockMillis) {
         this.port = port;
@@ -164,7 +182,7 @@ final class ComfortFlow<R, P> {
      * nächste.
      */
     void pump() {
-        while (!port.busy() && !queue.isEmpty()) {
+        while (!busy() && !queue.isEmpty()) {
             OrderQueue.Entry<Queued<R, P>> e = queue.poll();
             Queued<R, P> q = e.order();
             R r = port.refresh(q.request());
@@ -202,10 +220,27 @@ final class ComfortFlow<R, P> {
         if (!previewOnly) {
             return false;
         }
-        Shown s = port.owner(r) == null ? null : shown.get();
-        if (s == null) {
+        if (port.owner(r) == null) {
             port.tell(r, "Eine Vorschau gibt es nur im Spiel – nichts gebaut.");
             return true;
+        }
+        // Die Prüfsumme beim Zeigen liest den ganzen Bauplatz – erst laden (AK-8). Nach Minuten LLM-Zeit kann der
+        // Spieler längst weitergegangen sein.
+        whenSiteLoaded(r, () -> offer(r, plan, shown));
+        return true;
+    }
+
+    private void offer(R r, P plan, Supplier<Shown> shown) {
+        Shown s = shown.get();
+        if (s == null) {
+            port.tell(r, "Eine Vorschau gibt es nur im Spiel – nichts gebaut.");
+            return;
+        }
+        if (s.fingerprint() == SiteFingerprint.UNREADABLE) {
+            LOG.warning(() -> "vorschau | bauplatz_nicht_geladen | besitzer=" + port.ownerName(r));
+            port.tell(r, "Den Bauplatz konnte ich nicht laden – ohne Prüfung zeige ich keine Vorschau. Versuch es "
+                    + "noch einmal: /bm vorschau <auftrag>");
+            return;
         }
         previews.offer(port.owner(r), s.world(), s.box(), s.blocks(), new Confirmable<>(r, plan, s.fingerprint()),
                 previewMillis);
@@ -215,7 +250,7 @@ final class ComfortFlow<R, P> {
         port.tell(r, String.format("Vorschau: %d × %d × %d Blöcke (%,d Blöcke), Umriss in Violett. Sag \"ja\" (oder "
                 + "/bm vorschau ja), dann baue ich – \"nein\" verwirft sie, sonst verfällt sie in %d s.", box.sizeX(),
                 box.sizeY(), box.sizeZ(), s.blocks(), previewSeconds()));
-        return true;
+        port.previewOffered(r);
     }
 
     /**
@@ -235,7 +270,7 @@ final class ComfortFlow<R, P> {
             return Outcome.NONE;
         }
         Confirmable<R, P> fresh = new Confirmable<>(r, c.plan(), c.fingerprint());
-        if (port.busy()) {
+        if (busy()) {
             String keep = " Deine Vorschau gilt noch " + previews.secondsLeft(owner) + " s – sag dann noch einmal "
                     + "\"ja\".";
             if (!queue.enabled()) {
@@ -261,10 +296,66 @@ final class ComfortFlow<R, P> {
      * hat gegen den damaligen Scan entschieden, und die Verschiebung „mittig vor den Spieler“ hängt daran, ob dort
      * schon etwas stand. Hat inzwischen jemand gebaut (auch ein Auftrag aus der Warteschlange), wird nicht gebaut –
      * fail-closed, der Spieler holt sich eine neue Vorschau.
+     *
+     * Ist der Bauplatz nicht geladen (Spieler weitergegangen, „ja“ aus der Warteschlange), wird er zuerst geladen
+     * (AK-8): Vorher las die Prüfsumme ihn synchron im Server-Thread. LOADING = Vergleich und Bau folgen nach dem
+     * Laden; bis dahin rückt niemand aus der Warteschlange nach.
      */
     Outcome startConfirmed(Confirmable<R, P> c) {
+        Outcome[] now = new Outcome[1];
+        boolean[] later = {false};
+        boolean waited = !whenSiteLoaded(c.request(), () -> now[0] = check(c, !later[0]));
+        later[0] = waited;
+        if (waited) {
+            port.tell(c.request(), "Ich lade erst den Bauplatz …");
+            return Outcome.LOADING;
+        }
+        return now[0];
+    }
+
+    /**
+     * then sofort, wenn der Bauplatz geladen ist (true), sonst nach dem Vorladen (false); solange zählt der Fluss als
+     * beschäftigt.
+     */
+    private boolean whenSiteLoaded(R r, Runnable then) {
+        boolean[] ran = {false};
+        boolean[] counted = {false};
+        port.loadSite(r, () -> {
+            if (counted[0]) {
+                loading--;
+            }
+            ran[0] = true;
+            then.run();
+        });
+        if (!ran[0]) {
+            counted[0] = true;
+            loading++;
+        }
+        return ran[0];
+    }
+
+    /** Beschäftigt: der Baumeister selbst oder ein Bauplatz, der gerade für eine Vorschau bzw. ein „ja“ lädt. */
+    private boolean busy() {
+        return loading > 0 || port.busy();
+    }
+
+    private Outcome check(Confirmable<R, P> c, boolean sameTick) {
         R r = c.request();
-        if (port.fingerprint(r) != c.fingerprint()) {
+        long site = port.fingerprint(r);
+        if (site == SiteFingerprint.UNREADABLE || c.fingerprint() == SiteFingerprint.UNREADABLE) {
+            LOG.warning(() -> "vorschau | bauplatz_nicht_geladen | besitzer=" + port.ownerName(r));
+            port.tell(r, "Den Bauplatz konnte ich nicht laden – ungeprüft baue ich nicht. "
+                    + "Neue Vorschau: /bm vorschau <auftrag>");
+            return Outcome.UNREADABLE;
+        }
+        if (!sameTick && port.busy()) {
+            // Während des Ladens hat ein anderer Auftrag angefangen (direkter Befehl) – nicht parallel bauen.
+            LOG.info(() -> "vorschau | beim_laden_beschäftigt | besitzer=" + port.ownerName(r));
+            port.tell(r, "Während ich den Bauplatz geladen habe, hat ein anderer Bau angefangen – deine Vorschau "
+                    + "ist verworfen. Neue Vorschau: /bm vorschau <auftrag>");
+            return Outcome.CHANGED;  // nur nach dem Laden erreichbar, der Wert geht an niemanden mehr
+        }
+        if (site != c.fingerprint()) {
             LOG.info(() -> "vorschau | bauplatz_verändert | besitzer=" + port.ownerName(r));
             port.tell(r, "Am Bauplatz hat sich seit der Vorschau etwas verändert – so baue ich nicht. "
                     + "Neue Vorschau: /bm vorschau <auftrag>");

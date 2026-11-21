@@ -17,8 +17,11 @@ import org.junit.jupiter.api.Test;
 /** 2026-11-14: Bauplatz laden, ohne den Server-Thread anzuhalten (bis 4,4 s gemessen). */
 class ChunkPrefetchTest {
 
-    /** Ersatz-Server: geladene Chunks, Tickets, ein Takt zum Weiterdrehen; paper = mit asynchronem Laden. */
-    private static final class FakeHost implements ChunkPrefetch.Host {
+    /**
+     * Ersatz-Server: geladene Chunks, Tickets, ein Takt zum Weiterdrehen; paper = mit asynchronem Laden. Auch für
+     * ArrivalAndFingerprintLoadTest (Prüfsumme und /bm ort, AK-8).
+     */
+    static final class FakeHost implements ChunkPrefetch.Host {
         final Set<Long> loaded = new HashSet<>();
         final Set<Long> tickets = new HashSet<>();
         final List<Long> syncLoads = new ArrayList<>();

@@ -1187,14 +1187,15 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     + "hinbringen.");
             return;
         }
-        arrive(player, new Location(w, p.x(), p.y(), p.z(), p.yaw(), p.pitch()), p.name());
+        arrive(plugin, player, new Location(w, p.x(), p.y(), p.z(), p.yaw(), p.pitch()), p.name());
     }
 
     /**
      * Sicher ankommen (PlaceRegistry.safeY) – für Reisepunkte und für Straßen (CityService.travelToStreet). Von der
-     * Konsole nur die Koordinaten.
+     * Konsole nur die Koordinaten. Der Zielchunk wird vorher geladen (PlaceRegistry.arrival, AK-8); die Antwort kommt
+     * dann ggf. einen Tick später.
      */
-    static void arrive(CommandSender sender, Location at, String label) {
+    static void arrive(org.bukkit.plugin.Plugin plugin, CommandSender sender, Location at, String label) {
         World w = at.getWorld();
         int bx = at.getBlockX();
         int by = at.getBlockY();
@@ -1204,19 +1205,34 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     + " – hinreisen geht nur im Spiel.");
             return;
         }
-        OptionalInt safe = PlaceRegistry.safeY(bx, by, bz, w.getMinHeight(), w.getMaxHeight(),
-                (x, y, z) -> isFree(w.getBlockAt(x, y, z)));
+        PlaceRegistry.arrival(ChunkPrefetch.of(plugin, w), bx, by, bz, w.getMinHeight(), w.getMaxHeight(),
+                (x, y, z) -> isFree(w.getBlockAt(x, y, z)), a -> land(player, at, label, a));
+    }
+
+    private static void land(Player player, Location at, String label, PlaceRegistry.Arrival a) {
+        World w = at.getWorld();
+        int bx = at.getBlockX();
+        int by = at.getBlockY();
+        int bz = at.getBlockZ();
+        if (!player.isOnline()) {
+            return;  // während des Ladens abgemeldet – das alte Player-Objekt ist tot
+        }
+        if (!a.loaded()) {
+            Texts.info(player, "Den Ort " + label + " konnte ich nicht laden – ungeprüft bringe ich dich nicht hin.");
+            return;
+        }
+        OptionalInt safe = a.y();
         if (safe.isEmpty()) {
-            Texts.info(sender, "Bei " + label + " ist bis zur Weltdecke kein Platz frei – ich bringe dich nicht "
+            Texts.info(player, "Bei " + label + " ist bis zur Weltdecke kein Platz frei – ich bringe dich nicht "
                     + "in eine Wand.");
             return;
         }
         double y = safe.getAsInt() == by ? at.getY() : safe.getAsInt();
         if (!player.teleport(new Location(w, at.getX(), y, at.getZ(), at.getYaw(), at.getPitch()))) {
-            Texts.info(sender, "Die Reise nach " + label + " wurde abgelehnt (ein anderes Plugin hat sie verhindert).");
+            Texts.info(player, "Die Reise nach " + label + " wurde abgelehnt (ein anderes Plugin hat sie verhindert).");
             return;
         }
-        Texts.info(sender, "Willkommen in " + label + " (" + w.getName() + " " + bx + " " + (int) Math.floor(y) + " "
+        Texts.info(player, "Willkommen in " + label + " (" + w.getName() + " " + bx + " " + (int) Math.floor(y) + " "
                 + bz + ").");
         LOG.info(() -> "orte | gereist | spieler=" + player.getName() + " name=" + label + " höher="
                 + (safe.getAsInt() - by));
