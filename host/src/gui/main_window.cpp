@@ -559,31 +559,28 @@ bool MainWindow::notify_hidden_errors(const std::vector<ConsoleEntry>& entries) 
 }
 
 void MainWindow::notify_events(const Snapshot& s, bool error_shown) {
-    NotifyInput in;
-    in.model_loaded = s.model == ModelPhase::Loaded;
-    in.model_title = s.model_title;
-    in.tunnel = s.tunnel;
-    in.tunnel_text = s.tunnel_text;
-    in.tunnel_generation = s.tunnel_generation;
-    in.via_address = s.relay_enabled;
-    in.job = plan_;
-    // update() auch ohne Symbol und bei abgeschalteten Meldungen: Der Notifier muss den Zustand weiterführen, sonst
-    // meldete er beim Wiedereinschalten Übergänge, die längst vorbei sind.
-    const bool enabled = c_.config().notifications;
-    const std::vector<Notice> fresh = notifier_.update(in, enabled);
-    // Eine Fehler-Sprechblase derselben Abfrage hat Vorrang (Windows zeigt nur die letzte), die Meldung kommt eine
-    // Abfrage später; das aktive Fenster braucht keine Meldung – dort steht alles in der Konsole.
+    // Plan holen und Meldung wählen: gui/window_feed (dort getestet, T-007). Hier nur ablesen und zeigen.
+    FeedState fs;
+    fs.model_loaded = s.model == ModelPhase::Loaded;
+    fs.model_title = s.model_title;
+    fs.tunnel = s.tunnel;
+    fs.tunnel_text = s.tunnel_text;
+    fs.tunnel_generation = s.tunnel_generation;
+    fs.via_address = s.relay_enabled;
     NoticeGate gate;
-    gate.enabled = enabled;
+    gate.enabled = c_.config().notifications;
     gate.has_tray = tray_ != nullptr;
     gate.window_active = isActiveWindow() && isVisible() && !isMinimized();
     gate.error_shown = error_shown;
-    const std::optional<Notice> n = notice_to_show(pending_notices_, fresh, gate);
-    if (!n) {
+    const FeedPoll p = feed_.poll(fs, c_.last_plan_seq(), [this] { return c_.last_plan(); }, gate);
+    if (p.plan_changed) {
+        preview_->show_record(feed_.plan());
+    }
+    if (!p.notice) {
         return;
     }
-    tray_->showMessage(qs(n->title), qs(n->text),
-                       n->warning ? QSystemTrayIcon::Warning : QSystemTrayIcon::Information);
+    tray_->showMessage(qs(p.notice->title), qs(p.notice->text),
+                       p.notice->warning ? QSystemTrayIcon::Warning : QSystemTrayIcon::Information);
 }
 
 void MainWindow::sync_model_choice() {
@@ -699,7 +696,7 @@ void MainWindow::refresh() {
     const bool error_shown = notify_hidden_errors(entries);
     const Snapshot s = c_.snapshot();
     sync_model_choice();
-    // Den Plan (bis einige KiB) nur bei neuer Nummer kopieren, nicht in jeder 250-ms-Abfrage (Prüfbefund 2026-10-29).
+    // Stadt wie der Plan (gui/window_feed) nur bei neuer Nummer holen, nicht in jeder 250-ms-Abfrage.
     if (const std::uint64_t cs = c_.city_seq(); cs != city_seq_) {
         const bool first = city_seq_ == 0;
         city_seq_ = cs;
@@ -708,11 +705,6 @@ void MainWindow::refresh() {
         if (first && tabs_ != nullptr) {
             tabs_->setCurrentWidget(city_);
         }
-    }
-    if (c_.last_plan_seq() != plan_seq_) {
-        plan_ = c_.last_plan();
-        plan_seq_ = plan_.seq;
-        preview_->show_record(plan_);
     }
     notify_events(s, error_shown);
 

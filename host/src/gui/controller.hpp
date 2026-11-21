@@ -12,6 +12,7 @@
 
 #include "base/paths.hpp"
 #include "gui/app_config.hpp"
+#include "gui/companion_wiring.hpp"
 #include "gui/console_throttle.hpp"
 #include "gui/job_stats.hpp"
 #include "gui/job_tracker.hpp"
@@ -99,7 +100,10 @@ struct Snapshot {
     std::uint64_t download_total = 0;
 };
 
-class Controller final : public QObject, private server::CompletionBackend, private server::ApiObserver {
+class Controller final : public QObject,
+                         private server::CompletionBackend,
+                         private server::ApiObserver,
+                         private CompanionHooks {
     Q_OBJECT
 
 public:
@@ -188,16 +192,18 @@ public:
     void console(ConsoleKind kind, std::string text);
 
 private:
-    // Satz des Begleiters (Server-Thread): Konsole, und vorlesen, wenn er dem eingetragenen Spieler gilt.
-    void companion_said(const server::Spoken& s);
+    // CompanionHooks (Server-Thread, Verdrahtung in gui/companion_wiring)
+    // Satz des Begleiters: Konsole, und vorlesen, wenn er dem eingetragenen Spieler gilt.
+    void companion_said(const server::Spoken& s) override;
+    // Ton aus dem Spiel erkennen (/hoeren) und Stimme als Ton fürs Spiel (/stimme).
+    void game_voice(const std::vector<std::string>& names) override;
+    std::optional<std::string> hear_from_game(const std::string& player, std::vector<float> pcm,
+                                              std::string& error) override;
+    std::optional<std::vector<std::int16_t>> voice_for_game(const std::string& text, std::string& error) override;
+    // Begleitername laut Plugin: abgelegt und gedrosselt hat ihn schon forward_companion_name, hier nur die Zeile.
+    void companion_name_line(const std::string& line) override;
     // Stimme nach der Einstellung einrichten; fehlt Piper oder die Stimme, im Hintergrund laden.
     void apply_voice();
-    // Ton aus dem Spiel erkennen (/hoeren) und Stimme als Ton fürs Spiel (/stimme) – Server-Thread.
-    void game_voice(const std::vector<std::string>& names);
-    // Begleitername laut Plugin (beim Abholen, schon geprüft) an die Erkennung – Server-Thread, wartet auf nichts.
-    void companion_name(const std::string& name);
-    std::optional<std::string> hear_from_game(const std::string& player, std::vector<float> pcm, std::string& error);
-    std::optional<std::vector<std::int16_t>> voice_for_game(const std::string& text, std::string& error);
     // Ergebnis im Spiel in Karte, Verlauf und Konsole (aus route und show_demo_result).
     void show_result(const server::ResultNote& n);
     // CompletionBackend (Server-Thread)
@@ -269,7 +275,7 @@ private:
     std::mutex speech_apply_mutex_;
     std::string speech_sig_;
     voice::SpeechInput speech_;
-    // Konsolenzeile zum Begleiternamen: höchstens eine je Minute (companion_name).
+    // Konsolenzeile zum Begleiternamen: höchstens eine je Minute (forward_companion_name).
     ConsoleThrottle name_log_{std::chrono::minutes(1)};
     std::atomic<bool> game_voice_{false};  // eigener Spieler laut Plugin im Voice-Chat (game_voice)
     std::thread speech_download_thread_;

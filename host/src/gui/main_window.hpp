@@ -18,6 +18,7 @@
 
 #include "gui/controller.hpp"
 #include "gui/notifier.hpp"
+#include "gui/window_feed.hpp"
 
 #include <QMainWindow>
 #include <QSystemTrayIcon>
@@ -57,6 +58,7 @@ private:
     void append_console(const std::vector<ConsoleEntry>& entries);
     // true, wenn eine Fehler-Sprechblase gezeigt wurde.
     bool notify_hidden_errors(const std::vector<ConsoleEntry>& entries);
+    // Plan in die Vorschau und Meldung in den Infobereich (gui/window_feed).
     void notify_events(const Snapshot& s, bool error_shown);
     // „Speichern …“ der Live-Konsole (console_export).
     void save_console_to_file();
@@ -93,10 +95,7 @@ private:
     std::uint64_t history_rev_ = 0;
     CityView* city_ = nullptr;
     std::uint64_t city_seq_ = 0;
-    Notifier notifier_;
-    std::vector<Notice> pending_notices_;  // von einer Fehler-Sprechblase verdrängt (notice_to_show)
-    std::uint64_t plan_seq_ = 0;
-    PlanRecord plan_;  // Kopie von Controller::last_plan(), nur bei neuer seq geholt
+    WindowFeed feed_;  // Plan (nur bei neuer seq geholt) und Meldungen im Infobereich
     QSystemTrayIcon* tray_ = nullptr;
     QTimer* timer_ = nullptr;
     bool quitting_ = false;
