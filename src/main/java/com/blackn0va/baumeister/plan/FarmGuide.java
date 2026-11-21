@@ -112,7 +112,41 @@ public final class FarmGuide {
      * stimmen „links/rechts“ oder die Zahlen nicht mehr – lieber nichts sagen als das Falsche.
      */
     public static Optional<Guide> of(String module) {
-        return Optional.ofNullable(module == null ? null : GUIDES.get(module));
+        if (module == null) {
+            return Optional.empty();
+        }
+        Guide g = GUIDES.get(module);
+        return g != null ? Optional.of(g) : sorter(module);
+    }
+
+    /**
+     * Mehrsorten-Sortierer (item_sortierer_N, mit Sorten „item_sortierer_N:a,b“): Anzahl und Sorten stehen erst im
+     * Namen, darum keine feste Zeile in GUIDES. Nur Namen, die Machines wirklich baut – ein gespiegelter bekommt
+     * nichts (links/rechts stimmten nicht). Lagen wie Machines.multiItemSorter: Einwurf vorn links oben, je Sorte eine
+     * Truhe vorn unten von links nach rechts, Rest hinten rechts oben.
+     */
+    private static Optional<Guide> sorter(String module) {
+        // Nicht new Machines(): Das baute bei jedem Plan alle Maschinen samt Anzeige (12 595 Zellen) neu.
+        Optional<Machines.Machine> m = Machines.multiItemSorter(module);
+        if (m.isEmpty() || !module.startsWith(Machines.MULTI_SORTER)) {
+            return Optional.empty();
+        }
+        int n = (m.get().module().size().x() + 1) / Machines.MULTI_SORTER_STRIDE;
+        int colon = module.indexOf(':');
+        int given = colon < 0 ? 0 : module.substring(colon + 1).split(",").length;
+        List<String> steps = new ArrayList<>();
+        if (given < n) {
+            steps.add("Füll " + (given == 0 ? "jeden" : "jeden leeren") + " der " + n + " mittleren Trichter über den "
+                    + "Truhen vorn: ins erste Fach 18 Stück seiner Sorte, in die anderen vier je einen umbenannten "
+                    + "Gegenstand (Amboss). Bis er voll ist, zieht er alles.");
+        } else {
+            steps.add("Die " + n + " Filter sind schon gefüllt, von links nach rechts: "
+                    + module.substring(colon + 1).replace(",", ", ") + ".");
+        }
+        steps.add("Wirf alles oben in den Trichter vorn links. Jede Sorte landet in der Truhe unter ihrem Filter, der "
+                + "Rest in der Truhe hinten rechts. Nur Sorten, die sich bis 64 stapeln.");
+        return Optional.of(new Guide(module, "Item-Sortierer", "den Item-Sortierer für " + n + " Sorten",
+                given < n ? "je Sorte 18 Stück und 4 umbenannte Platzhalter" : "", List.copyOf(steps)));
     }
 
     /** Alle Bauteile mit Hinweisen (für Tests). */

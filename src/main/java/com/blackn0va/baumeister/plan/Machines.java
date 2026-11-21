@@ -90,6 +90,7 @@ public final class Machines implements ModuleLibrary {
         add(pulseExtender());
         add(smelter());
         add(itemSorter());
+        add(multiItemSorter(MULTI_SORTER_PROBED, List.of()));
         add(xpFarm());
         // Farmen 2026-11-07 (Wunsch) – je mit Probe auf dem Testserver.
         add(cobbleGenerator());
@@ -160,7 +161,9 @@ public final class Machines implements ModuleLibrary {
     }
 
     public Optional<Machine> machine(String name) {
-        return Optional.ofNullable(machines.get(name.toLowerCase(Locale.ROOT)));
+        String n = name.toLowerCase(Locale.ROOT);
+        Machine m = machines.get(n);
+        return m != null ? Optional.of(m) : multiItemSorter(n);
     }
 
     public List<Machine> machines() {
@@ -2057,6 +2060,253 @@ public final class Machines implements ModuleLibrary {
                                         "item replace block {0,3,0} container.1 with minecraft:dirt 3")),
                         new Step(Map.of(), bits("SORTIERT", "1", "FREMD_UNTEN", "0", "REST", "1", "SORTE_OBEN", "0"),
                                 List.of(wait))));
+    }
+
+    /** Namensstamm des Item-Sortierers für mehrere Sorten: „item_sortierer_3“, mit Sorten „item_sortierer_3:sand,dirt“. */
+    public static final String MULTI_SORTER = "item_sortierer_";
+    /** Kleinste und größte Zahl Sorten (Vertrag AK-18). */
+    public static final int MULTI_SORTER_MIN = 2;
+    public static final int MULTI_SORTER_MAX = 8;
+    /** Die Fassung, die in der Bibliothek steht und von MachineProbe in vier Richtungen geprüft ist. */
+    public static final int MULTI_SORTER_PROBED = 3;
+    /**
+     * Abstand zweier Scheiben entlang x. Eine Scheibe belegt x..x+3 (Filter, Komparator, zwei Drähte samt Fackel). Bei
+     * Abstand 4 läge der Filter der nächsten Scheibe direkt vor dem letzten Draht: Der Draht zeigt in ihn, sperrt ihn,
+     * und der Filter zöge nichts mehr aus der Linie; ebenso speiste die Fackel den Rückdraht der Nachbarscheibe und hielte
+     * deren unteren Trichter für immer zu. Wer den Abstand verkleinert, koppelt die Scheiben.
+     */
+    public static final int MULTI_SORTER_STRIDE = 5;
+    /** Platzhalter in den Fächern 2–5 eines vorbefüllten Filters – umbenannt, damit er sich mit keinem Stock stapelt. */
+    static final String SORTER_PLACEHOLDER = "{id:\"minecraft:stick\",count:1,components:{\"minecraft:custom_name\":"
+            + "\"Sortierer-Platzhalter\"}}";
+    private static final java.util.regex.Pattern MULTI_SORTER_NAME = java.util.regex.Pattern.compile(
+            "item_sortierer_(\\d)(?::([a-z0-9_]+(?:,[a-z0-9_]+)*))?");
+
+    /**
+     * Sortierer für N Sorten aus dem Namen: „item_sortierer_N“ (2 ≤ N ≤ 8, Filter leer, der Spieler füllt sie selbst –
+     * Stufe „alle“ wie beim Ein-Sorten-Sortierer) oder „item_sortierer_N:a,b,…“ mit bis zu N Sorten, deren Filter beim
+     * Bau gefüllt werden. Unbekannte, doppelte, nicht bis 64 stapelbare oder zu viele Sorten → leer (das Bauteil gibt es dann nicht, fail-closed):
+     * Ein Tippfehler soll keinen Sortierer bauen, der eine falsche Sorte zieht.
+     */
+    static Optional<Machine> multiItemSorter(String name) {
+        java.util.regex.Matcher mt = MULTI_SORTER_NAME.matcher(name.replace("minecraft:", ""));
+        if (!mt.matches()) {
+            return Optional.empty();
+        }
+        int n = Integer.parseInt(mt.group(1));
+        if (n < MULTI_SORTER_MIN || n > MULTI_SORTER_MAX) {
+            return Optional.empty();
+        }
+        List<String> kinds = mt.group(2) == null ? List.of() : List.of(mt.group(2).split(","));
+        if (kinds.size() > n || kinds.stream().distinct().count() != kinds.size()) {
+            return Optional.empty();
+        }
+        for (String k : kinds) {
+            // Befehls- oder unbekannte Gegenstände nie in einen Bau legen; alles andere stuft PlacementGate je Zelle.
+            if (BlockTiers.item(k).tier() == Tier.COMMANDS) {
+                return Optional.empty();
+            }
+            // Nur 64er-Stapel (Prüfung 2026-11-21): Vorher baute „item_sortierer_3:diamond_sword“ einen Filter mit
+            // count:18 – ein Schwert stapelt sich nicht, Fach 1 hielte 1 Stück, und die Schwelle 22/23 stimmte nie.
+            if (!stacksTo64(k)) {
+                return Optional.empty();
+            }
+        }
+        return Optional.of(multiItemSorter(n, kinds));
+    }
+
+    private static volatile java.util.Set<String> stack64;
+
+    /**
+     * Stapelt sich die Sorte in 1.21.11 und 26.2 bis 64 (tiers/item-stack-64.txt, aus dem Datengenerator)? Fehlt die
+     * Liste im Plugin, gilt nichts als stapelbar – dann gibt es keinen vorbefüllten Sortierer, aber keinen falschen.
+     */
+    static boolean stacksTo64(String id) {
+        java.util.Set<String> s = stack64;
+        if (s == null) {
+            java.util.Set<String> loaded = new java.util.HashSet<>();
+            try (java.io.InputStream in = Machines.class.getResourceAsStream("/tiers/item-stack-64.txt")) {
+                if (in != null) {
+                    for (String line : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                            .split("\n")) {
+                        String t = line.trim();
+                        if (!t.isEmpty() && !t.startsWith("#")) {
+                            loaded.add(t);
+                        }
+                    }
+                }
+            } catch (java.io.IOException e) {
+                // fail-closed (s. oben): leere Liste, jede Sorte wird abgelehnt.
+                loaded.clear();
+            }
+            s = java.util.Set.copyOf(loaded);
+            stack64 = s;
+        }
+        return s.contains(id);
+    }
+
+    /**
+     * Item-Sortierer für N Sorten (Vertrag AK-18): N Scheiben des Ein-Sorten-Sortierers (itemSorter, dort steht das
+     * Warum jedes Blocks) im Abstand MULTI_SORTER_STRIDE nebeneinander. Statt L2 läuft oben eine Trichterlinie nach
+     * rechts über alle Filter; jeder Filter F zieht nur seine Sorte heraus, der letzte Linientrichter gibt den Rest in
+     * die Truhe hinten rechts. Die Scheibe ist Block für Block die geprüfte – nur L2 zeigt nach rechts statt nach
+     * hinten, und die Rest-Truhe steht einmal am Ende. Den Ein-Sorten-Sortierer selbst lässt das unverändert
+     * (MachinesTest.TESTED_LAYOUT).
+     *
+     * Wie die Sorten hineinkommen: ohne Angabe füllt der Spieler jeden Filter selbst (18 Stück plus 4 umbenannte
+     * Platzhalter), der Bau braucht dann nur die Stufe „alle“. Mit Angabe im Namen trägt jeder Filter seine Gegenstände
+     * als Blockdaten (Items) – das ist die Stufe „Inhalte“ (BlockTiers: Gegenstände im Behälter), die PlacementGate
+     * beim Setzen je Zelle prüft; ohne das Recht entfällt der ganze Sortierer (Gruppe, ganz oder gar nicht). Keine
+     * Befehle, keine Befehlsblöcke: Die Daten gehen wie jedes Bauteil über „data merge“ an den Server.
+     * Alternative verworfen: die Filter nach dem Bau per Befehl füllen (wie die Probe) – das wäre ein Serverbefehl aus
+     * einem Plan und bräuchte die Stufe Befehle.
+     */
+    static Machine multiItemSorter(int n, List<String> kinds) {
+        int last = (n - 1) * MULTI_SORTER_STRIDE;
+        Grid g = new Grid().put(0, 3, 0, "hopper[facing=back]");            // Einwurf L1
+        for (int x = 0; x <= last; x++) {
+            g.put(x, 3, 1, x == last ? "hopper[facing=back]" : "hopper[facing=right]"); // Linie
+        }
+        g.put(last, 3, 2, "chest[facing=front]");                            // Rest
+        for (int k = 0; k < n; k++) {
+            int x = k * MULTI_SORTER_STRIDE;
+            boolean given = k < kinds.size();
+            g.put(x, 2, 1, filterHopper(given ? kinds.get(k) : null))           // Filter F
+                    .put(x, 1, 1, lowerHopper(given))                        // H, gesperrt bis F 23 Stück hat
+                    .put(x, 1, 0, "chest[facing=front]")                     // Sorte k
+                    .put(x + 1, 1, 1, "stone")
+                    .put(x + 1, 2, 1, "comparator[facing=left]")             // liest F
+                    .put(x + 2, 1, 1, "stone")
+                    .put(x + 2, 2, 1, WIRE)
+                    .put(x + 3, 1, 1, "stone")                               // B
+                    .put(x + 3, 2, 1, WIRE)
+                    .put(x + 3, 1, 2, "redstone_wall_torch[facing=back]")    // an B
+                    .put(x + 3, 1, 3, WIRE).put(x + 2, 1, 3, WIRE).put(x + 1, 1, 3, WIRE).put(x, 1, 3, WIRE)
+                    .put(x, 1, 2, WIRE);                                     // zeigt in H
+        }
+        String name = MULTI_SORTER + n + (kinds.isEmpty() ? "" : ":" + String.join(",", kinds));
+        // ≤ 220 Zeichen (MachinesTest.machineDescriptionsStayShortForThePrompt); Bedienschritte in FarmGuide.
+        String description = "Sorts N item kinds (N 2-8, name item_sortierer_N; item_sortierer_N:sand,dirt prefills). "
+                + "Else before use put 18 of a kind (must stack to 64) + 1 renamed item per other slot in each middle "
+                + "hopper.";
+        // Sorten der Probe: die angegebenen, die übrigen Scheiben mit festen Sorten, die die Probe selbst einfüllt.
+        List<String> probe = new ArrayList<>(kinds);
+        for (String k : List.of("cobblestone", "sand", "oak_planks", "andesite", "gravel", "oak_log", "stone",
+                "glass", "granite")) {
+            if (probe.size() < n && !probe.contains(k)) {
+                probe.add(k);
+            }
+        }
+        return sorterProbe(g.module(name, description), n, List.copyOf(probe), kinds.size());
+    }
+
+    /**
+     * Wartezeit des unteren Trichters H in Ticks, wenn sein Filter beim Bau gefüllt wird. Gemessen 2026-11-21 (Spigot
+     * 1.21.11, item_sortierer_3:cobblestone,sand,oak_planks, Nord): Ohne sie verloren die Filter beim Bau 8, 6 und 4 der
+     * 18 Stück an ihre Truhe – H stand offen, bis Fackel und Rückdraht der Scheibe gesetzt waren (~3 s bei Scheibe 0,
+     * der Bau setzt die Filter vor den Fackeln). Liefe Fach 1 leer, zöge H danach die Platzhalter, und F nähme jede
+     * Sorte an. 600 Ticks (30 s) sind das Zehnfache; danach hält die Fackel H wie im leeren Bau. Eine Sorte, die in
+     * diesen 30 s ankommt, bleibt in F und läuft danach in ihre Truhe. Stufe wie die Gegenstände: Inhalte.
+     */
+    static final int SORTER_FILLED_COOLDOWN = 600;
+
+    /** H: gibt in die Truhe davor; unter einem beim Bau gefüllten Filter erst nach SORTER_FILLED_COOLDOWN Ticks. */
+    private static BlockSpec lowerHopper(boolean filled) {
+        String raw = "hopper[facing=front]" + (filled ? "{TransferCooldown:" + SORTER_FILLED_COOLDOWN + "}" : "");
+        try {
+            return BlockSpec.parseTrusted(raw);
+        } catch (PlanException e) {
+            throw new IllegalArgumentException(raw, e);
+        }
+    }
+
+    /** Filtertrichter F: zeigt in den Komparator; mit Sorte 18 Stück plus 4 Platzhalter als Blockdaten. */
+    private static BlockSpec filterHopper(String kind) {
+        String raw = "hopper[facing=right]";
+        if (kind != null) {
+            StringBuilder items = new StringBuilder("{Items:[{Slot:0b,id:\"minecraft:" + kind + "\",count:18}");
+            for (int slot = 1; slot <= 4; slot++) {
+                items.append(",{Slot:").append(slot).append("b,").append(SORTER_PLACEHOLDER.substring(1));
+            }
+            raw += items.append("]}");
+        }
+        try {
+            return BlockSpec.parseTrusted(raw);
+        } catch (PlanException e) {
+            throw new IllegalArgumentException(raw, e);
+        }
+    }
+
+    /**
+     * Ablauf für MachineProbe: Filter füllen (nur die ohne Sorte im Namen – die anderen prüft die Probe darauf, dass
+     * die Blockdaten angekommen sind), dann je Sorte 4 Stück und 3 Erde in den Einwurf. Erwartet: jede Sorte in ihrer
+     * Truhe und nicht in der Nachbartruhe, Erde nur im Rest, keine Sorte im Rest. Der erste Schritt erwartet alle
+     * Truhen leer: Ein Filter, der beim Bau ausläuft (H noch offen, gemessen 2026-11-21 vor SORTER_FILLED_COOLDOWN),
+     * hat dort schon seine Sorte abgelegt.
+     */
+    private static Machine sorterProbe(Module module, int n, List<String> kinds, int prefilled) {
+        int last = (n - 1) * MULTI_SORTER_STRIDE;
+        List<Pin> outs = new ArrayList<>();
+        List<String> none = new ArrayList<>();
+        List<String> done = new ArrayList<>();
+        for (int k = 0; k < n; k++) {
+            int x = k * MULTI_SORTER_STRIDE;
+            String s = String.valueOf(k + 1);
+            outs.add(statePin("SORTE" + s, x, 1, 0, "items:minecraft:" + kinds.get(k)));
+            outs.add(statePin("QUER" + s, x, 1, 0, "items:minecraft:" + kinds.get((k + 1) % n)));
+            outs.add(statePin("FREMD" + s, x, 1, 0, "items:minecraft:dirt"));
+            outs.add(statePin("REST_SORTE" + s, last, 3, 2, "items:minecraft:" + kinds.get(k)));
+            outs.add(statePin("FILTER" + s, x, 2, 1, "items:minecraft:" + kinds.get(k)));
+            none.addAll(List.of("SORTE" + s, "0", "QUER" + s, "0", "FREMD" + s, "0", "REST_SORTE" + s, "0"));
+            done.addAll(List.of("SORTE" + s, "1", "QUER" + s, "0", "FREMD" + s, "0", "REST_SORTE" + s, "0"));
+            // Nach Schritt 1 ist jeder Filter voll: vorbefüllt aus dem Bau, sonst von den Befehlen des Schritts.
+            none.addAll(List.of("FILTER" + s, "1"));
+            done.addAll(List.of("FILTER" + s, "1"));
+        }
+        outs.add(statePin("REST", last, 3, 2, "items:minecraft:dirt"));
+        none.addAll(List.of("REST", "0"));
+        done.addAll(List.of("REST", "1"));
+        String wait = "time query gametime";
+        List<String> setup = new ArrayList<>();
+        if (prefilled < n) {
+            for (int k = prefilled; k < n; k++) {
+                String f = "item replace block {" + k * MULTI_SORTER_STRIDE + ",2,1} container.";
+                setup.add(f + "0 with minecraft:" + kinds.get(k) + " 18");
+                for (int slot = 1; slot <= 4; slot++) {
+                    setup.add(f + slot + " with minecraft:stick[minecraft:custom_name=\"Sortierer-Platzhalter\"] 1");
+                }
+            }
+        } else {
+            setup.add(wait);
+        }
+        // Der Einwurf hat 5 Fächer: je Sorte 4 Stück, Erde dazu; mehr Sorten als 4 kommen in einem zweiten Schub.
+        List<String> feed = new ArrayList<>();
+        List<String> feed2 = new ArrayList<>();
+        for (int k = 0; k < n; k++) {
+            (k < 4 ? feed : feed2).add("item replace block {0,3,0} container." + (k % 4) + " with minecraft:"
+                    + kinds.get(k) + " 4");
+        }
+        feed.add("item replace block {0,3,0} container.4 with minecraft:dirt 3");
+        List<Step> seq = new ArrayList<>();
+        seq.add(new Step(Map.of(), bits(none.toArray(String[]::new)), setup));
+        List<String> first = new ArrayList<>(feed);
+        first.add(feed2.isEmpty() ? "#bis 60" : wait);
+        seq.add(new Step(Map.of(), feed2.isEmpty() ? bits(done.toArray(String[]::new)) : Map.of(), first));
+        if (!feed2.isEmpty()) {
+            // Erster Schub: 19 Stück zu 0,4 s, bis der Einwurf leer ist (item replace überschriebe den Rest).
+            for (int i = 0; i < 4; i++) {
+                seq.add(new Step(Map.of(), Map.of(), List.of(wait)));
+            }
+            List<String> second = new ArrayList<>(feed2);
+            second.add("#bis 60");
+            seq.add(new Step(Map.of(), bits(done.toArray(String[]::new)), second));
+        }
+        // Nachlauf: Was noch in der Linie steckt, darf danach nicht falsch landen.
+        for (int i = 0; i < 3; i++) {
+            seq.add(new Step(Map.of(), Map.of(), List.of(wait)));
+        }
+        seq.add(new Step(Map.of(), bits(done.toArray(String[]::new)), List.of(wait)));
+        return new Machine(module, List.of(), List.copyOf(outs), "state", Map.of(), List.copyOf(seq));
     }
 
     private static Module shiftZ(Module m, int dz) {
