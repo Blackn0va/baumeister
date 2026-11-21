@@ -11,7 +11,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -19,7 +21,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -544,6 +548,371 @@ class RoundTripTest {
             assertTrue(m instanceof Message.Abort a && a.id() == id, "abbruch erwartet, kam " + m);
             InputStream in = s.getInputStream();
             assertEquals(0, RelayFixture.readAll(in).bytes().length);
+        }
+    }
+
+    // ------------------------------------------------------------------ Grenzen (T-005, Sichtung 2026-11-20)
+
+    /** Wie eine Plugin-Verbindung endet: RST, sauberes FIN oder gar nicht (noch offen nach der Wartezeit). */
+    private enum End { RESET, EOF, OPEN }
+
+    /** Liest bis zum Ende oder höchstens millis lang. */
+    private static End endOf(Socket s, int millis) {
+        try {
+            s.setSoTimeout(millis);
+            InputStream in = s.getInputStream();
+            byte[] buf = new byte[8192];
+            while (in.read(buf) >= 0) {
+                // Antwortbytes interessieren hier nicht – nur, wie die Verbindung endet.
+            }
+            return End.EOF;
+        } catch (SocketTimeoutException e) {
+            return End.OPEN;
+        } catch (IOException e) {
+            return End.RESET;
+        }
+    }
+
+    /** Namen der laufenden Anfrage-Threads der Plugin-Seite (ohne die Annahme-Threads). */
+    private static Set<String> exchangeThreads() {
+        Set<String> names = new HashSet<>();
+        for (Thread t : Thread.getAllStackTraces().keySet()) {
+            String n = t.getName();
+            if (t.isAlive() && n.startsWith("relay-lokal-") && !n.startsWith("relay-lokal-annahme")) {
+                names.add(n);
+            }
+        }
+        return names;
+    }
+
+    /** Nach einer Grenze: kein Austausch mehr, Budget leer, kein Anfrage-Thread, der vorher nicht schon lief. */
+    private static void assertFreed(RelayFixture f, Set<String> threadsBefore) {
+        RelayFixture.await(() -> f.relay.hub().exchanges().isEmpty(), "Austausch aufgeräumt");
+        RelayFixture.await(() -> f.relay.budget().used() == 0, "Budget wieder frei");
+        RelayFixture.await(() -> threadsBefore.containsAll(exchangeThreads()), "Anfrage-Thread beendet");
+    }
+
+    /**
+     * Schickt alle 150 ms ein unaufgefordertes Pong (wie die Host-App), damit die Stille-Erkennung die Sitzung nicht
+     * schließt, während ein Test die Schreib-Frist mit derselben kurzen Dauer prüft. Endet, wenn der Socket zu ist.
+     */
+    private static final class Pongs implements AutoCloseable {
+        private final Thread thread;
+        private final AtomicInteger sent = new AtomicInteger();
+        private volatile boolean stop;
+
+        Pongs(FakeApp app) {
+            thread = new Thread(() -> {
+                while (!stop) {
+                    try {
+                        app.sendFrame(Frames.client(Frames.PONG, new byte[0], new byte[] {5, 6, 7, 8}));
+                        sent.incrementAndGet();
+                        Thread.sleep(150);
+                    } catch (IOException e) {
+                        return;
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }, "test-pongs");
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        /** Gesendete Pongs: Ohne sie hätte die Stille-Frist gegriffen statt der geprüften Grenze. */
+        int sent() {
+            return sent.get();
+        }
+
+        @Override
+        public void close() {
+            stop = true;
+            thread.interrupt();
+            try {
+                thread.join(2_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * Antwortfrist (LocalExchange.receive, im Betrieb 1900 s): Die App schickt den Kopf und einen Teil, aber nie den
+     * Rest. Nach der Frist bekommt sie abbruch, das Plugin RST, und das Log nennt grund=frist.
+     */
+    @Test
+    void responseThatNeverCompletesIsAbortedAtTheResponseDeadline() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.response = Duration.ofMillis(500);
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6);
+                Socket plugin = new Socket(InetAddress.getLoopbackAddress(), f.local())) {
+            Set<String> before = exchangeThreads();
+            plugin.getOutputStream().write(RelayFixture.get(f.local(), "/health"));
+            plugin.getOutputStream().flush();
+            FakeApp.Request r = app.request();
+            long start = System.nanoTime();
+            app.send(new Message.Response(r.id(), 200, "text/plain", 10, Message.Chunk.of(
+                    "abc".getBytes(StandardCharsets.US_ASCII))));
+            Message m = app.message();
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            assertTrue(m instanceof Message.Abort a && a.id() == r.id(), "abbruch erwartet, kam " + m);
+            assertTrue(ms >= 300 && ms < 5_000, "Frist nicht eingehalten: " + ms + " ms");
+            plugin.setSoTimeout(5_000);
+            RelayFixture.Reply got = RelayFixture.readAll(plugin.getInputStream());
+            assertTrue(got.reset(), "Plugin muss RST sehen, kein sauberes Ende: " + got.text());
+            assertTrue(got.body().length < 10, "unvollständige Antwort darf nicht komplett wirken");
+            log.await("anfrage_ohne_antwort", "grund=frist");
+            assertFreed(f, before);
+        }
+    }
+
+    /**
+     * Plugin liest nicht (Relay.tick): Hängt das Schreiben ans Plugin länger als die Stille-Frist, bricht das Relay
+     * ab – abbruch an die App, RST zum Plugin, Thread und Budget frei. Ohne die Grenze hielte die Anfrage beides bis
+     * zur Antwortfrist (1900 s).
+     */
+    @Test
+    void pluginThatStopsReadingIsAbortedAndFreesThreadAndBudget() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.silence = Duration.ofMillis(700);
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6);
+                Pongs pongs = new Pongs(app); Socket plugin = new Socket()) {
+            Set<String> before = exchangeThreads();
+            plugin.setReceiveBufferSize(4096);
+            plugin.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), f.local()));
+            plugin.getOutputStream().write(RelayFixture.get(f.local(), "/baumeister/v1/stadt"));
+            plugin.getOutputStream().flush();
+            FakeApp.Request r = app.request();
+            // 16 MiB angekündigt (Höchstwert in Kanal v1), 8 MiB geschickt: Die Antwort bleibt auf der App-Seite
+            // offen (wie ein Server, der noch rechnet). Hätte die App schon alles übergeben, wäre die Anfrage für den
+            // Kanal erledigt, und abbruch ginge zu Recht nicht mehr raus (Session.abort: nur offene Anfragen) –
+            // gemessen 2026-11-21.
+            byte[] piece = pattern(65_536, 5);
+            int pieces = 16 * 1024 * 1024 / piece.length;
+            CompletableFuture<Void> sending = CompletableFuture.runAsync(() -> {
+                try {
+                    app.send(new Message.Response(r.id(), 200, "application/octet-stream", (long) pieces * piece.length,
+                            Message.Chunk.of(piece)));
+                    for (int i = 1; i < pieces / 2; i++) {
+                        app.send(new Message.Data(r.id(), Message.Chunk.of(piece)));
+                    }
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            Message m = app.message();
+            assertTrue(m instanceof Message.Abort a && a.id() == r.id(), "abbruch erwartet, kam " + m);
+            sending.get(30, TimeUnit.SECONDS);
+            log.await("anfrage_abgebrochen", "grund=plugin_liest_nicht");
+            assertFreed(f, before);
+            assertTrue(pongs.sent() > 0, "ohne Pongs hätte die Stille gegriffen");
+            assertTrue(f.relay.hub().hasApp(), "die Sitzung der App bleibt");
+            plugin.setSoTimeout(5_000);
+            RelayFixture.Reply got = RelayFixture.readAll(plugin.getInputStream());
+            assertTrue(got.reset() || got.bytes().length < pieces / 2 * piece.length, "Antwort hätte abbrechen müssen");
+        }
+    }
+
+    /**
+     * Schreiben zur App hängt (Relay.tick): Die App liest nicht mehr, hält die Sitzung aber mit Pongs am Leben. Nach
+     * der Stille-Frist schließt das Relay die Sitzung (grund=schreiben_hängt); die Plugins bekommen RST, Budget frei.
+     */
+    @Test
+    void appThatStopsReadingIsDisconnectedWhenWritingHangs() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.silence = Duration.ofMillis(700);
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6);
+                Pongs pongs = new Pongs(app)) {
+            Set<String> before = exchangeThreads();
+            app.socket().setReceiveBufferSize(4096);
+            List<CompletableFuture<RelayFixture.Reply>> replies = new ArrayList<>();
+            for (int i = 0; i < 6; i++) {
+                replies.add(async(f, RelayFixture.post(f.local(), "/v1/chat/completions", "application/json",
+                        pattern(2 * 1024 * 1024, i))));
+            }
+            log.await("app_getrennt", "grund=schreiben_hängt");
+            assertTrue(pongs.sent() > 0, "ohne Pongs hätte die Stille gegriffen");
+            RelayFixture.await(() -> !f.relay.hub().hasApp(), "Sitzung geschlossen");
+            for (CompletableFuture<RelayFixture.Reply> r : replies) {
+                RelayFixture.Reply got = r.get(20, TimeUnit.SECONDS);
+                assertEquals(0, got.bytes().length, "ohne App darf keine Antwort kommen: " + got.text());
+            }
+            assertFreed(f, before);
+        }
+    }
+
+    /** Mehr als maxLocal gleichzeitige Plugin-Verbindungen (LocalListener): die nächste sofort mit RST. */
+    @Test
+    void connectionsBeyondMaxLocalAreResetImmediately() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.maxLocal = 2;
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6)) {
+            CompletableFuture<RelayFixture.Reply> one = async(f, RelayFixture.get(f.local(), "/health"));
+            CompletableFuture<RelayFixture.Reply> two = async(f, RelayFixture.get(f.local(), "/health"));
+            FakeApp.Request r1 = app.request();
+            FakeApp.Request r2 = app.request();
+            long start = System.nanoTime();
+            End third;
+            try (Socket s = new Socket(InetAddress.getLoopbackAddress(), f.local())) {
+                try {
+                    s.getOutputStream().write(RelayFixture.get(f.local(), "/health"));
+                    s.getOutputStream().flush();
+                } catch (IOException e) {
+                    // RST kam schon vor dem Schreiben an – das Lesen unten sieht es ebenso.
+                }
+                third = endOf(s, 3_000);
+            }
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            assertEquals(End.RESET, third, "dritte Verbindung über maxLocal");
+            assertTrue(ms < 2_000, "RST kam erst nach " + ms + " ms");
+            log.await("lokal_zu_viele", "grenze=2");
+            assertEquals(2, f.relay.hub().exchanges().size(), "die beiden laufenden Anfragen bleiben");
+            app.answer(r1.id(), 200, "text/plain", new byte[0], 65_536);
+            app.answer(r2.id(), 200, "text/plain", new byte[0], 65_536);
+            assertEquals(200, one.get(10, TimeUnit.SECONDS).status());
+            assertEquals(200, two.get(10, TimeUnit.SECONDS).status());
+            // Plätze wieder frei: Die nächste Verbindung geht durch – die App sieht sie als nächste Anfrage.
+            RelayFixture.await(() -> f.relay.hub().exchanges().isEmpty(), "Plätze frei");
+            CompletableFuture<RelayFixture.Reply> next = async(f, RelayFixture.get(f.local(), "/health"));
+            FakeApp.Request r3 = app.request();
+            assertEquals(3, r3.id(), "die zurückgesetzte Verbindung hat die App nie erreicht");
+            app.answer(r3.id(), 200, "text/plain", new byte[0], 65_536);
+            assertEquals(200, next.get(10, TimeUnit.SECONDS).status());
+        }
+    }
+
+    /**
+     * Kopf-Frist der Plugin-Seite (Slowloris): Ein Client tröpfelt alle 100 ms ein Byte, die Lesefrist je Byte greift
+     * also nie – nur die Frist für den ganzen Kopf. Geprüft wird das Schließen, keine Antwort: Das Relay antwortet hier
+     * gar nicht, und Windows schickt beim Schließen mit ungelesenen Bytes RST statt FIN (Host-Gedächtnis,
+     * Slowloris-Test).
+     */
+    @Test
+    void pluginHeaderThatTricklesInIsClosedAtTheHeaderDeadline() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.localHeader = Duration.ofMillis(500);
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6);
+                Socket s = new Socket(InetAddress.getLoopbackAddress(), f.local())) {
+            Set<String> before = exchangeThreads();
+            byte[] head = ("GET /health HTTP/1.1\r\nHost: 127.0.0.1:" + f.local() + "\r\nX-Langsam: " + "a".repeat(100))
+                    .getBytes(StandardCharsets.US_ASCII);
+            OutputStream out = s.getOutputStream();
+            InputStream in = s.getInputStream();
+            long start = System.nanoTime();
+            long closedMs = -1;
+            for (int i = 0; i < head.length && closedMs < 0; i++) {
+                try {
+                    out.write(head[i]);
+                    out.flush();
+                    // Kurz nachsehen: EOF, RST oder Daten heißen „zu“ bzw. „Antwort“ – beides darf hier nicht offen
+                    // bleiben. Zeitüberschreitung = Verbindung steht noch.
+                    s.setSoTimeout(1);
+                    int c = in.read();
+                    assertEquals(-1, c, "das Relay darf auf einen halben Kopf nicht antworten");
+                    closedMs = (System.nanoTime() - start) / 1_000_000;
+                } catch (SocketTimeoutException e) {
+                    Thread.sleep(100);
+                } catch (IOException e) {
+                    closedMs = (System.nanoTime() - start) / 1_000_000;
+                }
+            }
+            assertTrue(closedMs >= 0, "Verbindung nach " + head.length + " Bytes in "
+                    + (System.nanoTime() - start) / 1_000_000 + " ms noch offen – Kopf-Frist greift nicht");
+            assertTrue(closedMs >= 400 && closedMs < 3_000, "Kopf-Frist nicht eingehalten: " + closedMs + " ms");
+            log.await("anfrage_ohne_antwort", "grund=lesen_abgebrochen");
+            assertFreed(f, before);
+            // Die App hat vom halben Kopf nichts gesehen: Die nächste Nachricht ist die nächste echte Anfrage.
+            CompletableFuture<RelayFixture.Reply> ok = async(f, RelayFixture.get(f.local(), "/health"));
+            FakeApp.Request real = app.request();
+            assertEquals(1, real.id());
+            app.answer(real.id(), 200, "text/plain", new byte[0], 65_536);
+            assertEquals(200, ok.get(10, TimeUnit.SECONDS).status());
+        }
+    }
+
+    /**
+     * Budget auf der Anfrage-Seite voll (Hub.reserveRequest): Eine gestaute Antwort (Plugin liest nicht) hält fast das
+     * ganze Budget, dann kommt ein POST. Die gestaute Antwort wird abgebrochen (größte offene Antwort, Abschnitt 4),
+     * und der POST geht durch – statt dass ein Plugin, das nicht liest, alle anderen Anfragen aussperrt.
+     */
+    @Test
+    void fullBudgetOnTheRequestSideAbortsTheLargestOpenResponse() throws Exception {
+        int limit = 256 * 1024;
+        Limits.Builder b = RelayFixture.fast();
+        b.byteBudget = limit;
+        try (RelayFixture.LogCapture log = new RelayFixture.LogCapture();
+                RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6);
+                Socket slow = new Socket()) {
+            slow.setReceiveBufferSize(4096);
+            slow.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), f.local()));
+            slow.getOutputStream().write(RelayFixture.get(f.local(), "/baumeister/v1/stadt"));
+            slow.getOutputStream().flush();
+            FakeApp.Request stalled = app.request();
+            byte[] piece = pattern(16 * 1024, 9);
+            app.send(new Message.Response(stalled.id(), 200, "application/octet-stream", 16L * 1024 * 1024,
+                    Message.Chunk.of(piece)));
+            // Stückweise nachlegen, bis mehr als limit - 64 KiB gepuffert sind: Dann passt das erste Anfragestück
+            // (64 KiB) nicht mehr. 16-KiB-Stücke und Pausen halten den Stau unter dem Budget, damit die Antwort nicht
+            // schon an sich selbst scheitert.
+            for (int i = 0; i < 400 && f.relay.budget().used() <= 200 * 1024; i++) {
+                app.send(new Message.Data(stalled.id(), Message.Chunk.of(piece)));
+                Thread.sleep(30);
+            }
+            long used = f.relay.budget().used();
+            assertTrue(used > limit - 65_536, "Stau nicht erreicht: " + used + " Bytes gepuffert");
+            assertTrue(f.relay.hub().exchanges().stream().anyMatch(LocalExchange::responseOpen),
+                    "gestaute Antwort muss noch offen sein");
+
+            CompletableFuture<RelayFixture.Reply> post = async(f, RelayFixture.post(f.local(), "/v1/chat/completions",
+                    "application/json", pattern(65_536, 4)));
+            boolean aborted = false;
+            FakeApp.Request request = null;
+            app.socket().setSoTimeout(5_000);
+            while (!aborted || request == null) {
+                Message m = app.message();
+                if (m instanceof Message.Abort a && a.id() == stalled.id()) {
+                    aborted = true;
+                } else if (m instanceof Message.Request q) {
+                    assertTrue(aborted, "abbruch der gestauten Antwort muss vor der neuen Anfrage kommen");
+                    assertEquals(65_536, q.chunk().length());
+                    request = new FakeApp.Request(q.id(), q.method(), q.path(), q.contentType(), null);
+                } else {
+                    throw new AssertionError("abbruch bzw. anfrage erwartet, kam " + m);
+                }
+            }
+            app.answer(request.id(), 200, "application/json", "{}".getBytes(StandardCharsets.UTF_8), 65_536);
+            assertEquals(200, post.get(10, TimeUnit.SECONDS).status());
+            assertTrue(f.relay.budget().peak() <= limit, "Budget überschritten: " + f.relay.budget().peak());
+            log.await("anfrage_abgebrochen", "grund=budget");
+            RelayFixture.await(() -> f.relay.budget().used() == 0, "Budget wieder frei");
+            assertEquals(End.RESET, endOf(slow, 5_000), "gestaute Antwort endet mit RST");
+        }
+    }
+
+    /** Budget kleiner als das erste Anfragestück und keine offene Antwort: RST, die App sieht die Anfrage nie. */
+    @Test
+    void requestThatDoesNotFitIntoTheBudgetIsResetWithoutReachingTheApp() throws Exception {
+        Limits.Builder b = RelayFixture.fast();
+        b.byteBudget = 32 * 1024;
+        try (RelayFixture f = RelayFixture.start(b.build()); FakeApp app = f.app("app", 6)) {
+            RelayFixture.Reply r = f.plugin(RelayFixture.post(f.local(), "/v1/chat/completions", "application/json",
+                    pattern(65_536, 2)));
+            assertEquals(0, r.bytes().length, "keine Antwort erwartet: " + r.text());
+            assertTrue(r.reset(), "RST erwartet");
+            RelayFixture.await(() -> f.relay.hub().exchanges().isEmpty(), "Austausch aufgeräumt");
+            assertEquals(0, f.relay.budget().used());
+            // Ohne Body braucht eine Anfrage kein Budget – sie geht durch, und die App sieht sie als erste.
+            CompletableFuture<RelayFixture.Reply> ok = async(f, RelayFixture.get(f.local(), "/health"));
+            FakeApp.Request real = app.request();
+            assertEquals("/health", real.path());
+            app.answer(real.id(), 200, "text/plain", new byte[0], 65_536);
+            assertEquals(200, ok.get(10, TimeUnit.SECONDS).status());
         }
     }
 }
