@@ -2,7 +2,7 @@
 
 <!-- Gefilterte Fassung für das öffentliche Repo: Netz-, Zugangs- und Betriebsdetails des Heimservers fehlen absichtlich, das Kapitel „Deploy“ ganz. Die volle Fassung liegt nur lokal. -->
 
-Stand: 2026-11-17
+Stand: 2026-11-22
 
 ## Festgelegte Entscheidungen (nicht ohne Rückfrage ändern)
 - Orchester-Erweiterung (2026-11-20/21, Nutzer: „erweiter … alle plugins und anwendungen“, Integration „Ohne
@@ -1197,8 +1197,22 @@ Stand: 2026-11-17
 - Logik in Stockwerken (2026-11-07), je rot ohne / grün mit: „3“ als 3D-Wort (3 zu 8 ungefragt gestapelt) und
   „3-D“ nicht zusammengezogen → LogicOrdersTest; Lampen alle unten angesagt → 3 Tests; Dekoder-Formel vertippt →
   Wahrheitstabellen-Test; Host-Grammatik mit alter Grenze 160 → swbh_test_plan; Turm ohne Verstärker → live FEHLER.
+- Stadtleben (T-020, 2026-11-22, Probe-Client + Qwen2.5-7B CPU): 12 Bewohner Spigot 1.21.11 Mittel 0,081 ms/p99 0,190 ms,
+  Paper 26.2 0,062–0,087/0,160–0,440 ms je Tick; einzelne Ticks bis 40 ms auf Paper ohne eigene Arbeit im Tick
+  (status nennt Ursache: erschienen/teleports/wegsuchen = 0 → vermutlich GC/JIT). KI 3,3–10,5 s, Frist 20 s bricht
+  in llama sofort ab („cancel task“). Host weg → alle fort nach 7 s (Spigot) / 24 s (Paper). dev01 nicht gemessen.
 
 ## Fallen
+- Mannequin ist kein Mob: `setChestplateDropChance` u. ä. werfen (T-020: 31 verwaiste Mannequins in 2 min). Bewohner
+  zuerst eintragen, dann einkleiden. Wackeln auf der Stelle zählt bei CompanionWalk als Bewegung – Stadtleben misst
+  Annäherung ans Teilziel (town/Progress), sonst hängt ein Bewohner minutenlang mit Tausenden Wegsuchen (Paper, Greta).
+- Stadtleben-Client erbt sonst `llm.timeout-sekunden` 900: `orTimeout` beendet die HTTP-Anfrage NICHT, llama rechnet
+  weiter und Bewohner-Anfragen stapeln sich vor Bauaufträgen. Deshalb `TownLife.clientSettings` (20 s) und Budget erst
+  nach Ende der HTTP-Anfrage frei. Der Host nimmt nur Schema „bauplan“/„begleiter“; Bewohner nutzen „begleiter“ und
+  verwerfen jede Aktion. Eine Chatzeile mit Bewohnernamen in Hörweite geht an das Stadtleben, nicht an Vera.
+- Probe-Client für Live-Proben ohne Minecraft-Client: Python-Bot (Protokoll 774 = 1.21.11, 776 = Paper 26.2, 11
+  Paket-IDs der Spielphase verschoben, IDs aus dem Datengenerator). Er druckt das Längenbyte des Chattextes mit – ein
+  „'“ vor Antworten ist ein Lesefehler des Bots. Liegt nur im Scratchpad, nicht im Repo.
 - Vorschau im eingebauten Browser: Dateien zeigt er nur als Schnappschuss (data:), file://-Bilder laden dort
   nicht, Seitenwerkzeuge greifen außerhalb des Projektordners nicht. Vorschau nach target/vorschau/
   (ignoriert) schreiben; Mermaid-Fehler zeigt der Seitentitel („– FEHLER“), Bilder direkt ansehen.
@@ -1522,6 +1536,10 @@ Stand: 2026-11-17
 
 Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 ## Offen
+- Stadtleben v1 (T-020): auf dev01 aus, Nutzer schaltet selbst. Offen: Takt auf dem Celeron, Drosselung bei Bau/
+  Lag-Wache live, sichtbare Tätigkeiten im echten Client, Arbeitsorte = Plätze nahe der Wohnung (keine Warps/Gebäude),
+  BukkitEnv-Einzeiler und Listener-Anmeldung ohne Test. v2 (Händler, Fahrzeuge, Polizei, Bauen/Ernten mit Rechten)
+  erst nach Rückmeldung des Nutzers zu v1.
 - Tunnel gerade: vom Nutzer zu bestätigen – Röhre statt Halt über Tal/Wasser und Durchgraben von Mineschächten
   (beides ohne Rückfrage entschieden). Nicht im Spiel geprüft: Mitbauen in die Röhre (Ansage am ersten Fenster),
   Weiterbauen per Chat mit echtem Spieler; Nether-Festungen bleiben Halt.
