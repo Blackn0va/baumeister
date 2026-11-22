@@ -1054,6 +1054,9 @@ Stand: 2026-11-22
 - Kugeln im Rückübersetzer (T-028, 2026-11-22): Kugel r 6 voll 16 → 1, hohl 89 → 1 Schritt; Kuppel auf Turm 22–25 → 2;
   816 echte Vorbilder ohne Kugel, 0 Pläne geändert (85 118 Schritte), Rechenzeit 8,3 → 8,9 s. inBall ist in
   PlanDecompiler aus PlanCompiler nachgebildet – Falle: beide synchron halten (Test vergleicht r 1–24).
+- Festwertspeicher (T-029, 2026-11-22, Spigot 1.21.11): festwertspeicher_4x4, 21×4×18, 726 Zellen, Gray-Zeilen 0,1,3,2,
+  Komparator-Subtraktion je Bit; MachineProbe N/O/S/W BESTANDEN, ohne= Inverterfackel/Zellkomparator/Datenverstärker
+  je FEHLER. Offen: Paper 26.2, Lampen-Laufzeit nach Adresswechsel (Probe wartet fest 1,2 s), Einbau ins Steuerwerk.
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name

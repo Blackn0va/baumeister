@@ -58,6 +58,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   unverändert, 2 von 66 PlanBench-Urteilen geändert.
 
 ### Neu
+- **Festwertspeicher `festwertspeicher_4x4`:** erster Baustein des Steuerwerks für den Prozessor – 4 Wörter zu 4 Bit aus
+  16 Hebeln, Adresshebel A0/A1, Lampen D0–D3. Auf Spigot 1.21.11 in allen vier Richtungen geprüft, mit Bedienhinweis
+  nach dem Bau.
 - **Vorbilder mit Kugeln:** Der Rückübersetzer erkennt Kugeln und Kuppeln (voll oder hohl) als einen `sphere`-Schritt,
   statt sie in Scheiben und Reihen zu zerlegen (Kugel mit Radius 6: voll 16 → 1 Schritt, hohl 89 → 1). Übernommen nur,
   wenn der Plan dadurch kürzer wird; der Rückbau bleibt Block für Block gleich.
