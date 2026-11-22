@@ -113,6 +113,8 @@ public final class Machines implements ModuleLibrary {
         add(adder4());
         add(accumulator4(false));
         add(accumulator4(true));
+        // Prozessor Stufe 3 (T-029, 2026-11-22): Programmspeicher für das Steuerwerk.
+        add(rom4x4());
         add(display());
         // Befehlsblock-Maschinen (Plan B7, 2026-11-08): nur mit der Stufe Befehle baubar; Probe in 4 Richtungen.
         add(CommandMachines.button());
@@ -1497,6 +1499,154 @@ public final class Machines implements ModuleLibrary {
                                 bits("Q0", "0", "Q1", "1", "Q2", "0", "Q3", "1")),
                         new Step(bits("T", "0", "D0", "0", "D1", "0", "D2", "0", "D3", "0"),
                                 bits("Q0", "0", "Q1", "1", "Q2", "0", "Q3", "1"))));
+    }
+
+    /** Name des Festwertspeichers (Programmspeicher des Steuerwerks, Prozessor Stufe 3). */
+    static final String ROM = "festwertspeicher_4x4";
+
+    /** Wort, das die Zeile r (von vorn) speichert: Gray-Folge 0, 1, 3, 2 – Begründung an rom4x4. */
+    static final int[] ROM_ROW_WORD = {0, 1, 3, 2};
+
+    /**
+     * Die zwei Hebelbelegungen des Prüfablaufs, je Adresse ein Wort (Bit i = Lampe Di). Die zweite ist das Komplement
+     * der ersten: So steht jeder der 16 Hebel einmal an und einmal aus, und jedes Wort ist in beiden anders als seine
+     * Nachbarn – ein Hebel, der ins falsche Wort leckt, fällt in mindestens einer Belegung auf.
+     */
+    static final int[][] ROM_PATTERNS = {{0x3, 0x5, 0xA, 0xC}, {0xC, 0xA, 0x5, 0x3}};
+
+    /** Erste Hebelspalte und Spaltenabstand: Hebel, Komparator, Datenblock, Lücke. */
+    static final int ROM_X0 = 6;
+    static final int ROM_STRIDE = 4;
+
+    /** Lokale Lage des Bit-Hebels für Wort word, Bit bit. */
+    static Pos romLever(int word, int bit) {
+        int row = 0;
+        while (ROM_ROW_WORD[row] != word) {
+            row++;
+        }
+        return new Pos(ROM_X0 + ROM_STRIDE * bit, 1, 4 * row + 2);
+    }
+
+    /**
+     * Festwertspeicher 4 × 4 Bit (Prozessor Stufe 3, T-029): 16 Bit-Hebel, Adresshebel A0/A1, Lampen D0..D3 zeigen das
+     * gewählte Wort. Erster Baustein des Steuerwerks – später liest der Zähler als Programmzähler hier die Befehle.
+     *
+     * Gatter je Bit: ein Komparator im Subtraktionsmodus, hinten der Bit-Hebel (15), an beiden Seiten je ein Verstärker
+     * (15) aus einer Adressleitung. Ausgang = 15 − max(Seiten): Strom nur, wenn das Bit an ist UND beide Seiten aus sind.
+     * Die Seiten tragen die „Abweichungen“ der Adresse vom Wort der Zeile (Wort 0: A0 und A1; Wort 1: !A0 und A1 …),
+     * so braucht es keinen eigenen Decoder. Verstärker statt Draht an den Seiten: Draht verliert je Block 1, schon 14
+     * gegen 15 ließe einen Rest von 1 durch – dieselbe Falle wie beim xor_gatter.
+     *
+     * Warum die Zeilen in Gray-Folge 0, 1, 3, 2: Benachbarte Zeilen teilen sich die Adressleitung dazwischen (5 Leitungen
+     * statt 8 auf z 0, 4, 8, 12, 16: A0, A1, !A0, !A1, A0). Das geht nur, wenn sich benachbarte Wörter in genau einem
+     * Bit unterscheiden. Die Lampen ODERn alle Zeilen, ihre Reihenfolge ist also gleich.
+     *
+     * Kreuzungen: Adressleitungen laufen auf y 1 nach rechts, die Datenleitungen auf y 3 (auf Stützen in y 2) nach
+     * hinten darüber – ein ROM kreuzt jede Leitung mit jeder (vollständig bipartit, nicht eben). Je Zeile steigt die
+     * Datenleitung auf den Datenblock B (y 1) ab, den der Komparator voll speist, und gleich wieder auf. Ein Verstärker
+     * zwischen Zeile 1 und 2 (z 8) hält die Stärke über 4 (gerechnet: ohne ihn käme Zeile 0 mit 1 an der Lampe an).
+     * A1 kreuzt die Abzweigung von !A0 auf der Treppe bei x 2 (y 3 über dem Fackelblock). Stützen der Datenleitung
+     * stehen auf Steinsäulen, außer genau über den Adressleitungen.
+     *
+     * Bit-Hebel setzt der Prüfablauf per Befehl (plan:lever[…,powered=true]): Der Komparator liest den Hebel direkt,
+     * nicht über dessen Trägerblock – deshalb wirkt „setblock“ (MachineProbe: kein Update am Trägerblock).
+     */
+    private static Machine rom4x4() {
+        Grid g = new Grid();
+        int last = ROM_X0 + ROM_STRIDE * 3 + 1;                        // letzte Komparatorspalte (19)
+        // Adressleitungen z 0..16 (Abstand 4): ab x 5 ein Verstärker, dann Draht bis zum letzten Komparator (Stärke 2).
+        for (int k = 0; k <= 4; k++) {
+            int z = 4 * k;
+            g.put(5, 1, z, "repeater[facing=left]");
+            for (int x = 6; x <= last; x++) {
+                g.put(x, 1, z, WIRE);
+            }
+        }
+        // A0: Hebel vorn links, Leitung z 0 direkt, Stamm x 0 nach hinten bis z 16 (Verstärker bei z 9).
+        g.put(0, 1, 0, LEVER);
+        for (int x = 1; x <= 4; x++) {
+            g.put(x, 1, 0, WIRE).put(x, 1, 16, WIRE);
+        }
+        for (int z = 1; z <= 16; z++) {
+            g.put(0, 1, z, z == 9 ? "repeater[facing=front]" : WIRE);
+        }
+        // !A0 auf z 8: Abzweig über Verstärker in den Fackelblock (2,1,8), Wandfackel (3,1,8) treibt die Leitung.
+        g.put(1, 1, 8, "repeater[facing=left]")
+                .put(2, 1, 8, "stone")
+                .put(3, 1, 8, "redstone_wall_torch[facing=right]")
+                .put(4, 1, 8, WIRE);
+        // A1: Hebel (2,1,4) treibt Leitung z 4 und den Stamm x 2 nach hinten; über den Fackelblock auf y 3.
+        g.put(2, 1, 4, LEVER);
+        g.put(3, 1, 4, WIRE).put(4, 1, 4, WIRE);
+        g.put(2, 1, 5, WIRE).put(2, 1, 6, WIRE)
+                .put(2, 1, 7, "stone").put(2, 2, 7, WIRE)
+                .put(2, 2, 8, "stone").put(2, 3, 8, WIRE)
+                .put(2, 1, 9, "stone").put(2, 2, 9, WIRE)
+                .put(2, 1, 10, WIRE).put(2, 1, 11, WIRE);
+        // !A1 auf z 12: Stamm endet im Fackelblock (2,1,12), Wandfackel (3,1,12) treibt die Leitung.
+        g.put(2, 1, 12, "stone")
+                .put(3, 1, 12, "redstone_wall_torch[facing=right]")
+                .put(4, 1, 12, WIRE);
+        // Speicherzellen: Zeile r auf z 4r+2 zwischen den Leitungen 4r und 4r+4, Spalte i = Bit i.
+        for (int r = 0; r < 4; r++) {
+            int z = 4 * r + 2;
+            for (int i = 0; i < 4; i++) {
+                int x = ROM_X0 + ROM_STRIDE * i;
+                g.put(x, 1, z, LEVER)                                          // Bit-Hebel
+                        .put(x + 1, 1, z, "comparator[facing=left,mode=subtract]")
+                        .put(x + 1, 1, z - 1, "repeater[facing=front]")        // Seite vorn: Leitung 4r
+                        .put(x + 1, 1, z + 1, "repeater[facing=back]")         // Seite hinten: Leitung 4r+4
+                        .put(x + 2, 1, z, "stone")                             // Datenblock B
+                        .put(x + 2, 2, z, WIRE);
+            }
+        }
+        // Datenleitungen x 8, 12, 16, 20: zwischen den Zeilen auf y 3, hinten in die Lampe (z 17, y 3).
+        List<Pin> outs = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            int x = ROM_X0 + ROM_STRIDE * i + 2;
+            for (int z = 3; z <= 17; z++) {
+                if (z % 4 == 2) {
+                    continue;                                                  // Datenblock einer Zeile
+                }
+                if (z % 4 != 0 || x > last) {
+                    g.put(x, 1, z, "stone");                                   // Säule, außer über einer Leitung
+                }
+                g.put(x, 2, z, "stone");
+                g.put(x, 3, z, z == 17 ? "redstone_lamp" : z == 8 ? "repeater[facing=front]" : WIRE);
+            }
+            outs.add(pin("D" + i, x, 3, 17));
+        }
+        Module mod = g.module(ROM, "4x4 ROM (processor program memory): 16 bit levers in 4 rows, address levers A0 "
+                + "(front left) and A1 (left, behind it); lamps D0..D3 at the back show the word. Rows from the front: "
+                + "words 0, 1, 3, 2.");
+        List<Step> steps = new ArrayList<>();
+        int[] before = new int[4];
+        for (int[] pattern : ROM_PATTERNS) {
+            // Nur die Hebel umlegen, die sich ändern: „setblock“ auf den schon gleichen Zustand meldet der Server als
+            // Fehlschlag, und der Ablauf soll sauber lesen.
+            List<String> set = new ArrayList<>();
+            for (int w = 0; w < 4; w++) {
+                for (int b = 0; b < 4; b++) {
+                    boolean on = (pattern[w] >> b & 1) == 1;
+                    if (on != ((before[w] >> b & 1) == 1)) {
+                        Pos p = romLever(w, b);
+                        set.add("setblock {" + p.x() + "," + p.y() + "," + p.z() + "} plan:lever[face=floor,"
+                                + "facing=back,powered=" + on + "]");
+                    }
+                }
+            }
+            for (int a = 0; a < 4; a++) {
+                Map<String, Boolean> expect = new LinkedHashMap<>();
+                for (int b = 0; b < 4; b++) {
+                    expect.put("D" + b, (pattern[a] >> b & 1) == 1);
+                }
+                steps.add(new Step(bits("A0", String.valueOf(a & 1), "A1", String.valueOf(a >> 1)), expect,
+                        a == 0 ? List.copyOf(set) : List.of()));
+            }
+            before = pattern;
+        }
+        return new Machine(mod, List.of(pin("A0", 0, 1, 0), pin("A1", 2, 1, 4)), List.copyOf(outs), "lamp", Map.of(),
+                List.copyOf(steps));
     }
 
     /** Abstand der Stufen im 4-Bit-Addierer: Volladdierer (26 breit) plus zwei Spalten für die Übertragsleitung. */

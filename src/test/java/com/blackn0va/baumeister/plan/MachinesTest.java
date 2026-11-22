@@ -455,6 +455,8 @@ class MachinesTest {
             Map.entry("addierer_2bit", "2545 37f488fdc014d09b"),
             Map.entry("addierer_4bit", "5399 53e8baad71e0b385"),
             Map.entry("akkumulator_4bit", "8001 8491ac9ebc496ba5"),
+            // Festwertspeicher (T-029, 2026-11-22): MachineProbe N/O/S/W auf Spigot 1.21.11, beide Hebelbelegungen.
+            Map.entry(Machines.ROM, "726 5c18a951eb710b5f"),
             Map.entry("anzeige", "12595 33e31e66dd3e03d7"),
             Map.entry("befehlsknopf", "3 6e6d67c541b61570"),
             Map.entry("befehlskette", "7 c822ef3ad30d2637"));
@@ -834,6 +836,53 @@ class MachinesTest {
                 assertTrue(reachable, where + ": keine Seite frei");
             });
         }
+    }
+
+    /**
+     * Festwertspeicher: Jede Zeile hängt an genau den zwei Adressleitungen, die vom Wort ihrer Zeile abweichen
+     * (Komparator − max(Seiten)), und der Ablauf liest jede Adresse in beiden Belegungen. Ohne diese Prüfung fiele eine
+     * vertauschte Zeilenfolge oder Leitung erst auf dem Server auf – und eine Belegung, die einen Hebel nie umlegt,
+     * gar nicht.
+     */
+    @Test
+    void romRowsHangOnTheMismatchLinesAndTheProbeReadsEveryWordTwice() {
+        Machines.Machine m = LIB.machine(Machines.ROM).orElseThrow();
+        Map<Pos, BlockSpec> c = cells(m.module());
+        // Leitung auf z 4k trägt: A0, A1, !A0, !A1, A0 – als (Bit, invertiert).
+        int[][] line = {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {0, 0}};
+        assertEquals("redstone_wall_torch", c.get(new Pos(3, 1, 8)).id());
+        assertEquals("redstone_wall_torch", c.get(new Pos(3, 1, 12)).id());
+        for (int r = 0; r < 4; r++) {
+            int word = Machines.ROM_ROW_WORD[r];
+            for (int[] l : new int[][] {line[r], line[r + 1]}) {
+                // Leitung ist „an“ (sperrt), wenn das Adressbit vom Wort abweicht: nicht invertiert bei Wortbit 0.
+                assertEquals(l[1] == 1, (word >> l[0] & 1) == 1, "Zeile " + r + " Wort " + word);
+            }
+            assertTrue(line[r][0] != line[r + 1][0], "Zeile " + r + " braucht beide Adressbits");
+            for (int i = 0; i < 4; i++) {
+                Pos lever = Machines.romLever(word, i);
+                assertEquals("lever", c.get(lever).id());
+                assertEquals("comparator", c.get(lever.add(1, 0, 0)).id());
+                assertEquals("subtract", c.get(lever.add(1, 0, 0)).props().get("mode"));
+                assertEquals("repeater", c.get(lever.add(1, 0, -1)).id());
+                assertEquals("repeater", c.get(lever.add(1, 0, 1)).id());
+            }
+        }
+        // Jede Adresse in jeder Belegung genau einmal, Sollwerte = Wort; jeder Hebel wird mindestens einmal umgelegt.
+        assertEquals(8, m.sequence().size());
+        Set<String> switched = new HashSet<>();
+        for (int s = 0; s < 8; s++) {
+            Machines.Step st = m.sequence().get(s);
+            int a = (st.inputs().get("A0") ? 1 : 0) + (st.inputs().get("A1") ? 2 : 0);
+            assertEquals(s % 4, a);
+            for (int b = 0; b < 4; b++) {
+                assertEquals((Machines.ROM_PATTERNS[s / 4][a] >> b & 1) == 1, st.expect().get("D" + b), "Schritt " + s);
+            }
+            for (String cmd : st.commands()) {
+                switched.add(cmd.replaceAll("powered=(true|false)", ""));
+            }
+        }
+        assertEquals(16, switched.size(), switched.toString());
     }
 
     @Test
