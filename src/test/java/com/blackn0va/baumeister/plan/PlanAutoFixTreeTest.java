@@ -46,9 +46,9 @@ class PlanAutoFixTreeTest {
         Accept a = assertInstanceOf(Accept.class, v, v.toString());
         List<BuildPlan.Step> trees = a.plan().steps().stream().filter(s -> s.op() == BuildPlan.Op.TREE).toList();
         assertEquals(2, trees.size(), a.plan().steps().toString());
-        // Mitte der Burg x = 12, Abstand 10: x 7 und 17, 8 vor der Vorderkante z = 0, auf dem Boden.
-        assertEquals(new Pos(7, 0, -PlanAutoFix.TREE_FRONT), trees.get(0).pos());
-        assertEquals(new Pos(17, 0, -PlanAutoFix.TREE_FRONT), trees.get(1).pos());
+        // Mitte der Burg x = 12, Abstand 14: x 5 und 19, 8 vor der Vorderkante z = 0, auf dem Boden.
+        assertEquals(new Pos(5, 0, -PlanAutoFix.TREE_FRONT), trees.get(0).pos());
+        assertEquals(new Pos(19, 0, -PlanAutoFix.TREE_FRONT), trees.get(1).pos());
         assertTrue(a.repairs().stream().anyMatch(r -> r.contains("tree ohne pos")), a.repairs().toString());
     }
 
@@ -60,6 +60,24 @@ class PlanAutoFixTreeTest {
         assertEquals(1, f.notes().size(), f.notes().toString());
         assertTrue(f.json().contains("\"pos\":[12,0,30]"), f.json());
         assertTrue(f.json().contains("\"pos\":[12,0,-8]"), f.json());
+    }
+
+    /** Ein Baum mit from (der Parser nimmt from als pos) und einer mit kaputtem pos bleiben, wie sie sind. */
+    @Test
+    void treeWithFromOrBrokenPosIsNotMoved() {
+        assertTrue(PlanAutoFix.treePositions(HouseSite.plan(CASTLE,
+                "{\"op\":\"tree\",\"block\":\"oak_log\",\"from\":[20,0,20]}")).notes().isEmpty());
+        assertTrue(PlanAutoFix.treePositions(HouseSite.plan(CASTLE,
+                "{\"op\":\"tree\",\"block\":\"oak_log\",\"pos\":[3,0]}")).notes().isEmpty());
+    }
+
+    /** Ein runder Turm reicht um seinen Radius vor pos: Der Baum steht vor dem Turm, nicht in ihm. */
+    @Test
+    void treeStandsInFrontOfARoundTowerNotInIt() {
+        PlanAutoFix.Fixed f = PlanAutoFix.treePositions(HouseSite.plan(
+                "{\"op\":\"cylinder\",\"block\":\"stone_bricks\",\"pos\":[0,0,0],\"radius\":12,\"height\":10,"
+                + "\"hollow\":true}", LOOSE_TREE));
+        assertTrue(f.json().contains("\"pos\":[0,0,-20]"), f.json());
     }
 
     /** Nur Bäume: wie der Schnellauftrag 8 vor dem Ursprung, nebeneinander. */

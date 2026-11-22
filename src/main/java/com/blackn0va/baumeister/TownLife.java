@@ -435,7 +435,15 @@ final class TownLife implements Listener {
             Integer at = standY(y, h -> {
                 Material g = w.getBlockAt(x, h, z).getType();
                 return g.isSolid() && g != Material.MAGMA_BLOCK && !org.bukkit.Tag.LEAVES.isTagged(g);
-            }, h -> w.getBlockAt(x, h, z).isPassable());
+            }, h -> {
+                // Frei heißt begehbar UND keine Flüssigkeit, kein Feuer: isPassable gilt auch für Wasser, Lava, Feuer
+                // und Spinnweben (keine Kollisionsform). Vorher lehnte surfaceAt eine Flüssigkeit oben ab, standNear
+                // hätte einen Bewohner an einem Becken mit den Füßen ins Wasser gestellt (Gegenprobe Welle 10).
+                org.bukkit.block.Block b = w.getBlockAt(x, h, z);
+                Material m = b.getType();
+                return b.isPassable() && !b.isLiquid() && !org.bukkit.Tag.FIRE.isTagged(m) && m != Material.COBWEB
+                        && m != Material.POWDER_SNOW && m != Material.SWEET_BERRY_BUSH;
+            });
             return at == null ? null : new Location(w, x + 0.5, at, z + 0.5);
         }
 

@@ -189,8 +189,11 @@ public final class PlanAutoFix {
     /** Abstand der Baumreihe vor dem Bauwerk: Krone bis Radius 7 (QuickForms.tree setzt einen Baum 8 vor den Spieler). */
     static final int TREE_FRONT = 8;
 
-    /** Abstand der Bäume in der Reihe: zwei Kronen mit Radius bis 4 (Vorgabehöhe) berühren sich nicht. */
-    static final int TREE_SPACING = 10;
+    /**
+     * Abstand der Bäume in der Reihe: zwei Kronen mit Radius bis 7 (hoher Laubbaum) berühren sich nicht. Vorher 10 –
+     * reichte nur für Radius 4 (Gegenprobe Welle 10, 2026-11-22).
+     */
+    static final int TREE_SPACING = 14;
 
     /**
      * tree ohne pos bekommt einen Platz in einer Reihe vor dem übrigen Bauwerk (z = vorderste Kante − TREE_FRONT, auf
@@ -219,17 +222,26 @@ public final class PlanAutoFix {
             JsonObject s = steps.get(i).getAsJsonObject();
             String op = s.has("op") && s.get("op").isJsonPrimitive()
                     ? s.get("op").getAsString().toLowerCase(Locale.ROOT) : "";
-            if (op.equals("tree") && vec(s, "pos") == null) {
+            // Nur ein Baum ganz ohne Ortsangabe. Vorher zählte ein tree mit from statt pos als „ohne Ort“ – der Parser
+            // nimmt from aber als pos (PlanParser), und der Ort des Modells ging verloren; ein kaputtes pos ([3,0])
+            // wurde still überschrieben statt abgelehnt (Gegenprobe Welle 10).
+            if (op.equals("tree") && !s.has("pos") && !s.has("from")) {
                 loose.add(s);
                 index.add(i + 1);
                 continue;
             }
+            // Rundformen reichen um ihren Radius über pos hinaus; vorher zählte nur der Mittelpunkt, und ein Baum landete
+            // im Turm (Zylinder Radius 12 an [0,0,0] → Baum auf [0,0,-8], Gegenprobe Welle 10).
+            int r = (op.equals("cylinder") || op.equals("sphere")) && s.has("radius")
+                    && s.get("radius").isJsonPrimitive() && s.get("radius").getAsJsonPrimitive().isNumber()
+                    ? Math.max(0, s.get("radius").getAsInt()) : 0;
             for (String key : List.of("pos", "from", "to")) {
                 int[] v = vec(s, key);
                 if (v != null) {
-                    minX = Math.min(minX, v[0]);
-                    maxX = Math.max(maxX, v[0]);
-                    minZ = Math.min(minZ, v[2]);
+                    int pad = key.equals("pos") ? r : 0;
+                    minX = Math.min(minX, v[0] - pad);
+                    maxX = Math.max(maxX, v[0] + pad);
+                    minZ = Math.min(minZ, v[2] - pad);
                 }
             }
         }
