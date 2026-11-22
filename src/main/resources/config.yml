@@ -353,6 +353,13 @@ stadtleben:
     schlafen: true
     sitzen: true
     arbeitsblöcke: true
+  # Arbeitsfelder (2026-11-22): Mit true ernten Bauer, Holzfäller und Gärtnerin wirklich – aber NUR in Feldern,
+  # die ein Admin mit /bm stadtleben feld setzen <name> <radius> festlegt. Jede Änderung läuft über die Bau-/Abbau-
+  # Ereignisse im Namen des Admins (WorldGuard, PlotSquared können sie verbieten, CoreProtect protokolliert sie).
+  # Nie Behälter, nie Redstone. Ernte kommt in eine Kiste an der Feldmitte, sonst bleibt sie liegen.
+  weltänderung: false
+  # Höchstens so viele Blockänderungen aller Bewohner zusammen je Minute (1–120).
+  feld-blöcke-je-minute: 20
 # Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
 # und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
 fernverbindung:

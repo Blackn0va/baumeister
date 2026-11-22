@@ -3,16 +3,21 @@ package com.blackn0va.baumeister;
 import com.blackn0va.baumeister.companion.CompanionPath;
 import com.blackn0va.baumeister.companion.CompanionWalk;
 import com.blackn0va.baumeister.town.DayPlan;
+import com.blackn0va.baumeister.town.Follow;
+import com.blackn0va.baumeister.town.Gathering;
 import com.blackn0va.baumeister.town.HostWatch;
 import com.blackn0va.baumeister.town.Population;
 import com.blackn0va.baumeister.town.Progress;
+import com.blackn0va.baumeister.town.Request;
 import com.blackn0va.baumeister.town.Roster;
 import com.blackn0va.baumeister.town.Route;
+import com.blackn0va.baumeister.town.SafeGround;
 import com.blackn0va.baumeister.town.TalkBudget;
 import com.blackn0va.baumeister.town.TickCost;
 import com.blackn0va.baumeister.town.TownLines;
 import com.blackn0va.baumeister.town.TownSettings;
 import com.blackn0va.baumeister.town.TownTalk;
+import com.blackn0va.baumeister.town.Unstuck;
 import com.blackn0va.baumeister.town.WorkSpots;
 import com.blackn0va.baumeister.town.memory.TownVoice;
 import com.blackn0va.baumeister.town.presence.Gestures;
@@ -22,8 +27,18 @@ import com.blackn0va.baumeister.town.use.BukkitUse;
 import com.blackn0va.baumeister.town.use.TownUse;
 import com.blackn0va.baumeister.town.use.UseSettings;
 import com.blackn0va.baumeister.town.use.UseWorld;
+import com.blackn0va.baumeister.town.work.Field;
+import com.blackn0va.baumeister.town.work.FieldJob;
+import com.blackn0va.baumeister.town.work.FieldWork;
+import com.blackn0va.baumeister.town.work.Fields;
+import com.blackn0va.baumeister.town.work.Planner;
+import com.blackn0va.baumeister.town.work.Plot;
+import com.blackn0va.baumeister.town.work.Rate;
+import com.blackn0va.baumeister.town.work.Task;
+import com.blackn0va.baumeister.town.work.WorkSettings;
 import com.google.gson.JsonObject;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
@@ -74,10 +89,17 @@ import org.bukkit.util.Vector;
  * paketweit sind.
  *
  * Grenzen, alle mit Absicht:
- * - Keine Weltänderung außer Türen: Bewohner setzen und brechen nichts, lösen keine Druckplatten aus und zertreten
- *   kein Ackerland (EntityInteractEvent abgesagt). KI-Aktionen werden verworfen. Seit v013 (AK-44, town/use) öffnen
+ * - Weltänderung nur an Türen und in Arbeitsfeldern: Bewohner lösen keine Druckplatten aus und zertreten kein
+ *   Ackerland (EntityInteractEvent abgesagt). KI-Aktionen werden verworfen. Seit v013 (AK-44, town/use) öffnen
  *   und schließen sie Türen, Tore und Falltüren auf dem Weg – nur nach Rechteprüfung (BukkitUse.Check), sofort
- *   zurückgestellt –, schlafen in freien Betten, sitzen auf Bänken und stehen an Arbeitsblöcken.
+ *   zurückgestellt –, schlafen in freien Betten, sitzen auf Bänken und stehen an Arbeitsblöcken. Nur mit
+ *   stadtleben.weltänderung und nur in einem Feld, das ein Admin gesetzt hat (AK-43), arbeiten Bauer, Holzfäller
+ *   und Gärtnerin wirklich – jede Änderung über BlockBreak-/BlockPlace-Ereignisse im Namen eines Spielers
+ *   (TownWork, fail-closed), höchstens stadtleben.feld-blöcke-je-minute.
+ * - Laufen (AK-42): Wegsuche ohne Wasser, Fortschritt am Restweg, Feststecken stufenweise lösen (Unstuck), Treffpunkte
+ *   mittags (Gathering), Folgen und Bleiben auf Zuruf (Request, Follow).
+ * - Einhängepunkte für andere Stadtleben-Teile: appeared/gone (Bewohner kommt/geht), speak (sagt etwas), gathered
+ *   (eine Gruppe steht beisammen). Wer dort etwas ergänzt, muss am Takt nichts ändern.
  * - Nicht persistent (setPersistent(false)) und mit PDC-Marke „bewohner“; was nach einem harten Abbruch übrig bleibt,
  *   räumt BaumeisterListener.onEntitiesLoad weg (isStale).
  * - Takt: Wegsuche nur in geladenen Chunks (CompanionService.pathBlocks liest ungeladene als Fels), höchstens eine
@@ -137,6 +159,25 @@ final class TownLife implements Listener {
     private int spawned;
     /** Gedächtnis, Gespräch, Pseudonyme und feste Sätze (Vertrag v013, AK-41); Logik in town/memory/TownVoice. */
     private TownVoice voice = TownVoice.inMemory();
+    /** Arbeitsfelder (AK-43), persistiert über Env.fieldFile. */
+    private final Fields fields;
+    private WorkSettings work = WorkSettings.defaults();
+    private final Rate rate = new Rate(WorkSettings.DEFAULT_RATE);
+    /** Blöcke, an denen gerade ein Bewohner arbeitet (Task.key) – zwei nie an derselben Stelle. */
+    private final Set<Long> claimed = new HashSet<>();
+    /** Gesperrte Blöcke nach Ablehnung oder Feststecken: Schlüssel → bis wann (ms). */
+    private final Map<Long, Long> locked = new HashMap<>();
+    /** Felder, für die schon gewarnt wurde, dass kein berechtigter Spieler online ist. */
+    private final Set<String> noActorWarned = new HashSet<>();
+    /** Feldarbeit seit Start (Status und Test). */
+    private int fieldChanges;
+    private int fieldDenied;
+    private int fieldStale;
+    /** Laufende Treffen (Gathering). */
+    private final List<Meet> meets = new ArrayList<>();
+    private int gatherings;
+    /** Stufen des Feststeckens seit Messung, je Unstuck.Action. */
+    private final long[] unstuckCount = new long[Unstuck.Action.values().length];
 
     /** Ein Bewohner im Spiel. */
     static final class Resident {
@@ -167,11 +208,57 @@ final class TownLife implements Listener {
         long busyUntil;
         final Map<UUID, Long> greeted = new HashMap<>();
         final long born = System.currentTimeMillis();
+        /** Messung AK-42: Takte im Spiel und davon „steht ohne Grund“ (will laufen, kommt nicht vom Fleck). */
+        long ticksSeen;
+        long idleTicks;
+        final Unstuck unstuck = new Unstuck();
+
+        /** Nach Unstuck.PAUSE (gesehen, alles versucht) bis zu diesem Takt stehen; wie oft schon, seit er ankam. */
+        long pauseUntil;
+        int giveUps;
+        // Zuruf (Request): folgen, bleiben, heim.
+        final Follow follow = new Follow();
+        Location followAt;
+        Player leader;
+        Location stayAt;
+        long stayUntil;
+        long homeUntil;
+        // Treffpunkt (Gathering).
+        Meet meet;
+        Location meetSlot;
+        boolean meetArrived;
+        long meetAgainAt;
+        // Feldarbeit (AK-43).
+        Field field;
+        FieldJob job;
+        Task task;
+        final int[] taskStep = {0};
+        Location taskAt;
+        boolean taskReady;
+        /** Takt, bis zu dem er vor der nächsten Änderung den Arm schwingt, und der nächsten Suche (Takte). */
+        long swingUntil;
+        long nextScan;
+        int scanCursor;
 
         Resident(Roster.Person person, UUID entity, Location home) {
             this.person = person;
             this.entity = entity;
             this.home = home;
+        }
+    }
+
+    /** Eine Gruppe am Treffpunkt (Gathering). */
+    static final class Meet {
+        final List<Resident> members;
+        final Location point;
+        final long started;
+        boolean assembled;
+        long until;
+
+        Meet(List<Resident> members, Location point, long started) {
+            this.members = members;
+            this.point = point;
+            this.started = started;
         }
     }
 
@@ -242,6 +329,35 @@ final class TownLife implements Listener {
 
         /** Benutzen: Körper eines Bewohners; null = Benutzen aus. */
         default Actor actor(Mannequin m) {
+            return null;
+        }
+
+        /** Datei der Arbeitsfelder; null = nur im Speicher (Tests). */
+        default Path fieldFile() {
+            return null;
+        }
+
+        /** Blöcke für die Feldarbeit lesen; null = keine Feldarbeit möglich. */
+        default Plot plot(World w) {
+            return null;
+        }
+
+        /**
+         * Hände für die Feldarbeit im Namen von actor (TownWork.hands); null = keine. log bekommt je Änderung eine
+         * Zeile.
+         */
+        default FieldWork.Hands hands(World w, Player actor, Field f, FieldJob job,
+                java.util.function.Consumer<String> log) {
+            return null;
+        }
+
+        /** Welt nach Namen (Feld von der Konsole setzen); null = nicht geladen. */
+        default World world(String name) {
+            return null;
+        }
+
+        /** Hat das Feld eine Ablage-Kiste (TownWork.chest)? null = nicht prüfbar (Mitte nicht geladen). */
+        default Boolean fieldChest(World w, Field f) {
             return null;
         }
     }
@@ -511,6 +627,32 @@ final class TownLife implements Listener {
         }
 
         @Override
+        public Path fieldFile() {
+            return owner.getDataFolder().toPath().resolve(Fields.FILE);
+        }
+
+        @Override
+        public Plot plot(World w) {
+            return TownWork.plot(w);
+        }
+
+        @Override
+        public World world(String name) {
+            return server.getWorld(name);
+        }
+
+        @Override
+        public Boolean fieldChest(World w, Field f) {
+            return TownWork.hasChest(w, f);
+        }
+
+        @Override
+        public FieldWork.Hands hands(World w, Player actor, Field f, FieldJob job,
+                java.util.function.Consumer<String> log) {
+            return TownWork.hands(w, actor, f, job, server.getPluginManager()::callEvent, log);
+        }
+
+        @Override
         public List<WorkSpots.Spot> workSpots() {
             List<WorkSpots.Spot> out = new ArrayList<>();
             out.addAll(source("essentials", this::essentials));
@@ -711,6 +853,14 @@ final class TownLife implements Listener {
         this.plugin = plugin;
         this.env = env;
         this.marker = marker;
+        this.fields = new Fields(env.fieldFile());
+        for (String s : fields.load()) {
+            LOG.warning(() -> "stadtleben | feld_übersprungen | " + Texts.clean(s, 120));
+        }
+        if (fields.broken() != null) {
+            LOG.warning(() -> "stadtleben | felddatei_unlesbar | grund=" + Texts.clean(fields.broken(), 160)
+                    + " – keine Feldarbeit, Datei bleibt unverändert");
+        }
         if (plugin != null) {
             voice = TownVoice.open(plugin.getDataFolder().toPath().resolve("stadtleben"));
         }
@@ -771,11 +921,48 @@ final class TownLife implements Listener {
         this.llm = client;
         this.budget.gap(s.talkGapMillis());
         use.configure(plugin != null ? UseSettings.from(plugin.getConfig()) : UseSettings.defaults());
+        if (plugin != null) {
+            // Hier statt in BaumeisterPlugin/ConfigReload: configure läuft beim Start und (über reload) bei
+            // /bm neuladen – eine Stelle, kein neuer Aufruf im Plugin.
+            configureWork(WorkSettings.from(plugin.getConfig()));
+        }
         if (s.enabled() && !was) {
             host.askSoon();
         }
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | einstellungen | an=%s anzahl=%d ki_abstand_s=%d ohne_ki=%s",
                 s.enabled(), s.count(), s.talkGapMillis() / 1000, s.withoutKi()));
+    }
+
+    /** Feldarbeit schalten und begrenzen (configure; im Test direkt). Wechsel → Arbeitsorte der Feldberufe neu. */
+    void configureWork(WorkSettings w) {
+        boolean was = work.worldChange();
+        this.work = w;
+        rate.limit(w.blocksPerMinute());
+        if (was != w.worldChange()) {
+            refreshFieldWork();
+        }
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | feldarbeit | weltänderung=%s blöcke_je_minute=%d "
+                + "felder=%d", w.worldChange(), w.blocksPerMinute(), fields.all().size()));
+    }
+
+    /** Feldberufe suchen ihren Arbeitsort neu (Schalter umgelegt, Feld gesetzt oder entfernt). */
+    private void refreshFieldWork() {
+        for (Resident r : residents) {
+            if (FieldJob.of(r.person.job()) != null) {
+                dropTask(r, 0);
+                r.work = chooseWork(r, r.home);
+                r.reached = false;
+                r.route.reset();
+            }
+        }
+    }
+
+    WorkSettings work() {
+        return work;
+    }
+
+    Fields fields() {
+        return fields;
     }
 
     /** /bm neuladen: neue Einstellungen, derselbe KI-Client. */
@@ -934,6 +1121,7 @@ final class TownLife implements Listener {
         // jeden 8. Tick. Die Lag-Wache zählt Objekte und Schaltvorgänge – Bewohner sollen sie nicht verfälschen.
         boolean slow = env.slow();
         int[] plans = {slow ? (tick % 8 == 0 ? 1 : 0) : 1};
+        fieldScans = slow ? 0 : 1;
         // Reihum beginnen: Sonst bekäme immer derselbe Bewohner die eine Planerlaubnis des Ticks.
         List<Resident> order = new ArrayList<>(residents);
         int n = order.size();
@@ -945,6 +1133,7 @@ final class TownLife implements Listener {
             stepResident(order.get(i), now, plans);
         }
         if (tick % 20 == 0) {
+            gatherings(now);
             meetings(now);
         }
         if (tick % 1200 == 0 && voice.memory().dirty()) {
@@ -987,11 +1176,21 @@ final class TownLife implements Listener {
         if (pick.isEmpty()) {
             return;
         }
-        Location at = surfaceNear(anchor.getLocation(), 10, 22);
+        Location at = spawnSpot(anchor.getLocation());
         if (at == null) {
             return;
         }
         spawn(pick.getFirst(), at);
+    }
+
+    /**
+     * Wo ein neuer Bewohner erscheint: 10–22 Blöcke vom Spieler, und nur dort, von wo ein trockener Weg zu ihm führt
+     * (bis 22 Blöcke voll prüfbar, reachable). Vorher irgendwo auf der Oberfläche – gemessen im Parcours T-035 erschien
+     * gut die Hälfte jenseits des Wassergrabens und stand mittags am Ufer, weil der Bummelplatz am Spieler ohne
+     * Schwimmen unerreichbar war. null = in sechs Versuchen keiner; dann versucht spawnIfDue es später wieder.
+     */
+    Location spawnSpot(Location player) {
+        return reachableNear(player, 10, 22, player);
     }
 
     private void spawn(Roster.Person person, Location at) {
@@ -1008,6 +1207,20 @@ final class TownLife implements Listener {
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | erschienen | bewohner=%s beruf=%s welt=%s x=%d y=%d "
                 + "z=%d", TownTalk.key(person.name()), person.job(), at.getWorld().getName(), at.getBlockX(),
                 at.getBlockY(), at.getBlockZ()));
+        appeared(r, m);
+    }
+
+    /**
+     * Einhängepunkt: Ein Bewohner ist erschienen und eingekleidet (Tab-Liste, Beitrittszeile, Gedächtnis). Hier
+     * ergänzen statt im Takt. Wirft eine Ergänzung, bleibt der Bewohner verfolgt (adopt lief vorher).
+     */
+    void appeared(Resident r, Mannequin m) {
+        // Absichtlich leer: Stadtleben v1 braucht beim Erscheinen nichts weiter.
+    }
+
+    /** Einhängepunkt: Ein Bewohner ist gegangen; reason wie im Log (fern, schlafen, aus, ki_weg, entladen …). */
+    void gone(Resident r, String reason) {
+        // Absichtlich leer, siehe appeared.
     }
 
     /** So viele vorhandene Orte probiert chooseWork, bevor es auf den Platz zurückfällt. */
@@ -1024,6 +1237,10 @@ final class TownLife implements Listener {
      */
     Location chooseWork(Resident r, Location home) {
         World w = home.getWorld();
+        Location inField = fieldWork(r, home);
+        if (inField != null) {
+            return inField;
+        }
         List<double[]> near = new ArrayList<>();
         for (Player p : env.players()) {
             if (p.getGameMode() != GameMode.SPECTATOR && w.equals(p.getWorld())) {
@@ -1063,12 +1280,49 @@ final class TownLife implements Listener {
             }
         }
         r.workAt = null;
-        Location plain = surfaceNear(home, 12, 22);
+        // Erreichbar von der Wohnung zuerst (T-035, gemessen im Parcours mit Wassergraben): Bewohner schwimmen nicht
+        // mehr, ein Platz jenseits des Wassers hieß ohne Weg in 24 Blöcken Ausweichen und Pause im Kreis.
+        Location plain = reachableNear(home, 12, 22, home);
+        if (plain == null) {
+            plain = surfaceNear(home, 12, 22);
+        }
         Location work = plain != null ? plain : home.clone();
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | arbeitsort | bewohner=%s quelle=%s orte=%d x=%d y=%d "
                 + "z=%d", TownTalk.key(r.person.name()), WorkSpots.Source.NEAR.label(), ranked.size(),
                 work.getBlockX(), work.getBlockY(), work.getBlockZ()));
         return work;
+    }
+
+    /** So weit (waagrecht) von der Wohnung darf das Feld eines Feldberufs liegen – wie Population.FAR_FROM_PLAYERS. */
+    static final double FIELD_RANGE = 64.0;
+
+    /**
+     * Arbeitsort im Feld (AK-43): nur mit stadtleben.weltänderung, nur für Feldberufe, nur das nächste Feld derselben
+     * Welt in FIELD_RANGE mit geladener Mitte. null = kein Feld, dann wie bisher (Warp, Reisepunkt, Bau, Platz).
+     */
+    private Location fieldWork(Resident r, Location home) {
+        r.field = null;
+        r.job = null;
+        FieldJob job = FieldJob.of(r.person.job());
+        if (!work.worldChange() || job == null) {
+            return null;
+        }
+        World w = home.getWorld();
+        Field f = fields.nearest(w.getName(), home.getX(), home.getZ(), FIELD_RANGE);
+        if (f == null || !w.isChunkLoaded(f.x() >> 4, f.z() >> 4)) {
+            return null;
+        }
+        Location stand = standAt(new Location(w, f.x() + 0.5, f.y(), f.z() + 0.5));
+        if (stand == null) {
+            return null;
+        }
+        r.field = f;
+        r.job = job;
+        r.workAt = null;
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | arbeitsort | bewohner=%s quelle=feld ort=%s x=%d y=%d "
+                + "z=%d", TownTalk.key(r.person.name()), f.name(), stand.getBlockX(), stand.getBlockY(),
+                stand.getBlockZ()));
+        return stand;
     }
 
     /** Stehplatz genau am Ort, sonst bis 2,5 Blöcke daneben (der Warp selbst kann auf einer Stufe liegen). */
@@ -1159,8 +1413,9 @@ final class TownLife implements Listener {
             remove(r, m, "fern");
             return;
         }
-        if (!Double.isNaN(r.lastX)) {
-            r.walked += Math.hypot(cur.getX() - r.lastX, cur.getZ() - r.lastZ);
+        double moved = Double.isNaN(r.lastX) ? Double.NaN : Math.hypot(cur.getX() - r.lastX, cur.getZ() - r.lastZ);
+        if (!Double.isNaN(moved)) {
+            r.walked += moved;
         }
         r.lastX = cur.getX();
         r.lastZ = cur.getZ();
@@ -1179,23 +1434,54 @@ final class TownLife implements Listener {
         } else {
             r.nightSince = 0;
         }
-        Location goal = goal(r, phase.goal(), near, now);
+        Location special = override(r, cur, now);
+        Location goal = special != null ? special : goal(r, phase.goal(), near, now, cur);
         boolean talking = now < r.busyUntil;
+        if (tick < r.pauseUntil && !talking) {
+            // Nach Unstuck.PAUSE: gesehen und alles versucht – kurz stehen. Zählt als Stehen ohne Grund (ehrlich).
+            stand(m);
+            measure(r, true);
+            yieldTo(m, near);
+            return;
+        }
         double h = Math.hypot(goal.getX() - cur.getX(), goal.getZ() - cur.getZ());
-        if (talking || h < ARRIVE && Math.abs(goal.getY() - cur.getY()) < 2.5) {
-            if (!talking && !r.reached) {
+        boolean arrived = h < ARRIVE && Math.abs(goal.getY() - cur.getY()) < 2.5
+                || r.leader != null && Follow.close(Math.hypot(r.leader.getLocation().getX() - cur.getX(),
+                        r.leader.getLocation().getZ() - cur.getZ()));
+        if (talking || arrived) {
+            if (!talking && special == null && !r.reached) {
                 r.reached = true;
                 r.reachedCount++;
                 LOG.fine(() -> "stadtleben | ziel | bewohner=" + TownTalk.key(r.person.name()) + " ziel=" + r.goal);
             }
+            r.unstuck.progressed();
+            r.giveUps = 0;
+            // Wer liegt oder sitzt (town/use), bleibt so – kein Stehen, Anschauen oder Arbeiten.
             if (!use.resting(r.entity)) {
                 stand(m);
-                activity(r, m, phase, near, nearSq, now);
+                if (r.leader != null) {
+                    if (tick % 5 == 0) {
+                        BuilderNpc.lookAt(m, r.leader.getEyeLocation());
+                    }
+                } else if (r.meet != null && special == r.meetSlot) {
+                    // Nur echte Ankunft zählt: Dieser Zweig läuft auch, wenn er unterwegs redet (talking) – dann
+                    // stünde er als „da“ in der Gruppe, obwohl er noch Blöcke entfernt ist (TownLifeWalkTest).
+                    r.meetArrived |= arrived;
+                    if (tick % 10 == 0) {
+                        BuilderNpc.lookAt(m, r.meet.point.clone().add(0, 1.6, 0));
+                    }
+                } else if (special == null) {
+                    activity(r, m, phase, near, nearSq, now);
+                }
                 gesture(r, m, talking ? Gestures.Activity.TALK : r.goal == DayPlan.Goal.WORK && r.reached
                         ? Gestures.Activity.WORK : Gestures.Activity.IDLE, now);
             }
+            measure(r, false);
         } else {
-            walk(r, m, cur, goal, plans);
+            // Steht ohne Grund: will zum Ziel, ist nicht angekommen, redet nicht – und kam in diesem Takt keine
+            // IDLE_MOVE Blöcke voran. Der erste Takt nach Erscheinen oder Teleport zählt nicht (kein Vergleich).
+            measure(r, !Double.isNaN(moved) && moved < IDLE_MOVE);
+            walk(r, m, cur, goal, plans, now);
             gesture(r, m, Gestures.Activity.WALK, now);
         }
         // Wer liegt oder sitzt, weicht nicht aus und grüßt nicht (sonst rutschte er vom Bett bzw. redete im Schlaf).
@@ -1205,8 +1491,101 @@ final class TownLife implements Listener {
         }
     }
 
+    /** So lange bleibt ein Bewohner auf „bleib hier“ stehen bzw. geht auf „geh nach Hause“ heim (3 min). */
+    static final long STAY_MS = 3 * 60_000L;
+    static final long HOME_MS = 3 * 60_000L;
+    /** So lange (Takte) steht er nach Unstuck.PAUSE: 4 s. In Takten, damit der Test ohne Wanduhr auskommt. */
+    static final long PAUSE_TICKS = 80;
+
+    /**
+     * Ziel aus Zuruf oder Treffen, vor dem Tagesablauf: folgen (Punkt hinter dem Spieler), bleiben, heim, Treffpunkt.
+     * null = Tagesablauf. Endet das Folgen (Höchstzeit, Weltwechsel, offline, zu weit), steht es im Log.
+     */
+    private Location override(Resident r, Location cur, long now) {
+        r.leader = null;
+        if (r.follow.active()) {
+            Player p = online(r.follow.player());
+            double d = p == null || !p.getWorld().equals(cur.getWorld()) ? 0
+                    : Math.hypot(p.getLocation().getX() - cur.getX(), p.getLocation().getZ() - cur.getZ());
+            Follow.End end = r.follow.check(p != null, p == null ? null : p.getWorld().getName(), d, now);
+            if (end != Follow.End.NONE) {
+                r.follow.stop();
+                r.followAt = null;
+                LOG.info(() -> "stadtleben | folgen_ende | bewohner=" + TownTalk.key(r.person.name()) + " grund="
+                        + end.label());
+            } else {
+                Location pl = p.getLocation();
+                // Ziel nur neu, wenn der Spieler mehr als 1,5 Blöcke weiter ist: Ein neues Ziel je Takt hieße je Takt
+                // ein neues Teilziel und nie ein Fortschritt (Progress beginnt mit jedem Teilziel von vorn).
+                if (r.followAt == null || !r.followAt.getWorld().equals(pl.getWorld())
+                        || r.followAt.distanceSquared(pl) > (Follow.KEEP + 1.5) * (Follow.KEEP + 1.5)
+                        || r.followAt.distanceSquared(pl) < 1.0) {
+                    double[] xz = Follow.behind(pl.getX(), pl.getZ(), cur.getX(), cur.getZ());
+                    r.followAt = new Location(pl.getWorld(), xz[0], pl.getY(), xz[1]);
+                }
+                r.leader = p;
+                return r.followAt;
+            }
+        }
+        if (r.stayAt != null) {
+            if (now < r.stayUntil) {
+                return r.stayAt;
+            }
+            r.stayAt = null;
+        }
+        if (now < r.homeUntil) {
+            return r.home;
+        }
+        return r.meet != null ? r.meetSlot : null;
+    }
+
+    /** Online-Spieler nach UUID (Env.players, damit der Test ihn stellen kann); null = nicht da. */
+    private Player online(UUID id) {
+        for (Player p : env.players()) {
+            if (p.getUniqueId().equals(id)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /** Weniger waagrechter Weg je Takt gilt in der Messung als Stehen (Spaziertempo 0,16, Wackeln 0,03). */
+    static final double IDLE_MOVE = 0.02;
+
+    /** Takte der Laufmessung, über alle Bewohner seit /bm stadtleben messung (auch die schon gegangenen). */
+    private long runTicks;
+    private long runIdle;
+    private long runTeleports;
+
+    private void measure(Resident r, boolean idle) {
+        r.ticksSeen++;
+        runTicks++;
+        if (idle) {
+            r.idleTicks++;
+            runIdle++;
+        }
+    }
+
+    /**
+     * Laufmessung (AK-42): {Bewohner-Takte, davon steht ohne Grund, Teleports}. Teleports je Bewohner-Stunde =
+     * Teleports / (Takte / 72 000), bei 20 Takten je Sekunde.
+     */
+    long[] runMeasure() {
+        return new long[] {runTicks, runIdle, runTeleports};
+    }
+
+    /** Stufen des Feststeckens seit Messung, je Unstuck.Action (Test, Status). */
+    long[] unstuckCounts() {
+        return unstuckCount.clone();
+    }
+
+    /** Feldarbeit seit Start: {Änderungen, verboten, verworfen} (Test, Status). */
+    int[] fieldCounts() {
+        return new int[] {fieldChanges, fieldDenied, fieldStale};
+    }
+
     /** Ziel der Phase; wechselt das Ziel, wird neu geplant und „erreicht“ neu gezählt. */
-    private Location goal(Resident r, DayPlan.Goal kind, Player near, long now) {
+    private Location goal(Resident r, DayPlan.Goal kind, Player near, long now, Location cur) {
         if (kind != r.goal) {
             r.goal = kind;
             r.reached = false;
@@ -1215,12 +1594,18 @@ final class TownLife implements Listener {
             hold(r, null);
         }
         Location base = switch (kind) {
-            case WORK -> r.work;
+            // Mit Feldarbeit: zum Platz der laufenden Arbeit, sonst zur Feldmitte (dort sucht er die nächste).
+            case WORK -> r.task != null && r.taskAt != null ? r.taskAt : r.work;
             case HOME, SLEEP -> r.home;
             case PLAZA -> {
                 // Bummeln: alle 20–40 s ein neuer Fleck in der Nähe des nächsten Spielers.
                 if (r.plaza == null || r.reached && now > r.plazaUntil) {
-                    Location spot = surfaceNear(near.getLocation(), 3, 8);
+                    // Nur ein Fleck, zu dem ein trockener Weg führt; sonst dort bummeln, wo er gerade ist (jenseits
+                    // eines Flusses hinge er sonst die ganze Mittagspause am Ufer).
+                    Location spot = reachableNear(near.getLocation(), 3, 8, cur);
+                    if (spot == null) {
+                        spot = reachableNear(cur, 2, 6, cur);
+                    }
                     if (spot != null) {
                         r.plaza = spot;
                         r.reached = false;
@@ -1233,10 +1618,11 @@ final class TownLife implements Listener {
                 yield r.plaza;
             }
         };
-        return useTarget(r, kind, base);
+        // Laufende Feldarbeit: genau an den Stehplatz der Arbeit, nicht an einen Arbeitsblock (TownUse.target).
+        return kind == DayPlan.Goal.WORK && r.task != null ? base : useTarget(r, kind, base);
     }
 
-    private void walk(Resident r, Mannequin m, Location cur, Location goal, int[] plans) {
+    private void walk(Resident r, Mannequin m, Location cur, Location goal, int[] plans, long now) {
         World w = cur.getWorld();
         // Teilziel fest halten, bis es erreicht ist: Wanderte es jeden Tick mit, wollte jede Route jeden Tick neu
         // planen (Route.wantsPlan: Ziel mehr als 1 Block gewandert).
@@ -1251,42 +1637,50 @@ final class TownLife implements Listener {
                 r.leg = null;
                 return;
             }
-            double y = sameXz(new double[] {xz[0], 0, xz[1]}, goal) ? goal.getY() : w.getHighestBlockYAt(lx, lz) + 1;
+            double y = sameXz(new double[] {xz[0], 0, xz[1]}, goal) ? goal.getY() : legY(w, lx, lz, cur.getY());
             r.leg = new double[] {xz[0], y, xz[1]};
             r.legFor = goal;
             r.progress.reset(tick);
         }
         double[] leg = {r.leg[0], r.leg[2]};
         double ly = r.leg[1];
-        double legDist = Math.hypot(Math.hypot(leg[0] - cur.getX(), leg[1] - cur.getZ()), ly - cur.getY());
-        boolean stuck = r.progress.stuck(legDist, tick);
+        // Fortschritt am Restweg entlang des geplanten Wegs, ohne Weg an der Luftlinie. Vorher immer Luftlinie: Wer
+        // um eine U-Mauer herumging, kam dem Teilziel 3 s nicht näher und wurde sichtbar ans Teilziel teleportiert
+        // (Gegenprobe T-035: TownLifeWalkTest.detourAroundAWallNeedsNoTeleport). Ein neuer Weg setzt nur das Maß neu.
+        double rest = r.route.remaining(cur.getX(), cur.getY(), cur.getZ());
+        double straight = Math.hypot(Math.hypot(leg[0] - cur.getX(), leg[1] - cur.getZ()), ly - cur.getY());
+        // Das Maß wechselt je Teilziel höchstens einmal von der Luftlinie auf den Restweg (Progress.stuck mit zwei
+        // Maßen). Nicht bei jeder Neuplanung: Wer auf der Stelle wackelt, plant alle 20 Takte neu, und mit neuem Maß
+        // zählte schon das Wackeln (0,6 Blöcke) als Annäherung.
+        boolean stuck = r.progress.stuck(rest, straight, tick);
         int stalled = r.progress.stalled(tick);
+        if (r.progress.improved()) {
+            r.unstuck.progressed();
+        }
         boolean mayPlan = plans[0] > 0 && r.route.wantsPlan(leg[0], ly, leg[1], tick, stalled);
         if (mayPlan) {
             plans[0]--;
             tickSearches++;
         }
-        CompanionPath.Blocks blocks = useBlocks(r, w, env.pathBlocks(w));
+        CompanionPath.Blocks raw = env.pathBlocks(w);
+        // Bewohner schwimmen nicht (SafeGround.dry); Türen, die sie benutzen dürfen, sind Durchgang (town/use).
+        CompanionPath.Blocks blocks = useBlocks(r, w, SafeGround.dry(raw));
         double[] t = r.route.next(blocks, cur.getX(), cur.getY(), cur.getZ(), leg[0], ly, leg[1], tick,
                 stalled, mayPlan);
         usePass(m, w, t);
         Vector v = m.getVelocity();
         CompanionWalk.Step step = CompanionWalk.next(r.walk, new CompanionWalk.Body(cur.getX(), cur.getY(),
                 cur.getZ(), v.getY(), m.isOnGround(), m.isInWater(),
-                env.climbable(cur)), t[0], t[1], t[2], SPEED);
+                env.climbable(cur)), t[0], t[1], t[2], r.leader != null
+                        ? CompanionWalk.speedFor(Math.hypot(t[0] - cur.getX(), t[2] - cur.getZ())) : SPEED);
         if (stuck || step.teleport()) {
-            // Nur beim Feststecken – Progress (3 s ohne Annäherung) oder CompanionWalk (40 Ticks ohne Bewegung) – auf
-            // das Teilziel, nicht ans Ziel.
-            r.teleports++;
-            tickTeleports++;
-            r.walk.reset();
-            r.route.reset();
-            r.leg = null;
-            m.setVelocity(new Vector());
-            Location to = new Location(w, Math.floor(leg[0]) + 0.5, ly, Math.floor(leg[1]) + 0.5);
-            m.teleport(to);
-            r.lastX = Double.NaN;
-            LOG.fine(() -> "stadtleben | feststecken | bewohner=" + TownTalk.key(r.person.name()));
+            unstick(r, m, cur, raw, leg, ly, now);
+            return;
+        }
+        // Ohne gefundenen Weg geht er geradeaus – dann nie in Wasser, Lava oder über eine hohe Kante (SafeGround).
+        if (!r.route.hasPath() && !m.isInWater()
+                && !SafeGround.safeAhead(raw, cur.getX(), cur.getY(), cur.getZ(), step.vx(), step.vz())) {
+            m.setVelocity(new Vector(0, step.vy(), 0));
             return;
         }
         m.setVelocity(new Vector(step.vx(), step.vy(), step.vz()));
@@ -1295,6 +1689,134 @@ final class TownLife implements Listener {
             dir.setDirection(new Vector(step.vx(), 0, step.vz()));
             m.setRotation(dir.getYaw(), 0);
         }
+    }
+
+    /** Höhe eines Teilziels: Stehplatz der Oberfläche (kein Wasser, keine Lava, kein Laub), sonst höchster Block. */
+    private double legY(World w, int x, int z, double curY) {
+        Location s = env.surfaceAt(w, x, z);
+        if (s != null) {
+            return s.getY();
+        }
+        return w.getHighestBlockYAt(x, z) + 1;
+    }
+
+    /**
+     * Feststecken lösen (Unstuck): neu planen, ausweichen mit Sprung, Umweg, erst zuletzt teleportieren – und nur,
+     * wenn kein Spieler in Unstuck.VIEW steht. Vorher sofort Teleport aufs Teilziel (gemessen T-035 im Parcours).
+     */
+    private void unstick(Resident r, Mannequin m, Location cur, CompanionPath.Blocks raw, double[] leg, double ly,
+            long now) {
+        World w = cur.getWorld();
+        Unstuck.Action a = r.unstuck.next(watched(cur));
+        unstuckCount[a.ordinal()]++;
+        r.walk.reset();
+        r.progress.reset(tick);
+        double dx = leg[0] - cur.getX();
+        double dz = leg[1] - cur.getZ();
+        switch (a) {
+            case REPLAN -> r.route.reset();
+            case SIDESTEP -> {
+                double[] s = SafeGround.sidestep(raw, cur.getX(), cur.getY(), cur.getZ(), dx, dz, tick % 2 == 0);
+                r.route.reset();
+                if (s != null) {
+                    r.leg = s;
+                    if (m.isOnGround()) {
+                        m.setVelocity(new Vector(0, CompanionWalk.JUMP, 0));
+                    }
+                }
+            }
+            case DETOUR -> {
+                // Teilziel um 60° gedreht, halb so weit (mindestens 4): an einer Mauerkante vorbei.
+                double ang = Math.toRadians(tick % 2 == 0 ? 60 : -60);
+                double len = Math.max(4.0, Math.hypot(dx, dz) / 2);
+                double h = Math.max(1.0e-6, Math.hypot(dx, dz));
+                double ux = dx / h;
+                double uz = dz / h;
+                double nx = cur.getX() + (ux * Math.cos(ang) - uz * Math.sin(ang)) * len;
+                double nz = cur.getZ() + (ux * Math.sin(ang) + uz * Math.cos(ang)) * len;
+                r.route.reset();
+                if (w.isChunkLoaded((int) Math.floor(nx) >> 4, (int) Math.floor(nz) >> 4)) {
+                    r.leg = new double[] {nx, legY(w, (int) Math.floor(nx), (int) Math.floor(nz), cur.getY()), nz};
+                }
+            }
+            case TELEPORT -> {
+                r.teleports++;
+                tickTeleports++;
+                runTeleports++;
+                r.route.reset();
+                r.leg = null;
+                m.setVelocity(new Vector());
+                m.teleport(new Location(w, Math.floor(leg[0]) + 0.5, ly, Math.floor(leg[1]) + 0.5));
+                r.lastX = Double.NaN;
+            }
+            case PAUSE -> {
+                r.pauseUntil = tick + PAUSE_TICKS;
+                r.route.reset();
+                r.leg = null;
+                // Ein anderes Ziel: neuer Bummelfleck, raus aus dem Treffen, Feldarbeit an dieser Stelle sperren.
+                r.plaza = null;
+                leaveMeet(r);
+                dropTask(r, LOCK_STUCK_MS);
+                r.giveUps++;
+                if (r.giveUps >= 2 && r.goal == DayPlan.Goal.WORK && r.field == null) {
+                    // Zweimal alles versucht: Arbeitsplatz in der Nähe, zu dem ein Weg führt (Ausweichziel).
+                    Location alt = reachableNear(cur, 4, 12, cur);
+                    if (alt != null) {
+                        r.work = alt;
+                        r.workAt = null;
+                        r.giveUps = 0;
+                        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | ausweichziel | bewohner=%s x=%d y=%d "
+                                + "z=%d", TownTalk.key(r.person.name()), alt.getBlockX(), alt.getBlockY(),
+                                alt.getBlockZ()));
+                    }
+                }
+            }
+        }
+        LOG.fine(() -> "stadtleben | feststecken | bewohner=" + TownTalk.key(r.person.name()) + " schritt="
+                + a.name().toLowerCase(Locale.ROOT));
+    }
+
+    /** Bis zu diesem Abstand (je Achse) prüft reachable mit einer Wegsuche – knapp unter CompanionPath.RANGE (24). */
+    static final int REACH_CHECK = 22;
+
+    /**
+     * Führt ein trockener Weg von from nach to? Weiter als REACH_CHECK: angenommen ja (die Teilziele planen dann).
+     * Eine Suche kostet bis 1,7 ms (gemessen 2026-11-06); gerufen nur beim Wählen eines Ziels, nicht je Takt.
+     */
+    private boolean reachable(Location from, Location to) {
+        if (from.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
+            return false;
+        }
+        if (Math.abs(from.getX() - to.getX()) > REACH_CHECK || Math.abs(from.getZ() - to.getZ()) > REACH_CHECK) {
+            return true;
+        }
+        CompanionPath.Node a = new CompanionPath.Node(from.getBlockX(), (int) Math.floor(from.getY() + 0.01),
+                from.getBlockZ());
+        CompanionPath.Node b = new CompanionPath.Node(to.getBlockX(), (int) Math.floor(to.getY() + 0.01),
+                to.getBlockZ());
+        return !CompanionPath.find(SafeGround.dry(env.pathBlocks(from.getWorld())), a, b).isEmpty();
+    }
+
+    /** Wie surfaceNear, aber nur ein Platz, zu dem von from ein Weg führt; null = keiner in sechs Versuchen. */
+    private Location reachableNear(Location around, double min, double max, Location from) {
+        for (int i = 0; i < 6; i++) {
+            Location at = surfaceNear(around, min, max);
+            if (at != null && reachable(from, at)) {
+                return at;
+            }
+        }
+        return null;
+    }
+
+    /** Sieht ein Spieler (nicht Zuschauer) den Ort – waagrecht in Unstuck.VIEW? */
+    private static boolean watched(Location at) {
+        for (Player p : at.getWorld().getPlayers()) {
+            if (p.getGameMode() != GameMode.SPECTATOR && Math.hypot(p.getLocation().getX() - at.getX(),
+                    p.getLocation().getZ() - at.getZ()) <= Unstuck.VIEW) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean sameXz(double[] leg, Location goal) {
@@ -1308,9 +1830,14 @@ final class TownLife implements Listener {
         }
     }
 
-    /** Sichtbare Tätigkeit ohne Weltänderung: Werkzeug in der Hand, Arm schwingen, Spieler anschauen. */
+    /**
+     * Sichtbare Tätigkeit: Werkzeug in der Hand, Arm schwingen, Spieler anschauen. Im Feld (AK-43) mit echter Arbeit,
+     * sonst ohne Weltänderung.
+     */
     private void activity(Resident r, Mannequin m, DayPlan.Phase phase, Player near, double nearSq, long now) {
-        if (r.goal == DayPlan.Goal.WORK && r.reached) {
+        if (r.goal == DayPlan.Goal.WORK && r.field != null && work.worldChange()) {
+            fieldActivity(r, m, now);
+        } else if (r.goal == DayPlan.Goal.WORK && r.reached) {
             hold(r, m);
             // Arm schwingen ohne Presence (Tests) wie bisher; mit Presence übernimmt Gestures – auch wenn ein Spieler
             // zusieht (vorher schwang der Arm nur, wenn keiner näher als LOOK stand).
@@ -1324,6 +1851,168 @@ final class TownLife implements Listener {
         }
         if (tick % 100 == 0) {
             MannequinCompat.description(m, r.person.job() + " · " + phase.label());
+        }
+    }
+
+    // ---------------------------------------------------------------- Feldarbeit (AK-43)
+
+    /** Je Takt sucht höchstens ein Bewohner im Feld nach Arbeit (Planner.find, bis 48 Spalten). */
+    private int fieldScans;
+    /** So lange schwingt er vor jeder Änderung den Arm (sichtbar: er arbeitet daran). */
+    static final long SWING_TICKS = 24;
+    /** Abstand zwischen zwei Suchen desselben Bewohners. */
+    static final long SCAN_GAP_TICKS = 20;
+    /** Sperre eines Blocks nach Ablehnung durch ein Schutz-Plugin bzw. nach Feststecken davor. */
+    static final long LOCK_DENIED_MS = 10 * 60_000L;
+    static final long LOCK_STUCK_MS = 2 * 60_000L;
+
+    /**
+     * Am Arbeitsplatz im Feld: Arbeit suchen, hingehen (goal), Arm schwingen, dann eine Änderung über FieldWork.
+     * Ohne berechtigten Spieler online (actor) geschieht nichts – fail-closed, mit einer Warnung je Feld.
+     */
+    private void fieldActivity(Resident r, Mannequin m, long now) {
+        holdTool(m, r.job.tool());
+        World w = m.getWorld();
+        Player actor = actor(r.field);
+        if (actor == null) {
+            if (noActorWarned.add(r.field.name())) {
+                LOG.warning(() -> "stadtleben | feld_ohne_berechtigten | feld=" + r.field.name()
+                        + " – weder der Admin des Feldes noch ein anderer Admin online, keine Änderung");
+            }
+            idleSwing(r, m, now);
+            return;
+        }
+        noActorWarned.remove(r.field.name());
+        Plot plot = env.plot(w);
+        if (plot == null) {
+            idleSwing(r, m, now);
+            return;
+        }
+        if (r.task == null) {
+            if (fieldScans <= 0 || tick < r.nextScan) {
+                idleSwing(r, m, now);
+                return;
+            }
+            fieldScans--;
+            r.nextScan = tick + SCAN_GAP_TICKS;
+            Planner.Found f = Planner.find(plot, r.field, r.job, r.scanCursor, k -> claimed.contains(k)
+                    || locked.getOrDefault(k, 0L) > now);
+            r.scanCursor = f.cursor();
+            if (f.task() != null) {
+                r.task = f.task();
+                r.taskStep[0] = 0;
+                r.taskReady = false;
+                r.taskAt = new Location(w, f.task().standX() + 0.5, f.task().standY(), f.task().standZ() + 0.5);
+                claimed.add(f.task().key());
+                r.reached = false;
+                r.route.reset();
+            } else {
+                idleSwing(r, m, now);
+            }
+            return;
+        }
+        Task.Change next = r.task.changes().get(Math.min(r.taskStep[0], r.task.changes().size() - 1));
+        Location block = new Location(w, next.x() + 0.5, next.y() + 0.5, next.z() + 0.5);
+        if (!r.taskReady) {
+            r.taskReady = true;
+            r.swingUntil = tick + SWING_TICKS;
+        }
+        if (tick < r.swingUntil) {
+            if (tick % 6 == 0) {
+                BuilderNpc.lookAt(m, block);
+                m.swingMainHand();
+            }
+            return;
+        }
+        String where = String.format(Locale.ROOT, "bewohner=%s feld=%s x=%d y=%d z=%d", TownTalk.key(r.person.name()),
+                r.field.name(), next.x(), next.y(), next.z());
+        FieldWork.Hands hands = env.hands(w, actor, r.field, r.job, line -> LOG.info(() -> "stadtleben | feld | "
+                + where + " " + line));
+        if (hands == null) {
+            dropTask(r, 0);
+            return;
+        }
+        BuilderNpc.lookAt(m, block);
+        FieldWork.Result res = FieldWork.step(r.task, r.taskStep, plot, hands, rate, now);
+        // Saat gleich hinterher, im selben Takt: Zwischen zwei Takten könnte er gehen (Mittag, Zuruf, Nacht).
+        while (res == FieldWork.Result.APPLIED && FieldWork.pairedWithNext(r.task, r.taskStep[0] - 1)) {
+            fieldChanges++;
+            res = FieldWork.step(r.task, r.taskStep, plot, hands, rate, now);
+        }
+        switch (res) {
+            case APPLIED -> {
+                fieldChanges++;
+                m.swingMainHand();
+                r.swingUntil = tick + SWING_TICKS;
+            }
+            case DONE -> {
+                fieldChanges++;
+                m.swingMainHand();
+                dropTask(r, 0);
+            }
+            case WAIT -> r.swingUntil = tick + SWING_TICKS;
+            case DENIED -> {
+                fieldDenied++;
+                LOG.info(() -> "stadtleben | feld_verboten | " + where + " – Schutz-Plugin hat abgelehnt, Stelle "
+                        + LOCK_DENIED_MS / 60_000 + " min gesperrt");
+                dropTask(r, LOCK_DENIED_MS);
+            }
+            case STALE -> {
+                fieldStale++;
+                dropTask(r, 0);
+            }
+        }
+    }
+
+    /**
+     * Für wen der Bewohner arbeitet: der Admin, der das Feld gesetzt hat, wenn er online ist, sonst ein anderer
+     * Admin (baumeister.admin) in derselben Welt; null = niemand – dann keine Änderung. Im Namen dieses Spielers fragen
+     * die Ereignisse WorldGuard & Co., und CoreProtect schreibt ihn als Verursacher. Nie ein beliebiger Spieler in der
+     * Nähe: Dessen Rechte hätten mit dem Feld nichts zu tun (ASVS V4.1.3, geringste Rechte).
+     */
+    Player actor(Field f) {
+        Player other = null;
+        for (Player p : env.players()) {
+            if (f.owner() != null && p.getUniqueId().equals(f.owner())) {
+                return p;
+            }
+            if (other == null && p.getWorld() != null && p.getWorld().getName().equals(f.world())
+                    && p.hasPermission("baumeister.admin")) {
+                other = p;
+            }
+        }
+        return other;
+    }
+
+    /** Arbeit loslassen (fertig, verworfen, Feststecken); lockMs > 0 sperrt ihre Stelle so lange. */
+    private void dropTask(Resident r, long lockMs) {
+        if (r.task == null) {
+            return;
+        }
+        claimed.remove(r.task.key());
+        if (lockMs > 0) {
+            locked.put(r.task.key(), System.currentTimeMillis() + lockMs);
+        }
+        r.task = null;
+        r.taskAt = null;
+        r.taskReady = false;
+        r.reached = false;
+        r.route.reset();
+    }
+
+    /** Ohne Arbeit im Feld: Werkzeug halten und ab und zu schwingen wie an jedem Arbeitsort. */
+    private void idleSwing(Resident r, Mannequin m, long now) {
+        if (now >= r.nextSwing) {
+            m.swingMainHand();
+            r.nextSwing = now + 1500 + ThreadLocalRandom.current().nextLong(2500);
+        }
+    }
+
+    private static void holdTool(Mannequin m, String tool) {
+        EntityEquipment eq = m.getEquipment();
+        Material want = Material.matchMaterial(tool);
+        if (eq != null && want != null && eq.getItemInMainHand().getType() != want) {
+            BuilderNpc.hold(m, want);
         }
     }
 
@@ -1402,24 +2091,178 @@ final class TownLife implements Listener {
                         || !heard(ma.getLocation())) {
                     continue;
                 }
-                meetings.put(key, now);
-                a.busyUntil = now + 8_000;
-                b.busyUntil = now + 8_000;
-                BuilderNpc.lookAt(ma, mb.getEyeLocation());
-                BuilderNpc.lookAt(mb, ma.getEyeLocation());
-                voice.met(a.person, b.person, now);
-                // Vorher antwortete b immer mit einem festen Gruß, egal was a sagte. Jetzt fragt b die KI mit a's Satz
-                // im Gespräch (TownVoice) – das Budget entscheidet wie bei jeder Anfrage, sonst ein fester Satz.
-                ask(a, TownTalk.meeting(b.person), "treffen", fixed(a, ma, TownLines.Occasion.MEET), () -> {
-                    Entity later = env.entity(b.entity);
-                    if (later instanceof Mannequin lb && lb.isValid() && residents.contains(b)) {
-                        ask(b, TownTalk.meetingReply(a.person), "treffen_antwort",
-                                fixed(b, lb, TownLines.Occasion.MEET_REPLY), null);
-                    }
-                });
+                talk(a, ma, b, mb, now);
                 return;
             }
         }
+    }
+
+    /** a spricht b an, b antwortet (Begegnung, Treffpunkt). */
+    private void talk(Resident a, Mannequin ma, Resident b, Mannequin mb, long now) {
+        meetings.put(a.person.name() + "|" + b.person.name(), now);
+        meetings.put(b.person.name() + "|" + a.person.name(), now);
+        a.busyUntil = now + 8_000;
+        b.busyUntil = now + 8_000;
+        BuilderNpc.lookAt(ma, mb.getEyeLocation());
+        BuilderNpc.lookAt(mb, ma.getEyeLocation());
+        voice.met(a.person, b.person, now);
+        // Vorher antwortete b immer mit einem festen Gruß, egal was a sagte. Jetzt fragt b die KI mit a's Satz im
+        // Gespräch (TownVoice) – das Budget entscheidet wie bei jeder Anfrage, sonst ein fester Satz.
+        ask(a, TownTalk.meeting(b.person), "treffen", fixed(a, ma, TownLines.Occasion.MEET), () -> {
+            Entity later = env.entity(b.entity);
+            if (later instanceof Mannequin lb && lb.isValid() && residents.contains(b)) {
+                ask(b, TownTalk.meetingReply(a.person), "treffen_antwort",
+                        fixed(b, lb, TownLines.Occasion.MEET_REPLY), null);
+            }
+        });
+    }
+
+    /**
+     * Treffpunkte (Gathering): laufende Gruppen prüfen (beisammen? Zeit um? zu klein?), mittags freie Bewohner zu neuen
+     * Gruppen zusammenführen. Alle 20 Takte aus step.
+     */
+    private void gatherings(long now) {
+        for (Meet g : new ArrayList<>(meets)) {
+            g.members.removeIf(r -> !residents.contains(r) || r.meet != g);
+            boolean timeUp = g.assembled ? now >= g.until : now - g.started > 2 * Gathering.WAIT_MS;
+            if (g.members.size() < Gathering.MIN || timeUp) {
+                dissolve(g, now);
+                continue;
+            }
+            if (!g.assembled) {
+                int arrived = (int) g.members.stream().filter(r -> r.meetArrived).count();
+                if (Gathering.assembled(arrived, g.members.size(), now - g.started)) {
+                    for (Resident r : new ArrayList<>(g.members)) {
+                        if (!r.meetArrived) {
+                            leaveMeet(r);
+                        }
+                    }
+                    g.assembled = true;
+                    g.until = now + Gathering.stay(ThreadLocalRandom.current().nextInt(1000));
+                    gatherings++;
+                    gathered(g.members, g.point, now);
+                }
+            }
+        }
+        Map<World, List<Gathering.Member>> free = new HashMap<>();
+        Map<Integer, Resident> byId = new HashMap<>();
+        for (int i = 0; i < residents.size(); i++) {
+            Resident r = residents.get(i);
+            Entity e = env.entity(r.entity);
+            if (!(e instanceof Mannequin m) || r.meet != null || r.follow.active() || r.stayAt != null
+                    || now < r.homeUntil || now < r.meetAgainAt || now < r.busyUntil
+                    || DayPlan.phase(m.getWorld().getTime()).goal() != DayPlan.Goal.PLAZA) {
+                continue;
+            }
+            byId.put(i, r);
+            free.computeIfAbsent(m.getWorld(), k -> new ArrayList<>())
+                    .add(new Gathering.Member(i, m.getLocation().getX(), m.getLocation().getZ()));
+        }
+        int pick = ThreadLocalRandom.current().nextInt(1000);
+        boolean formed = false;
+        for (Map.Entry<World, List<Gathering.Member>> e : free.entrySet()) {
+            for (List<Integer> ids : Gathering.groups(e.getValue(), pick)) {
+                if (formed) {
+                    // Höchstens eine neue Gruppe je Aufruf (alle 20 Takte): Jede prüft bis zu vier Wege (reachable).
+                    break;
+                }
+                List<Gathering.Member> ms = e.getValue().stream().filter(m -> ids.contains(m.id())).toList();
+                double[] c = Gathering.center(ms);
+                World w = e.getKey();
+                Location point = env.surfaceAt(w, (int) Math.floor(c[0]), (int) Math.floor(c[1]));
+                if (point == null) {
+                    point = surfaceNear(new Location(w, c[0], ms.isEmpty() ? 64 : byIdY(byId, ids), c[1]), 1, 4);
+                }
+                if (point == null) {
+                    continue;
+                }
+                List<Resident> members = new ArrayList<>();
+                ids.forEach(id -> members.add(byId.get(id)));
+                // Nur wer den Treffpunkt trocken erreicht (T-035, Parcours mit Wassergraben: Mitglieder jenseits des
+                // Wassers standen die Mittagspause über am Ufer). Wer es nicht kann, wartet bis zum nächsten Versuch.
+                Location at = point;
+                members.removeIf(r -> {
+                    Entity m = env.entity(r.entity);
+                    boolean ok = m != null && reachable(m.getLocation(), at);
+                    if (!ok) {
+                        r.meetAgainAt = now + Gathering.AGAIN_MS;
+                    }
+                    return !ok;
+                });
+                formed = true;
+                if (members.size() < Gathering.MIN) {
+                    members.forEach(r -> r.meetAgainAt = now + Gathering.AGAIN_MS);
+                    continue;
+                }
+                Meet g = new Meet(members, point, now);
+                for (int k = 0; k < members.size(); k++) {
+                    Resident r = members.get(k);
+                    double[] s = Gathering.slot(point.getX(), point.getZ(), k, members.size());
+                    Location slot = env.surfaceAt(w, (int) Math.floor(s[0]), (int) Math.floor(s[1]));
+                    r.meet = g;
+                    r.meetArrived = false;
+                    r.meetSlot = slot != null && Math.abs(slot.getY() - point.getY()) <= 1.5
+                            ? new Location(w, s[0], slot.getY(), s[1]) : point.clone();
+                    r.route.reset();
+                    r.leg = null;
+                }
+                meets.add(g);
+                LOG.fine(() -> "stadtleben | treffpunkt | bewohner=" + members.stream()
+                        .map(r -> TownTalk.key(r.person.name())).toList());
+            }
+        }
+    }
+
+    private double byIdY(Map<Integer, Resident> byId, List<Integer> ids) {
+        Entity e = env.entity(byId.get(ids.getFirst()).entity);
+        return e == null ? 64 : e.getLocation().getY();
+    }
+
+    private void dissolve(Meet g, long now) {
+        for (Resident r : new ArrayList<>(g.members)) {
+            leaveMeet(r);
+            r.meetAgainAt = now + Gathering.AGAIN_MS;
+        }
+        meets.remove(g);
+    }
+
+    /** Aus dem Treffen gehen (Zuruf, Feststecken, Gehen). */
+    private void leaveMeet(Resident r) {
+        if (r.meet != null) {
+            r.meet.members.remove(r);
+            r.meet = null;
+            r.meetSlot = null;
+            r.meetArrived = false;
+            r.route.reset();
+            r.leg = null;
+        }
+    }
+
+    /**
+     * Einhängepunkt: Eine Gruppe steht am Treffpunkt beisammen und bleibt eine Weile (Anlass für ein Gespräch).
+     * Vorgabe: die ersten beiden reden wie bei einer Begegnung, wenn ein Spieler zuhört; alle Paare der Gruppe gelten
+     * als begegnet, damit meetings nicht gleich danach noch einmal anstößt.
+     */
+    void gathered(List<Resident> group, Location at, long now) {
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | treffen | bewohner=%s x=%d y=%d z=%d",
+                String.join(",", group.stream().map(r -> TownTalk.key(r.person.name())).toList()), at.getBlockX(),
+                at.getBlockY(), at.getBlockZ()));
+        for (Resident a : group) {
+            for (Resident b : group) {
+                if (a != b) {
+                    meetings.put(a.person.name() + "|" + b.person.name(), now);
+                }
+            }
+        }
+        if (group.size() >= 2 && heard(at) && env.entity(group.get(0).entity) instanceof Mannequin ma
+                && env.entity(group.get(1).entity) instanceof Mannequin mb) {
+            talk(group.get(0), ma, group.get(1), mb, now);
+        }
+    }
+
+    /** Treffen, die seit Start beisammen standen (Test, Status). */
+    int gatheringsDone() {
+        return gatherings;
     }
 
     /** Hört überhaupt ein Spieler zu? Sonst lohnt keine KI-Anfrage. */
@@ -1460,15 +2303,34 @@ final class TownLife implements Listener {
             // das KI-Budget mit einer Zeile je Sekunde leerräumen.
             String key = r.person.name() + "|" + p.getUniqueId();
             Long lastHeard = addressed.get(key);
-            if (lastHeard != null && now - lastHeard < ADDRESS_GAP_MS) {
+            boolean quiet = lastHeard != null && now - lastHeard < ADDRESS_GAP_MS;
+            // Spielernamen im Satz (auch der eigene) werden zu Pseudonymen, bevor irgendetwas damit passiert – auch
+            // vor dem Zuruf (T-034).
+            String heard = voice.scrub(TownTalk.withoutName(message, r.person.name()), env.players());
+            int pick = ThreadLocalRandom.current().nextInt(1000);
+            Request.Kind req = Request.parse(heard);
+            if (req != Request.Kind.NONE) {
+                // Zuruf wirkt auch in der Abklingzeit („komm mit“, gleich danach „bleib hier“): Er kostet keine KI
+                // und hält den Bewohner nicht an. Nur die Bestätigung fällt dann weg – sonst ließe sich der Chat
+                // damit fluten.
+                if (!quiet) {
+                    addressed.put(key, now);
+                }
+                stand(m);
+                BuilderNpc.lookAt(m, p.getEyeLocation());
+                obey(r, m, p, req, now);
+                if (!quiet) {
+                    speak(r, m, Request.reply(req, pick));
+                }
+                return true;
+            }
+            if (quiet) {
                 return true;
             }
             addressed.put(key, now);
             r.busyUntil = now + 10_000;
             stand(m);
             BuilderNpc.lookAt(m, p.getEyeLocation());
-            // Spielernamen im Satz (auch der eigene) werden zu Pseudonymen, bevor irgendetwas damit passiert.
-            String heard = voice.scrub(TownTalk.withoutName(message, r.person.name()), env.players());
             if (heard.isBlank()) {
                 speak(r, m, fixed(r, m, TownLines.Occasion.GREET) + " Ich bin " + r.person.name() + ", "
                         + r.person.job() + ".");
@@ -1480,6 +2342,46 @@ final class TownLife implements Listener {
             ask(r, s, TownTalk.fromPlayer(voice.alias(p), heard), "spieler", fixed(r, m,
                     TownLines.occasionFor(heard)), null);
             return true;
+        }
+        return false;
+    }
+
+    /**
+     * Zuruf ausführen (Request): folgen, bleiben, heim. Jeder in Hörweite darf rufen – Bewohner ändern dabei nichts an
+     * der Welt, und Folgen endet von selbst (Follow). Im Log nur der Bewohner, nie der Spieler (wie beim Chat).
+     */
+    private void obey(Resident r, Mannequin m, Player p, Request.Kind req, long now) {
+        // Kein Gesprächs-Stillstand (busyUntil): Wer „komm mit“ ruft, will, dass er sofort losgeht.
+        r.busyUntil = 0;
+        leaveMeet(r);
+        dropTask(r, 0);
+        r.follow.stop();
+        r.followAt = null;
+        r.stayAt = null;
+        r.homeUntil = 0;
+        r.route.reset();
+        r.leg = null;
+        switch (req) {
+            case FOLLOW -> r.follow.start(p.getUniqueId(), p.getWorld().getName(), now);
+            case STAY -> {
+                r.stayAt = m.getLocation().clone();
+                r.stayUntil = now + STAY_MS;
+            }
+            case HOME -> r.homeUntil = now + HOME_MS;
+            case NONE -> {
+                // parse lieferte einen Zuruf – NONE kommt hier nicht an.
+            }
+        }
+        LOG.info(() -> "stadtleben | zuruf | bewohner=" + TownTalk.key(r.person.name()) + " art="
+                + req.name().toLowerCase(Locale.ROOT));
+    }
+
+    /** Folgt dieser Bewohner gerade jemandem (Test)? */
+    boolean following(String name) {
+        for (Resident r : residents) {
+            if (r.person.name().equals(name)) {
+                return r.follow.active();
+            }
         }
         return false;
     }
@@ -1683,10 +2585,14 @@ final class TownLife implements Listener {
         }
         voice.left(r.person);
         use.forget(r.entity);
+        dropTask(r, 0);
+        leaveMeet(r);
         lastGone = reason;
+        gone(r, reason);
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | weg | bewohner=%s grund=%s strecke=%.1f ziele=%d "
-                + "teleports=%d wegsuchen=%d minuten=%.1f", TownTalk.key(r.person.name()), reason, r.walked,
-                r.reachedCount, r.teleports, r.route.searches(), (System.currentTimeMillis() - r.born) / 60_000.0));
+                + "teleports=%d wegsuchen=%d minuten=%.1f steht_ohne_grund=%d/%d", TownTalk.key(r.person.name()),
+                reason, r.walked, r.reachedCount, r.teleports, r.route.searches(),
+                (System.currentTimeMillis() - r.born) / 60_000.0, r.idleTicks, r.ticksSeen));
     }
 
     private void removeAll(String reason) {
@@ -1716,6 +2622,11 @@ final class TownLife implements Listener {
                         : "fester Satz"))) + " · Anfragen " + budget.asked() + " (beantwortet " + budget.answered()
                 + ", Rückfall " + budget.fallbacks() + ", gespart " + refused + ") · Antwortzeit Mittel " + mm[0]
                 + " ms, höchstens " + mm[1] + " ms · Abstand " + settings.talkGapMillis() / 1000 + " s");
+        Texts.info(s, runLine());
+        Texts.info(s, String.format(Locale.GERMANY, "Feldarbeit: %s · Felder %d · Änderungen %d (verboten %d, "
+                + "verworfen %d) · Rate %d/%d je Minute · Treffen %d", work.worldChange() ? "an" : "aus (weltänderung)",
+                fields.all().size(), fieldChanges, fieldDenied, fieldStale, rate.used(now), work.blocksPerMinute(),
+                gatherings));
         double[] c = cost.millis();
         Texts.info(s, String.format(Locale.GERMANY, "Takt (letzte %d Ticks): Mittel %.3f ms · p99 %.3f ms · höchstens "
                 + "%.3f ms · teuerster Tick seit Messung %.3f ms (%s)", cost.size(), c[0], c[1], c[2],
@@ -1729,13 +2640,143 @@ final class TownLife implements Listener {
                 Texts.info(s, String.format(Locale.GERMANY, "%s (%s): %s · Strecke %.1f · Ziele %d · Teleports %d · "
                         + "Wegsuchen %d · Arbeit %s · seit %.1f min%s", r.person.name(), r.person.job(), r.goal == null
                         ? "–" : r.goal.name().toLowerCase(Locale.ROOT), r.walked, r.reachedCount, r.teleports,
-                        r.route.searches(), r.workAt == null ? WorkSpots.Source.NEAR.label()
+                        r.route.searches(), r.field != null ? "feld " + r.field.name() : r.workAt == null
+                                ? WorkSpots.Source.NEAR.label()
                                 : r.workAt.spot().source().label() + " " + Texts.clean(r.workAt.spot().name(), 32),
                         (now - r.born) / 60_000.0, e == null ? "" : String.format(Locale.ROOT,
                                 " · bei %d %d %d", e.getLocation().getBlockX(), e.getLocation().getBlockY(),
-                                e.getLocation().getBlockZ())));
+                                e.getLocation().getBlockZ())) + walkState(r));
             }
         }
+    }
+
+    // ---------------------------------------------------------------- Befehl feld
+
+    static final String FIELD_USAGE = "/bm stadtleben feld setzen <name> <radius> · feld entfernen <name> · feld liste"
+            + " (Konsole: feld setzen <name> <radius> <welt> <x> <y> <z>)";
+
+    /**
+     * /bm stadtleben feld … (AK-43). Admin-Prüfung VOR dem Aufruf in BaumeisterCommand.townLife (fail-closed,
+     * TownLifeTest.fieldCommandNeedsAdmin). Gesetzt wird an der Stelle des Admins; von der Konsole mit Welt und Ort.
+     */
+    void fieldCommand(CommandSender s, String[] args) {
+        String verb = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "liste";
+        switch (verb) {
+            case "setzen" -> setField(s, args);
+            case "entfernen" -> {
+                if (args.length < 4) {
+                    Texts.info(s, FIELD_USAGE);
+                    return;
+                }
+                try {
+                    if (!fields.remove(args[3])) {
+                        Texts.info(s, "Kein Feld „" + Texts.clean(args[3], 24) + "“ – /bm stadtleben feld liste.");
+                        return;
+                    }
+                } catch (IOException e) {
+                    LOG.log(java.util.logging.Level.WARNING, "stadtleben | feld_entfernen_fehlgeschlagen", e);
+                    Texts.info(s, "Entfernen fehlgeschlagen: " + Texts.clean(e.getMessage(), 120));
+                    return;
+                }
+                LOG.info(() -> "stadtleben | feld_entfernt | feld=" + Field.key(args[3]) + " von="
+                        + Texts.clean(s.getName(), 16));
+                refreshFieldWork();
+                Texts.info(s, "Feld „" + Field.key(args[3]) + "“ entfernt – dort ändern Bewohner nichts mehr.");
+            }
+            case "liste" -> {
+                if (fields.broken() != null) {
+                    Texts.info(s, "Felddatei unlesbar (" + Texts.clean(fields.broken(), 120)
+                            + ") – keine Feldarbeit, Datei bleibt unverändert.");
+                }
+                List<Field> all = fields.all();
+                Texts.info(s, "Arbeitsfelder: " + all.size() + " von " + Fields.MAX + " · Weltänderung "
+                        + (work.worldChange() ? "an" : "aus (stadtleben.weltänderung)") + " · höchstens "
+                        + work.blocksPerMinute() + " Blöcke je Minute");
+                for (Field f : all) {
+                    Boolean chest = env.fieldChest(env.world(f.world()), f);
+                    Texts.info(s, String.format(Locale.ROOT, "%s: %s %d %d %d, Radius %d · Ablage %s", f.name(),
+                            f.world(), f.x(), f.y(), f.z(), f.radius(), chest == null ? "nicht geladen"
+                                    : chest ? "Kiste" : "keine (Ernte bleibt liegen)"));
+                }
+            }
+            default -> Texts.info(s, FIELD_USAGE);
+        }
+    }
+
+    private void setField(CommandSender s, String[] args) {
+        if (args.length < 5) {
+            Texts.info(s, FIELD_USAGE);
+            return;
+        }
+        int radius;
+        try {
+            radius = Integer.parseInt(args[4]);
+        } catch (NumberFormatException e) {
+            Texts.info(s, "Radius „" + Texts.clean(args[4], 12) + "“ ist keine Zahl. " + FIELD_USAGE);
+            return;
+        }
+        Location at;
+        if (args.length >= 9) {
+            World w = env.world(args[5]);
+            if (w == null) {
+                Texts.info(s, "Welt „" + Texts.clean(args[5], 32) + "“ ist nicht geladen.");
+                return;
+            }
+            try {
+                at = new Location(w, Integer.parseInt(args[6]), Integer.parseInt(args[7]), Integer.parseInt(args[8]));
+            } catch (NumberFormatException e) {
+                Texts.info(s, "x, y und z als ganze Zahlen. " + FIELD_USAGE);
+                return;
+            }
+        } else if (s instanceof Player p) {
+            at = p.getLocation();
+        } else {
+            Texts.info(s, "An der Konsole mit Welt und Ort: " + FIELD_USAGE);
+            return;
+        }
+        UUID owner = s instanceof Player p ? p.getUniqueId() : null;
+        Field f = new Field(Field.key(args[3]), at.getWorld().getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ(),
+                radius, owner);
+        try {
+            String problem = fields.put(f);
+            if (problem != null) {
+                Texts.info(s, problem);
+                return;
+            }
+        } catch (IOException e) {
+            LOG.log(java.util.logging.Level.WARNING, "stadtleben | feld_speichern_fehlgeschlagen | feld="
+                    + f.name(), e);
+            Texts.info(s, "Speichern fehlgeschlagen: " + Texts.clean(e.getMessage(), 120));
+            return;
+        }
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | feld_gesetzt | feld=%s welt=%s x=%d y=%d z=%d "
+                + "radius=%d von=%s", f.name(), f.world(), f.x(), f.y(), f.z(), f.radius(), Texts.clean(s.getName(), 16)));
+        refreshFieldWork();
+        Boolean chest = env.fieldChest(at.getWorld(), f);
+        Texts.info(s, String.format(Locale.ROOT, "Feld „%s“ gesetzt: Mitte %d %d %d, %d×%d Blöcke. Ablage: %s.%s",
+                f.name(), f.x(), f.y(), f.z(), 2 * radius + 1, 2 * radius + 1, Boolean.TRUE.equals(chest)
+                        ? "Kiste an der Mitte" : "keine Kiste bis " + TownWork.CHEST_REACH
+                                + " Blöcke von der Mitte – Ernte bleibt liegen",
+                work.worldChange() ? "" : " Hinweis: stadtleben.weltänderung ist aus – ohne den Schalter ändert "
+                        + "niemand etwas."));
+    }
+
+    /**
+     * Für die Statuszeile: Feldarbeit (Platz und Schritt), Teilziel, Weg ja/nein, Stufe des Feststeckens. Damit lässt
+     * sich ein hängender Bewohner live lesen statt raten (T-035: Holzfäller wackelte 4 min vor einem halben Baum).
+     */
+    private String walkState(Resident r) {
+        StringBuilder s = new StringBuilder();
+        if (r.task != null && r.taskAt != null) {
+            s.append(String.format(Locale.ROOT, " · Aufgabe %s bei %d %d %d (Schritt %d/%d)",
+                    r.task.job().name().toLowerCase(Locale.ROOT), r.taskAt.getBlockX(), r.taskAt.getBlockY(),
+                    r.taskAt.getBlockZ(), r.taskStep[0] + 1, r.task.changes().size()));
+        }
+        if (r.leg != null) {
+            s.append(String.format(Locale.ROOT, " · Teilziel %.1f %.1f %.1f · Weg %s · Stufe %d", r.leg[0], r.leg[1],
+                    r.leg[2], r.route.hasPath() ? "ja" : "nein", r.unstuck.level()));
+        }
+        return s.toString();
     }
 
     /** Messung neu beginnen (/bm stadtleben messung), für die Live-Probe mit 0, 4 und 12 Bewohnern. */
@@ -1743,6 +2784,21 @@ final class TownLife implements Listener {
         cost.clear();
         worstNanos = 0;
         worstCause = "";
+        runTicks = 0;
+        runIdle = 0;
+        runTeleports = 0;
+        java.util.Arrays.fill(unstuckCount, 0);
+    }
+
+    /** Statuszeile der Laufmessung; auch im Log (forget), damit die Live-Probe sie ohne RCON-Abfrage findet. */
+    String runLine() {
+        double hours = runTicks / 72_000.0;
+        return String.format(Locale.GERMANY, "Laufen (seit Messung): %d Bewohner-Takte · steht ohne Grund %.1f %% · "
+                + "Teleports %d · je Bewohner-Stunde %.1f · Feststecken: neu geplant %d, ausgewichen %d, Umweg %d, "
+                + "Pause %d", runTicks, runTicks == 0 ? 0.0 : 100.0 * runIdle / runTicks, runTeleports,
+                hours == 0 ? 0.0 : runTeleports / hours, unstuckCount[Unstuck.Action.REPLAN.ordinal()],
+                unstuckCount[Unstuck.Action.SIDESTEP.ordinal()], unstuckCount[Unstuck.Action.DETOUR.ordinal()],
+                unstuckCount[Unstuck.Action.PAUSE.ordinal()]);
     }
 
     String lastGone() {
@@ -1755,6 +2811,11 @@ final class TownLife implements Listener {
 
     int count() {
         return residents.size();
+    }
+
+    /** Die Bewohner als Kopie (Tests: Gruppen und Ziele prüfen, ohne den Takt zu stören). */
+    List<Resident> residentsForTest() {
+        return List.copyOf(residents);
     }
 
     int spawned() {

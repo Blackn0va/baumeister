@@ -567,42 +567,7 @@ class TownLifeTest {
         }
     }
 
-    /**
-     * walk(): Ein Bewohner, der auf der Stelle wackelt (wie Greta auf Paper), wird über den echten Takt aufs Teilziel
-     * teleportiert. CompanionWalk sieht im Wackeln Bewegung – teleportieren kann hier nur Progress (Gegenprobe
-     * 2026-11-22: ohne „stuck ||“ blieb die Suite grün).
-     */
-    @Test
-    void wobblingResidentIsTeleportedByTheRealTick() {
-        FakeEnv env = new FakeEnv();
-        List<Player> players = new ArrayList<>();
-        World w = world(players, true);
-        Player p = player(new Location(w, 0.5, 64, 10.5), new CopyOnWriteArrayList<>());
-        players.add(p);
-        env.players.add(p);
-        TownLife life = new TownLife(null, env, MARKER);
-        FakeMannequin m = new FakeMannequin(new Location(w, 0.5, 64, 0.5), true);
-        env.entities.put(m.id, m.proxy);
-        TownLife.Resident r = life.adopt(LOTTE, m.proxy, m.at);
-        r.work = new Location(w, 20.5, 64, 0.5);
-        // Anzahl 1: kein zweiter Bewohner, der Platz suchen müsste (surfaceNear liest Bukkit-Tags).
-        life.configure(new TownSettings(true, 1, 45_000), null);
-        life.hostResult(true);
-        int at = -1;
-        for (int t = 0; t < 200 && at < 0; t++) {
-            m.at = new Location(w, 0.5 + (t % 2 == 0 ? 0.3 : -0.3), 64 + (t % 3 == 0 ? 0.4 : 0), 0.5);
-            life.step();
-            if (m.calls.stream().anyMatch(c -> c.startsWith("teleport "))) {
-                at = t;
-            }
-        }
-        assertTrue(at >= 0, "nie teleportiert, Aufrufe: " + m.calls.stream().distinct().toList());
-        assertTrue(at <= com.blackn0va.baumeister.town.Progress.STUCK_TICKS + 10, "erst nach " + at + " Ticks");
-        // Nicht CompanionWalk (wäre nach 40 Ticks Stillstand): Die Puppe wackelt, das zählt dort als Bewegung.
-        assertTrue(at >= com.blackn0va.baumeister.town.Progress.STUCK_TICKS - 5, "schon nach " + at + " Ticks");
-        assertEquals(1, r.teleports);
-        assertEquals(1, life.count(), "der Bewohner bleibt");
-    }
+    // walk() beim Feststecken: TownLifeWalkTest (Vertrag v013 – Teleport nur noch zuletzt und ungesehen).
 
     /** onChat → Modell: Der Name des Spielers geht nicht mit (N1), auch nicht angehängt. */
     @Test
