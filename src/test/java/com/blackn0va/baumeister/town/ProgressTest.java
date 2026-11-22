@@ -23,6 +23,26 @@ class ProgressTest {
 
     private static final double[] GOAL = {7, 93, -20};
 
+    /**
+     * Weg da, Weg weg, Weg da (Suche am Rand ihrer Reichweite): Das Maß wechselt nur einmal auf den Restweg. Vorher
+     * jedes Mal – dann zählte das Wackeln nach jedem Wechsel als Annäherung, und er steckte nie fest (live T-035).
+     */
+    @Test
+    void flickeringPathDoesNotHideBeingStuck() {
+        Progress p = new Progress();
+        p.reset(0);
+        int at = -1;
+        for (int t = 0; t <= 400 && at < 0; t++) {
+            double wobble = t % 2 == 0 ? 0.3 : -0.3;
+            double rest = t % 40 < 20 ? Double.NaN : 10.0 + wobble;
+            if (p.stuck(rest, 8.0 + wobble, t)) {
+                at = t;
+            }
+        }
+        assertTrue(at >= 0, "nie festgesteckt");
+        assertTrue(at <= 3 * Progress.STUCK_TICKS, "erst nach " + at + " Takten");
+    }
+
     @Test
     void wobblingInPlaceIsStuckAfterThreeSeconds() {
         Progress p = new Progress();

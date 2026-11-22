@@ -75,6 +75,31 @@ public final class Route {
         return new double[] {gx, gy, gz};
     }
 
+    /**
+     * Restweg entlang des geplanten Wegs ab (x, y, z): Abstand zum nächsten Wegpunkt plus die Strecke der übrigen;
+     * NaN ohne Weg. Fortschritt (Progress) misst TownLife daran statt an der Luftlinie zum Teilziel – vorher galt ein
+     * Bewohner, der um eine U-förmige Mauer herumging, nach 3 s als festgesteckt, weil die Luftlinie wuchs.
+     */
+    public double remaining(double x, double y, double z) {
+        if (path == null || path.size() < 2 || index >= path.size() - 1) {
+            return Double.NaN;
+        }
+        CompanionPath.Node n = path.get(index);
+        double sum = Math.hypot(Math.hypot(n.x() + 0.5 - x, n.z() + 0.5 - z), n.y() - y);
+        for (int i = index + 1; i < path.size(); i++) {
+            CompanionPath.Node a = path.get(i - 1);
+            CompanionPath.Node b = path.get(i);
+            sum += Math.sqrt((a.x() - b.x()) * (a.x() - b.x()) + (a.y() - b.y()) * (a.y() - b.y())
+                    + (a.z() - b.z()) * (a.z() - b.z()));
+        }
+        return sum;
+    }
+
+    /** Hat die letzte Suche einen Weg gefunden (mindestens zwei Punkte)? */
+    public boolean hasPath() {
+        return path != null && path.size() >= 2;
+    }
+
     /** Nach Teleport oder Zielwechsel: neu planen. */
     public void reset() {
         path = null;

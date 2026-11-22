@@ -169,7 +169,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> QUEUE_VERBS = List.of("abbrechen");
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
-    private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung", "vergessen");
+    private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung", "vergessen", "feld");
+    private static final List<String> FIELD_VERBS = List.of("setzen", "entfernen", "liste");
     private static final List<String> MODULE_VERBS = List.of("liste", "menü", "an", "aus");
     private static final List<String> MODULE_VIEW_VERBS = List.of("liste", "menü");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
@@ -586,7 +587,9 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             out.add(bm + " stadtleben [status] – Bewohner in deiner Nähe (nur bei laufender KI und tagsüber); "
                     + "ansprechen im Chat mit ihrem Namen, z. B. \"Lotte, wie geht's?\""
                     + (has.test("baumeister.admin") ? " · stadtleben an|aus|messung · stadtleben vergessen "
-                            + "[bewohner] – Gedächtnis der Bewohner löschen" : ""));
+                            + "[bewohner] – Gedächtnis der Bewohner löschen · stadtleben feld setzen <name> "
+                            + "<radius>|entfernen <name>|liste – Arbeitsfeld, in dem Bewohner ernten und Bäume fällen "
+                            + "(nur mit stadtleben.weltänderung)" : ""));
         }
         if (has.test(TRAVEL)) {
             out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
@@ -736,7 +739,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         // Rechte zuerst (ASVS V4.1.1): Wer die Prüfung entfernt, lässt jeden mit baumeister.bauen das Stadtleben
         // schalten – TownLifeTest.switchNeedsAdmin prüft das am Zustand eines echten TownLife.
         boolean adminVerb = verb.equals("an") || verb.equals("aus") || verb.equals("messung")
-                || verb.equals("vergessen");
+                || verb.equals("vergessen") || verb.equals("feld");
         if (adminVerb && !requireAdmin(sender)) {
             return;
         }
@@ -763,7 +766,9 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                                 + " Erinnerungen gelöscht.");
             }
             case "status" -> town.status(sender, sender.hasPermission("baumeister.admin"));
-            default -> Texts.info(sender, "/bm stadtleben [an|aus|status|messung|vergessen [bewohner]]");
+            // Arbeitsfelder (2026-11-22, Vertrag v013, AK-43): nur Admins, geprüft oben mit adminVerb.
+            case "feld" -> town.fieldCommand(sender, args);
+            default -> Texts.info(sender, "/bm stadtleben [an|aus|status|messung|vergessen [bewohner]|feld]");
         }
     }
 
@@ -1348,6 +1353,14 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             return plugin.portals().targets().stream().filter(t -> t.toLowerCase(Locale.ROOT).startsWith(typed))
                     .toList();
         }
+        // Feldnamen kennt nur das laufende Stadtleben – wie die Portalziele hier statt in complete().
+        if (args.length == 4 && args[0].equalsIgnoreCase("stadtleben") && args[1].equalsIgnoreCase("feld")
+                && args[2].equalsIgnoreCase("entfernen") && sender.hasPermission("baumeister.admin")
+                && plugin.town() != null) {
+            String typed = args[3].toLowerCase(Locale.ROOT);
+            return plugin.town().fields().all().stream().map(com.blackn0va.baumeister.town.work.Field::name)
+                    .filter(n -> n.startsWith(typed)).toList();
+        }
         List<String> modules = plugin.service().modules().all().stream().map(ModuleLibrary.Module::name).toList();
         List<String> worlds = Bukkit.getWorlds().stream().map(World::getName).toList();
         List<String> players = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
@@ -1417,6 +1430,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     : args.length == 3 && admin && args[1].equalsIgnoreCase("vergessen")
                     ? com.blackn0va.baumeister.town.Roster.all().stream().map(
                             com.blackn0va.baumeister.town.Roster.Person::name).toList()
+                    : args.length == 3 && admin && args[1].equalsIgnoreCase("feld") ? FIELD_VERBS
+                    : args.length == 4 && admin && args[1].equalsIgnoreCase("feld")
+                            && args[2].equalsIgnoreCase("setzen") ? List.of("<name>")
+                    : args.length == 5 && admin && args[1].equalsIgnoreCase("feld")
+                            && args[2].equalsIgnoreCase("setzen") ? List.of("8", "12", "16")
                     : List.of();
             // Schalt-Wörter und Modul-ids nur für Admins – dieselbe Grenze wie ModuleSwitch, hier nur ausgeblendet.
             case "module" -> args.length == 2 ? (admin ? MODULE_VERBS : MODULE_VIEW_VERBS)
