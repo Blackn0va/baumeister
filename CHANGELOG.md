@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Geändert
+- **Bewohner arbeiten an echten Orten:** Im Stadtleben gehen Bewohner zur Arbeit an vorhandene EssentialsX-Warps,
+  Baumeister-Warps, Reisepunkte (`/bm orte`) oder vor fertige Bauten in der Nähe der Spieler, höchstens zwei je Ort;
+  passt keiner, bleibt es beim Platz nahe der Wohnung. `/bm stadtleben status` zeigt den Arbeitsort jedes Bewohners.
+  Gemessen mit 12 Bewohnern auf Spigot 1.21.11: 0,10 ms je Tick im Mittel, während eines Baus mit Lag-Wache 0,04 ms.
 - **Schlankerer KI-Prompt:** Modulliste und Maschinenregeln gehen nur noch bei Technik-Aufträgen mit (Maschine,
   Modulname, Wörter wie Kolben, Farm, Sensor, Zugbrücke); ein schlichtes Haus bekommt sie nicht mehr. Gemessen mit
   PlanBench auf dem lokalen Modell: 33 % weniger Tokens, 37 % weniger Rechenzeit, keine abgeschnittenen Antworten

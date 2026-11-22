@@ -1027,6 +1027,13 @@ Stand: 2026-11-22
   Feuer entzündet axis=z, `/bm portal` 12/12 axis=z, ein Schild.
 - `/bm portal alle` (2026-11-16, vera-probe, Portalhalle mit 7 Rahmen, einer verbunden, Ziele nur Nether/End):
   2 verbunden, 1 behalten, 4 ohne Ziel gemeldet. PortalScan prüft nur die untere linke Ecke jeder Öffnung.
+- Stadtleben-Arbeitsorte (T-023, 2026-11-22, Spigot 1.21.11, 12 Bewohner, Stub-Host): Mittag ohne Bau 0,103 ms je Tick
+  (p99 0,780, 36 Wegsuchen), mit Bau + Lag-Wache 0,040 (p99 0,290, 13), danach 0,066; Arbeit ohne Bau 0,093, mit 0,072.
+  Live `arbeitsort | quelle=warp` (EssentialsX) und `quelle=reisepunkt`. EssentialsX nur per Reflexion, 60 s gepuffert –
+  Falle: eine kaputte Warp-Datei (ohne `world`) schreibt bei jeder getWarp-Abfrage einen Stacktrace. Ortsquellen und
+  chooseWork fangen RuntimeException (fail-open, Arbeitsort ist kein Schutz); wer den catch entfernt, lässt einen
+  Bewohner ohne Arbeitsort verfolgt und die Ausnahme beim Scheduler.
+
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1536,9 +1543,10 @@ Stand: 2026-11-22
 
 Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 ## Offen
-- Stadtleben v1 (T-020): auf dev01 aus, Nutzer schaltet selbst. Offen: Takt auf dem Celeron, Drosselung bei Bau/
-  Lag-Wache live, sichtbare Tätigkeiten im echten Client, Arbeitsorte = Plätze nahe der Wohnung (keine Warps/Gebäude),
-  BukkitEnv-Einzeiler und Listener-Anmeldung ohne Test. v2 (Händler, Fahrzeuge, Polizei, Bauen/Ernten mit Rechten)
+- Stadtleben v1 (T-020): auf dev01 aus, Nutzer schaltet selbst. Offen: Takt auf dem Celeron,
+  sichtbare Tätigkeiten im echten Client, Arbeitsort an einem Bau nur per Unit-Test (live nur Warp und
+  Reisepunkt), Paper mit EssentialsX nicht gemessen, Stehplatz auf einem Dach ≤ 12 über einem Warp nicht abgefangen,
+  Listener-Test liest nur den Quelltext von onEnable (T-023). v2 (Händler, Fahrzeuge, Polizei, Bauen/Ernten mit Rechten)
   erst nach Rückmeldung des Nutzers zu v1.
 - Tunnel gerade: vom Nutzer zu bestätigen – Röhre statt Halt über Tal/Wasser und Durchgraben von Mineschächten
   (beides ohne Rückfrage entschieden). Nicht im Spiel geprüft: Mitbauen in die Röhre (Ansage am ersten Fenster),
