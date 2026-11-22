@@ -1,5 +1,7 @@
 package com.blackn0va.baumeister;
 
+import com.blackn0va.baumeister.dataset.PlanJudge;
+import com.blackn0va.baumeister.plan.BlockCatalog;
 import com.blackn0va.baumeister.plan.BuildPlan;
 import com.blackn0va.baumeister.plan.CompiledBuild;
 import com.blackn0va.baumeister.plan.Machines;
@@ -30,6 +32,21 @@ import java.util.Map;
  */
 public final class LlmProbe {
 
+    /**
+     * Blockkatalog wie am Server: PlanJudge.SERVER_BLOCKS (Freigabeliste der Stufen, allIds für ItemNames). Vorher
+     * Material.getMaterial(id) != null – der Enum-Name kennt auch jeden Gegenstand, also baute die Probe redstone,
+     * string oder wheat_seeds als eigenen Block, wo der Server über BlockRules.resolve auflöst (Alias, ItemNames,
+     * Ersatzblock mit Warnung). PlanJudge war seit T-019 (2026-11-21) umgestellt, die Probe nicht: Sie zeigte dann
+     * Pläne ohne Warnung, die das Plugin nur mit Warnung baut. Wer das zurückdreht, misst wieder einen anderen
+     * Compiler als den des Servers (Gegenprobe LlmProbeTest).
+     */
+    static final BlockCatalog CATALOG = PlanJudge.SERVER_BLOCKS;
+
+    /** Compiler der Probe: Katalog wie am Server, Limits wie die Config-Vorgaben (150 000 / 192). */
+    static PlanCompiler compiler(Machines machines) {
+        return new PlanCompiler(CATALOG, "stone", new PlanCompiler.Limits(150_000, 192), machines);
+    }
+
     public static void main(String[] args) throws Exception {
         String url = "http://127.0.0.1:8080/v1/chat/completions";
         int first = 0;
@@ -46,10 +63,7 @@ public final class LlmProbe {
         // -Dmodell=qwen2.5:7b für Ollama (llm.modell im Plugin); ohne bleibt es „lokal“ wie für llama-server.
         LlmClient llm = new LlmClient(s, schema).withModel(System.getProperty("modell", "lokal"));
         Machines machines = new Machines();
-        // Material.isBlock() braucht ab 1.21 die Server-Registry; ohne Server reicht hier der Enum-Name.
-        PlanCompiler compiler = new PlanCompiler(
-                id -> org.bukkit.Material.getMaterial(id.toUpperCase(java.util.Locale.ROOT)) != null,
-                "stone", new PlanCompiler.Limits(150_000, 192), machines);
+        PlanCompiler compiler = compiler(machines);
         // Leerer Bauplatz (nur Luft) und dieselbe Nachricht wie im Plugin (BuildService.userMessage samt
         // Maschinenbibliothek und REQUEST FACTS). Vorher schickte die Probe nur „Bauauftrag: …“ und maß damit ein
         // anderes Gespräch als das, das der Server führt.
