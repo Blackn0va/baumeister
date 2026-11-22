@@ -14,6 +14,7 @@ import com.blackn0va.baumeister.town.TownLines;
 import com.blackn0va.baumeister.town.TownSettings;
 import com.blackn0va.baumeister.town.TownTalk;
 import com.blackn0va.baumeister.town.WorkSpots;
+import com.blackn0va.baumeister.town.memory.TownVoice;
 import com.blackn0va.baumeister.town.presence.Gestures;
 import com.blackn0va.baumeister.town.presence.Presence;
 import com.google.gson.JsonObject;
@@ -125,6 +126,8 @@ final class TownLife implements Listener {
     private int playerCursor;
     private int refused;
     private int spawned;
+    /** Gedächtnis, Gespräch, Pseudonyme und feste Sätze (Vertrag v013, AK-41); Logik in town/memory/TownVoice. */
+    private TownVoice voice = TownVoice.inMemory();
 
     /** Ein Bewohner im Spiel. */
     static final class Resident {
@@ -217,6 +220,11 @@ final class TownLife implements Listener {
 
         /** Vorhandene Orte, an denen Bewohner arbeiten können (Warps, Reisepunkte, Bauten), noch ungefiltert. */
         List<WorkSpots.Spot> workSpots();
+
+        /** Wo der Baumeister gerade baut (Ort des NPC), null = kein Bau. Für die Lage im Prompt (AK-41). */
+        default Location buildSite() {
+            return null;
+        }
     }
 
     /**
@@ -254,8 +262,19 @@ final class TownLife implements Listener {
         /** Ordner des Baubuchs (BuildService: plugins/Baumeister/bauten). */
         Path ledgerDir();
 
+        /** Ort des Baumeisters, solange er baut; sonst null. */
+        default Location buildSite() {
+            return null;
+        }
+
         static Parts of(BaumeisterPlugin p) {
             return new Parts() {
+                @Override
+                public Location buildSite() {
+                    boolean busy = p.service() != null && p.service().busy();
+                    return busy && p.npc() != null && p.npc().get() != null ? p.npc().get().getLocation() : null;
+                }
+
                 @Override
                 public boolean planning() {
                     return p.service() != null && p.service().planning();
@@ -383,6 +402,11 @@ final class TownLife implements Listener {
         @Override
         public boolean slow() {
             return parts.building() || parts.lagActive() > 0;
+        }
+
+        @Override
+        public Location buildSite() {
+            return parts.buildSite();
         }
 
         @Override
@@ -649,6 +673,38 @@ final class TownLife implements Listener {
         this.plugin = plugin;
         this.env = env;
         this.marker = marker;
+        if (plugin != null) {
+            voice = TownVoice.open(plugin.getDataFolder().toPath().resolve("stadtleben"));
+        }
+    }
+
+    /** /bm stadtleben vergessen [bewohner] (Admin-Prüfung im Befehl); null = alle. -1 = Bewohner unbekannt. */
+    int forgetMemory(String resident) {
+        return voice.forget(resident);
+    }
+
+    TownVoice voice() {
+        return voice;
+    }
+
+    /** Alle Bewohner mit Ort – für Hörweite in Gespräch und Lage. */
+    private Map<Roster.Person, Location> town() {
+        Map<Roster.Person, Location> out = new HashMap<>();
+        for (Resident o : residents) {
+            if (env.entity(o.entity) instanceof Mannequin om) {
+                out.put(o.person, om.getLocation());
+            }
+        }
+        return out;
+    }
+
+    private TownTalk.Situation situation(Resident r, Mannequin m, long now) {
+        return voice.situation(r.person, m.getLocation(), r.goal == DayPlan.Goal.WORK && r.reached, env.players(),
+                town(), env.buildSite(), now);
+    }
+
+    private String fixed(Resident r, Mannequin m, TownLines.Occasion o) {
+        return voice.fixed(o, r.person, m.getWorld(), ThreadLocalRandom.current().nextInt(1 << 20));
     }
 
     /**
@@ -702,6 +758,7 @@ final class TownLife implements Listener {
             task = null;
         }
         removeAll("abschalten");
+        voice.save();
     }
 
     boolean enabled() {
@@ -846,6 +903,9 @@ final class TownLife implements Listener {
         }
         if (tick % 20 == 0) {
             meetings(now);
+        }
+        if (tick % 1200 == 0 && voice.memory().dirty()) {
+            voice.save();
         }
         spawnIfDue();
     }
@@ -1263,7 +1323,8 @@ final class TownLife implements Listener {
         r.greeted.put(p.getUniqueId(), now);
         BuilderNpc.lookAt(m, p.getEyeLocation());
         m.swingMainHand();
-        speak(r, m, TownLines.greet(ThreadLocalRandom.current().nextInt(1000)));
+        voice.passedBy(r.person, p, now);
+        speak(r, m, fixed(r, m, TownLines.Occasion.GREET));
     }
 
     // ---------------------------------------------------------------- Reden
@@ -1292,11 +1353,14 @@ final class TownLife implements Listener {
                 b.busyUntil = now + 8_000;
                 BuilderNpc.lookAt(ma, mb.getEyeLocation());
                 BuilderNpc.lookAt(mb, ma.getEyeLocation());
-                int pick = ThreadLocalRandom.current().nextInt(1000);
-                ask(a, TownTalk.meeting(b.person), "treffen", TownLines.meet(pick), () -> {
+                voice.met(a.person, b.person, now);
+                // Vorher antwortete b immer mit einem festen Gruß, egal was a sagte. Jetzt fragt b die KI mit a's Satz
+                // im Gespräch (TownVoice) – das Budget entscheidet wie bei jeder Anfrage, sonst ein fester Satz.
+                ask(a, TownTalk.meeting(b.person), "treffen", fixed(a, ma, TownLines.Occasion.MEET), () -> {
                     Entity later = env.entity(b.entity);
-                    if (later instanceof Mannequin lb && lb.isValid()) {
-                        speak(b, lb, TownLines.greet(pick + 1));
+                    if (later instanceof Mannequin lb && lb.isValid() && residents.contains(b)) {
+                        ask(b, TownTalk.meetingReply(a.person), "treffen_antwort",
+                                fixed(b, lb, TownLines.Occasion.MEET_REPLY), null);
                     }
                 });
                 return;
@@ -1349,13 +1413,18 @@ final class TownLife implements Listener {
             r.busyUntil = now + 10_000;
             stand(m);
             BuilderNpc.lookAt(m, p.getEyeLocation());
-            String heard = TownTalk.withoutName(message, r.person.name());
-            int pick = ThreadLocalRandom.current().nextInt(1000);
+            // Spielernamen im Satz (auch der eigene) werden zu Pseudonymen, bevor irgendetwas damit passiert.
+            String heard = voice.scrub(TownTalk.withoutName(message, r.person.name()), env.players());
             if (heard.isBlank()) {
-                speak(r, m, TownLines.greet(pick) + " Ich bin " + r.person.name() + ", " + r.person.job() + ".");
+                speak(r, m, fixed(r, m, TownLines.Occasion.GREET) + " Ich bin " + r.person.name() + ", "
+                        + r.person.job() + ".");
                 return true;
             }
-            ask(r, TownTalk.fromPlayer(heard), "spieler", TownLines.reply(r.person, pick), null);
+            // Lage vor dem Satz: Das Gespräch im Prompt endet mit dem Satz davor, der neue steht in fromPlayer.
+            TownTalk.Situation s = situation(r, m, now);
+            voice.heard(r.person, p, heard, m.getLocation(), town(), now);
+            ask(r, s, TownTalk.fromPlayer(voice.alias(p), heard), "spieler", fixed(r, m,
+                    TownLines.occasionFor(heard)), null);
             return true;
         }
         return false;
@@ -1366,6 +1435,11 @@ final class TownLife implements Listener {
      * Satz der feste Satz fallback. after läuft nach dem Sprechen (Antwort des Gegenübers).
      */
     private void ask(Resident r, String user, String reason, String fallback, Runnable after) {
+        ask(r, env.entity(r.entity) instanceof Mannequin m ? situation(r, m, System.currentTimeMillis())
+                : TownTalk.Situation.basic(DayPlan.Phase.WORK), user, reason, fallback, after);
+    }
+
+    private void ask(Resident r, TownTalk.Situation s, String user, String reason, String fallback, Runnable after) {
         long now = System.currentTimeMillis();
         boolean building = env.buildPlanning();
         boolean vera = env.companionThinking();
@@ -1394,9 +1468,8 @@ final class TownLife implements Listener {
         if (e instanceof Mannequin m) {
             MannequinCompat.description(m, r.person.job() + " · überlegt …");
         }
-        DayPlan.Phase phase = DayPlan.phase(e != null ? e.getWorld().getTime() : 0);
-        List<JsonObject> messages = List.of(LlmClient.message("system", TownTalk.system(r.person, phase)),
-                LlmClient.message("user", user));
+        List<JsonObject> messages = List.of(LlmClient.message("system", TownTalk.system(r.person, s)),
+                LlmClient.message("user", TownTalk.user(s, user)));
         long t0 = System.nanoTime();
         // Kein orTimeout mehr: Das beendete nur das abhängige Future, die HTTP-Anfrage rechnete am Host weiter, und
         // das Budget gab schon frei (Paper-Probe 2026-11-21: 20,04 s Plugin, llama bis 21,07 s). Jetzt hat der Client
@@ -1454,6 +1527,7 @@ final class TownLife implements Listener {
             return;
         }
         r.lastSpoke = System.currentTimeMillis();
+        voice.said(r.person, clean, m.getLocation(), town(), r.lastSpoke);
         Location at = m.getLocation();
         // Spielerformat „<Lotte> …“ (T-033); vorher grün „[Lotte, Bäckerin] …“.
         String line = Presence.chatLine(r.person.name(), clean);
@@ -1497,6 +1571,7 @@ final class TownLife implements Listener {
         if (presence != null) {
             presence.left(r.person.name());
         }
+        voice.left(r.person);
         lastGone = reason;
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | weg | bewohner=%s grund=%s strecke=%.1f ziele=%d "
                 + "teleports=%d wegsuchen=%d minuten=%.1f", TownTalk.key(r.person.name()), reason, r.walked,

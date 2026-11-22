@@ -136,8 +136,8 @@ class BaumeisterCommandTest {
     void prefixFilterApplies() {
         assertEquals(List.of("stop", "status", "stadtleben", "stadt", "stadtwelt"), admin("st"));
         assertEquals(List.of("stop", "status", "stadtleben"), player("st"));
-        // Stadtleben (2026-11-21): schalten nur Admins – Spieler sehen nur status.
-        assertEquals(List.of("an", "aus", "status", "messung"), admin("stadtleben", ""));
+        // Stadtleben (2026-11-21): schalten nur Admins – Spieler sehen nur status. vergessen (v013, AK-41) ebenso.
+        assertEquals(List.of("an", "aus", "status", "messung", "vergessen"), admin("stadtleben", ""));
         assertEquals(List.of("status"), player("stadtleben", ""));
         assertEquals(List.of("stop", "status", "stadtleben", "stadt", "stadtwelt"), admin("ST"));
         assertEquals(List.of("abbrechen"), admin("stadt", "ab"));

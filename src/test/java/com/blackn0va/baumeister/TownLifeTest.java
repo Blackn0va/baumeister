@@ -624,6 +624,87 @@ class TownLifeTest {
         }
     }
 
+    /**
+     * v013 (AK-41): Zwei Spieler reden nacheinander mit Lotte. Die zweite Anfrage trägt das Gespräch (ihre eigene
+     * Antwort und die Zeile des ersten Spielers) und das Gedächtnis – aber in keiner Anfrage steht ein Spielername,
+     * auch nicht, wenn ein Spieler den Namen eines anderen in den Chat schreibt.
+     */
+    @Test
+    void secondRequestCarriesConversationAndMemoryButNoPlayerName() throws Exception {
+        List<String> bodies = new CopyOnWriteArrayList<>();
+        HttpServer server = host("{\"say\":\"Heute gibt es Mohnbrötchen!\",\"actions\":[]}", 0, bodies);
+        try {
+            Town t = new Town(5);
+            Player first = player(t.probant.getLocation(), new CopyOnWriteArrayList<>(), "Zxqvbnm7");
+            Player second = player(t.probant.getLocation(), new CopyOnWriteArrayList<>(), "Qwrtzu88");
+            for (Player p : List.of(first, second)) {
+                t.worldPlayers.add(p);
+                t.env.players.add(p);
+            }
+            t.life.configure(new TownSettings(true, 1, 0), client(server.getAddress().getPort(),
+                    Duration.ofSeconds(5)));
+            assertTrue(t.life.onChat(first, "Lotte, ich bin Zxqvbnm7 und hätte gern Brot"));
+            awaitIdle(t, bodies, 1);
+            assertTrue(t.life.onChat(second, "Lotte, was hat Zxqvbnm7 gesagt? Qwrtzu88 will das wissen"));
+            awaitIdle(t, bodies, 2);
+            for (String b : bodies) {
+                assertFalse(b.contains("Zxqvbnm7") || b.contains("Qwrtzu88"), "Spielername an die KI: " + b);
+            }
+            String alias = t.life.voice().alias(first);
+            String b2 = bodies.get(1);
+            assertTrue(b2.contains("Bisher im Gespräch"), b2);
+            assertTrue(b2.contains("Lotte: «Heute gibt es Mohnbrötchen!»"), "eigene Antwort fehlt: " + b2);
+            assertTrue(b2.contains(alias + ": «ich bin " + alias + " und hätte gern Brot»"), b2);
+            assertTrue(b2.contains(alias + " fragte mich nach Brot."), "Gedächtnis fehlt: " + b2);
+            assertTrue(b2.contains("Dabei: "), "Lage fehlt: " + b2);
+            assertFalse(bodies.get(0).contains("Bisher im Gespräch"), "erste Anfrage hat schon ein Gespräch");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** /bm stadtleben vergessen: nur Admins, mit Bewohnername oder für alle; Tab nennt Bewohner nur Admins. */
+    @Test
+    void forgetNeedsAdmin() {
+        Town t = new Town(5);
+        t.life.configure(on(), null);
+        assertTrue(t.life.onChat(t.probant, "Lotte, hast du Brot?"));
+        int before = t.life.voice().memory().size();
+        assertTrue(before >= 1, "nichts gemerkt");
+        List<String> said = new ArrayList<>();
+        BaumeisterCommand.townLife(sender("baumeister.bauen", said), new String[] {"stadtleben", "vergessen"}, t.life);
+        assertEquals(before, t.life.voice().memory().size(), "ohne Admin vergessen");
+        assertTrue(said.getFirst().contains("baumeister.admin"), said.toString());
+        BaumeisterCommand.townLife(sender("baumeister.admin", said), new String[] {"stadtleben", "vergessen",
+            "Niemand"}, t.life);
+        assertTrue(said.getLast().contains("Keinen Bewohner"), said.toString());
+        assertEquals(before, t.life.voice().memory().size());
+        BaumeisterCommand.townLife(sender("baumeister.admin", said), new String[] {"stadtleben", "vergessen",
+            "lotte"}, t.life);
+        assertEquals(0, t.life.voice().memory().size());
+        assertTrue(said.getLast().contains("Erinnerungen gelöscht"), said.toString());
+        List<String> admin = BaumeisterCommand.complete(new String[] {"stadtleben", "vergessen", ""}, true, List.of(),
+                List.of(), List.of());
+        assertTrue(admin.contains("Lotte"), admin.toString());
+        assertTrue(BaumeisterCommand.complete(new String[] {"stadtleben", "vergessen", ""}, false, List.of(),
+                List.of(), List.of()).isEmpty());
+        assertTrue(BaumeisterCommand.complete(new String[] {"stadtleben", ""}, true, List.of(), List.of(), List.of())
+                .contains("vergessen"));
+    }
+
+    /** Wartet, bis n Anfragen am Host waren und die letzte beantwortet ist (Budget frei). */
+    private static void awaitIdle(Town t, List<String> bodies, int n) throws InterruptedException {
+        long end = System.currentTimeMillis() + 10_000;
+        // Auch auf den gesprochenen Satz warten: budget.end kommt im Rückruf vor speak, und erst speak trägt die
+        // Antwort ins Gespräch ein.
+        while ((bodies.size() < n || t.life.budget().inFlight() || t.heard.size() < n)
+                && System.currentTimeMillis() < end) {
+            Thread.sleep(20);
+        }
+        assertEquals(n, bodies.size(), "Anfragen am Host");
+        assertFalse(t.life.budget().inFlight());
+    }
+
     /** Der Client, den BaumeisterPlugin für die Bewohner erzeugt, hat die 20-s-Frist – nicht llm.timeout-sekunden. */
     @Test
     void residentClientHasTheShortDeadline() {

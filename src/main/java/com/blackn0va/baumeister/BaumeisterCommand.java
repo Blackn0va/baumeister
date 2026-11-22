@@ -169,7 +169,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> QUEUE_VERBS = List.of("abbrechen");
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
-    private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung");
+    private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung", "vergessen");
     private static final List<String> MODULE_VERBS = List.of("liste", "menü", "an", "aus");
     private static final List<String> MODULE_VIEW_VERBS = List.of("liste", "menü");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
@@ -585,7 +585,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     + "Bau; oder im Auftrag \"… mit 4 Helfern\", im Chat \"mehr helfer\"");
             out.add(bm + " stadtleben [status] – Bewohner in deiner Nähe (nur bei laufender KI und tagsüber); "
                     + "ansprechen im Chat mit ihrem Namen, z. B. \"Lotte, wie geht's?\""
-                    + (has.test("baumeister.admin") ? " · stadtleben an|aus|messung" : ""));
+                    + (has.test("baumeister.admin") ? " · stadtleben an|aus|messung · stadtleben vergessen "
+                            + "[bewohner] – Gedächtnis der Bewohner löschen" : ""));
         }
         if (has.test(TRAVEL)) {
             out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
@@ -726,14 +727,16 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * /bm stadtleben [an|aus|status|messung]. Schalten und Messung zurücksetzen nur Admins (fail-closed über
-     * requireAdmin, ASVS V4.1.1): Der Modus belegt Takt und den KI-Host, den Bau und Vera mitbenutzen.
+     * /bm stadtleben [an|aus|status|messung|vergessen [bewohner]]. Schalten, Messung zurücksetzen und Vergessen nur
+     * Admins (fail-closed über requireAdmin, ASVS V4.1.1): Der Modus belegt Takt und den KI-Host, den Bau und Vera
+     * mitbenutzen, und das Gedächtnis betrifft alle Spieler – kein Spieler löscht fremde Erinnerungen.
      */
     static void townLife(CommandSender sender, String[] args, TownLife town) {
         String verb = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "status";
         // Rechte zuerst (ASVS V4.1.1): Wer die Prüfung entfernt, lässt jeden mit baumeister.bauen das Stadtleben
         // schalten – TownLifeTest.switchNeedsAdmin prüft das am Zustand eines echten TownLife.
-        boolean adminVerb = verb.equals("an") || verb.equals("aus") || verb.equals("messung");
+        boolean adminVerb = verb.equals("an") || verb.equals("aus") || verb.equals("messung")
+                || verb.equals("vergessen");
         if (adminVerb && !requireAdmin(sender)) {
             return;
         }
@@ -752,8 +755,15 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                 town.resetCost();
                 Texts.info(sender, "Taktmessung des Stadtlebens neu begonnen.");
             }
+            case "vergessen" -> {
+                String who = args.length > 2 ? args[2] : null;
+                int n = town.forgetMemory(who);
+                Texts.info(sender, n < 0 ? "Keinen Bewohner „" + Texts.clean(who, 32) + "“ gefunden."
+                        : (who == null ? "Alle Bewohner" : Texts.clean(who, 32)) + " vergessen: " + n
+                                + " Erinnerungen gelöscht.");
+            }
             case "status" -> town.status(sender, sender.hasPermission("baumeister.admin"));
-            default -> Texts.info(sender, "/bm stadtleben [an|aus|status|messung]");
+            default -> Texts.info(sender, "/bm stadtleben [an|aus|status|messung|vergessen [bewohner]]");
         }
     }
 
@@ -1403,7 +1413,11 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     : args.length == 3 && args[1].equalsIgnoreCase("ziel") ? places : List.of();
             case "kartenbild" -> args.length == 2 ? worlds : List.of();
             case "bildschirm" -> args.length == 2 ? SCREEN_VERBS : List.of();
-            case "stadtleben" -> args.length == 2 ? (admin ? TOWN_VERBS : List.of("status")) : List.of();
+            case "stadtleben" -> args.length == 2 ? (admin ? TOWN_VERBS : List.of("status"))
+                    : args.length == 3 && admin && args[1].equalsIgnoreCase("vergessen")
+                    ? com.blackn0va.baumeister.town.Roster.all().stream().map(
+                            com.blackn0va.baumeister.town.Roster.Person::name).toList()
+                    : List.of();
             // Schalt-Wörter und Modul-ids nur für Admins – dieselbe Grenze wie ModuleSwitch, hier nur ausgeblendet.
             case "module" -> args.length == 2 ? (admin ? MODULE_VERBS : MODULE_VIEW_VERBS)
                     : args.length == 3 && admin && ON_OFF.contains(args[1].toLowerCase(Locale.ROOT))
