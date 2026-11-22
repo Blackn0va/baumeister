@@ -208,6 +208,21 @@ int run_gui() {
                 std::filesystem::path second = target;
                 second.replace_filename(target.stem().wstring() + L"-einstellungen" + target.extension().wstring());
                 dlg.grab().save(QString::fromStdWString(second.wstring()));
+                dlg.hide();
+                // Drittes Bild: Reiter „Module“ mit Beispielmeldung des Plugins (<name>-module.png, Vertrag v012).
+                window.show_demo_modules();
+                QApplication::processEvents();
+                std::filesystem::path third = target;
+                third.replace_filename(target.stem().wstring() + L"-module" + target.extension().wstring());
+                // Nur die Seite, kurz auf volle Höhe gezogen: Im Fenster ist die Spalte so schmal, dass die
+                // Server-Module unter den eigenen außer Sicht liegen.
+                if (QWidget* page = window.modules_page()) {
+                    const QSize before = page->size();
+                    page->resize(before.width(), page->fontMetrics().height() * 120);
+                    QApplication::processEvents();
+                    page->grab().save(QString::fromStdWString(third.wstring()));
+                    page->resize(before);
+                }
                 swbh::gui::exit_latch().record(swbh::gui::ExitReason::Screenshot);
                 QApplication::quit();
             });

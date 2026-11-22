@@ -9,8 +9,10 @@
 #include "gui/autostart.hpp"
 #include "gui/console_export.hpp"
 #include "gui/exit_report.hpp"
+#include "gui/host_modules.hpp"
 #include "gui/simple_mode.hpp"
 #include "gui/city_view.hpp"
+#include "gui/modules_page.hpp"
 #include "gui/plan_preview.hpp"
 #include "gui/settings_dialog.hpp"
 #include "gui/style.hpp"
@@ -321,6 +323,10 @@ MainWindow::MainWindow(Controller& controller, QWidget* parent) : QMainWindow(pa
     history_->setColumnWidth(1, 150);
     history_layout->addWidget(history_, 1);
     tabs_->addTab(history_page, tr("Verlauf"));
+    // Module (Vertrag v012, 2026-11-22): eigene Funktionen der App als Schalter, darunter die Module des Servers.
+    modules_ = new ModulesPage([this](const std::string& id, bool on) { toggle_module(id, on); }, tabs_);
+    tabs_->addTab(modules_, tr("Module"));
+    apply_city_tab(c_.config().city_preview);
     preview_layout->addWidget(tabs_, 1);
     split->addWidget(console_box);
     split->addWidget(preview_box);
@@ -701,12 +707,14 @@ void MainWindow::refresh() {
         const bool first = city_seq_ == 0;
         city_seq_ = cs;
         city_->show_city(c_.city());
-        // Beim ersten Stadtbau einmal auf den Reiter wechseln – danach entscheidet der Nutzer.
-        if (first && tabs_ != nullptr) {
+        // Beim ersten Stadtbau einmal auf den Reiter wechseln – danach entscheidet der Nutzer. Nicht bei
+        // ausgeschalteter Stadt-Vorschau: setCurrentWidget auf einen verborgenen Reiter zeigt eine leere Fläche.
+        if (first && tabs_ != nullptr && c_.config().city_preview) {
             tabs_->setCurrentWidget(city_);
         }
     }
     notify_events(s, error_shown);
+    refresh_modules(s);
 
     switch (s.model) {
     case ModelPhase::None:
@@ -854,6 +862,93 @@ void MainWindow::refresh() {
         tray_->setToolTip(tr("Baumeister-Host – Modell %1, Server %2, Verbindung %3")
                               .arg(s.model == ModelPhase::Loaded ? tr("bereit") : tr("aus"),
                                    s.server_running ? tr("an") : tr("aus"), tstate));
+    }
+}
+
+void MainWindow::show_demo_modules() {
+    c_.show_demo_modules();
+    refresh_now();
+    if (tabs_ != nullptr && modules_ != nullptr) {
+        tabs_->setCurrentWidget(modules_);
+    }
+}
+
+QWidget* MainWindow::modules_page() const { return modules_; }
+
+void MainWindow::refresh_modules(const Snapshot& s) {
+    if (modules_ == nullptr) {
+        return;
+    }
+    HostModuleFacts f;
+    switch (s.model) {
+    case ModelPhase::None: f.model = s.downloading ? LoadState::Busy : LoadState::Off; break;
+    case ModelPhase::Loading: f.model = LoadState::Busy; break;
+    case ModelPhase::Loaded: f.model = LoadState::Ready; break;
+    case ModelPhase::Failed: f.model = LoadState::Failed; break;
+    }
+    f.downloading = s.downloading;
+    const voice::SpeechStatus st = c_.speech_status();
+    switch (st.state) {
+    case voice::SpeechState::Off: f.speech = LoadState::Off; break;
+    case voice::SpeechState::Loading: f.speech = LoadState::Busy; break;
+    case voice::SpeechState::Error: f.speech = LoadState::Failed; break;
+    case voice::SpeechState::Ready:
+    case voice::SpeechState::Listening:
+    case voice::SpeechState::Recognizing:
+    case voice::SpeechState::Testing: f.speech = LoadState::Ready; break;
+    }
+    f.speech_error = st.error;
+    f.server_running = s.server_running;
+    f.link = s.tunnel;
+    f.link_text = s.tunnel_text;
+    f.city_reported = city_seq_ != 0;
+    modules_->show_host(host_modules(c_.config(), f));
+    if (const std::uint64_t seq = c_.server_modules_seq(); seq != modules_seq_) {
+        modules_seq_ = seq;
+        modules_->show_server(c_.server_modules());
+    }
+}
+
+void MainWindow::toggle_module(const std::string& id, bool on) {
+    AppConfig cfg = c_.config();
+    if (!set_host_module(cfg, id, on)) {
+        return;
+    }
+    // set_config speichert sofort und ruft apply_speech/apply_voice – Mikrofon, Stimme, Recherche, Mitspieler und
+    // Meldungen wirken damit ohne weiteren Schritt (dieselben Schlüssel wie in den Einstellungen).
+    c_.set_config(cfg);
+    QString name = QString::fromStdString(id);
+    for (const HostModule& m : host_modules(cfg, HostModuleFacts{})) {
+        if (m.id == id) {
+            name = qs(m.name);
+        }
+    }
+    c_.console(ConsoleKind::Info, "Modul „" + name.toStdString() + "“: " + (on ? "an" : "aus") + " (gespeichert).");
+    if (id == "plan-ki") {
+        // Sofort, soweit ohne Rückfrage möglich: vorhandenes Modell laden bzw. entladen. Einen Download (bis 8 GB)
+        // startet nur „KI einschalten“ – ein Häkchen auf einer Übersichtsseite soll das nicht nebenbei auslösen.
+        const Snapshot s = c_.snapshot();
+        if (on && s.model == ModelPhase::None && !s.downloading && !c_.model_busy()) {
+            if (c_.model_file_present()) {
+                c_.enable_ai();
+            } else {
+                c_.console(ConsoleKind::Info, "Plan-KI: Modelldatei fehlt – „KI einschalten“ lädt sie herunter.");
+            }
+        } else if (!on && s.model == ModelPhase::Loaded) {
+            c_.unload_model();
+        }
+    } else if (id == "stadt-vorschau") {
+        apply_city_tab(on);
+    }
+}
+
+void MainWindow::apply_city_tab(bool visible) {
+    if (tabs_ == nullptr || city_ == nullptr) {
+        return;
+    }
+    const int index = tabs_->indexOf(city_);
+    if (index >= 0) {
+        tabs_->setTabVisible(index, visible);
     }
 }
 

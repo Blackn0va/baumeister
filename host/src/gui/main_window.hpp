@@ -36,6 +36,7 @@ namespace swbh::gui {
 
 class PlanPreview;
 class CityView;
+class ModulesPage;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -46,6 +47,9 @@ public:
     // Für Bildschirmfotos (--screenshot): Zustand jetzt einmal übernehmen.
     void refresh_now();
     void append_demo_console();
+    // Für Bildschirmfotos: Beispiel-Server-Module einspielen und den Reiter „Module“ zeigen.
+    void show_demo_modules();
+    QWidget* modules_page() const;
     // Infobereich-Symbol vorhanden: Nur dann darf das Fenster verborgen starten (sonst käme man nicht mehr heran).
     bool has_tray() const { return tray_ != nullptr; }
 
@@ -68,6 +72,12 @@ private:
     void sync_model_choice();
     void quit_app();
     void fill_history();
+    // Reiter „Module“ (gui/modules_page): eigene Module nach Konfiguration und Zustand, Server-Module bei neuer Meldung.
+    void refresh_modules(const Snapshot& s);
+    // Schalter auf der Seite „Module“: Schlüssel schreiben (set_config speichert und wendet Sprache/Stimme an), dazu
+    // was das Modul sofort kann (Modell laden/entladen, Reiter „Stadt“ ein-/ausblenden).
+    void toggle_module(const std::string& id, bool on);
+    void apply_city_tab(bool visible);
 
     Controller& c_;
     QLabel* model_ = nullptr;
@@ -95,6 +105,8 @@ private:
     std::uint64_t history_rev_ = 0;
     CityView* city_ = nullptr;
     std::uint64_t city_seq_ = 0;
+    ModulesPage* modules_ = nullptr;
+    std::uint64_t modules_seq_ = 0;
     WindowFeed feed_;  // Plan (nur bei neuer seq geholt) und Meldungen im Infobereich
     QSystemTrayIcon* tray_ = nullptr;
     QTimer* timer_ = nullptr;

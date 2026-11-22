@@ -79,7 +79,8 @@ std::optional<Rejection> check_request(const HttpRequest& request);
 bool host_is_loopback(std::string_view host_header);
 
 // Fertige HTTP/1.1-Antwort mit Content-Length, Connection: close, Cache-Control: no-store und
-// X-Content-Type-Options: nosniff. extra_headers: weitere Zeilen ohne CRLF ("Retry-After: 5").
+// X-Content-Type-Options: nosniff. extra_headers: weitere Zeilen ohne CRLF ("Retry-After: 5"). Status 204 ohne
+// Content-Type, Content-Length und Körper (RFC 9110 §8.6).
 std::string make_response(int status, std::string_view content_type, std::string_view body,
                           const std::vector<std::string>& extra_headers = {});
 

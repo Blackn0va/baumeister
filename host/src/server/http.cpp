@@ -219,6 +219,7 @@ std::optional<Rejection> check_request(const HttpRequest& request) {
 std::string_view reason_phrase(int status) {
     switch (status) {
     case 200: return "OK";
+    case 204: return "No Content";
     case 400: return "Bad Request";
     case 403: return "Forbidden";
     case 404: return "Not Found";
@@ -239,8 +240,15 @@ std::string_view reason_phrase(int status) {
 std::string make_response(int status, std::string_view content_type, std::string_view body,
                           const std::vector<std::string>& extra_headers) {
     std::string out = "HTTP/1.1 " + std::to_string(status) + " " + std::string(reason_phrase(status)) + "\r\n";
-    out += "Content-Type: " + std::string(content_type) + "\r\n";
-    out += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    // 204 ohne Content-Type, Content-Length und Körper (RFC 9110 §8.6 und §15.3.5: „MUST NOT send Content-Length“ in
+    // einer 204). Vorher stand Content-Length immer da – deshalb antwortet /stadt mit 200 statt 204. Seit 2026-11-22
+    // antwortet /module (Vertrag v012) mit 204. Wer die Ausnahme entfernt, schickt wieder eine RFC-widrige 204, die
+    // strenge Clients als kaputte Antwort verwerfen.
+    const bool no_content = status == 204;
+    if (!no_content) {
+        out += "Content-Type: " + std::string(content_type) + "\r\n";
+        out += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    }
     out += "Connection: close\r\n";
     out += "Cache-Control: no-store\r\n";
     out += "X-Content-Type-Options: nosniff\r\n";
@@ -248,7 +256,9 @@ std::string make_response(int status, std::string_view content_type, std::string
         out += h + "\r\n";
     }
     out += "\r\n";
-    out += body;
+    if (!no_content) {
+        out += body;
+    }
     return out;
 }
 
