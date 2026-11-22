@@ -22,6 +22,7 @@
 #include "server/chat_api.hpp"
 #include "server/city_api.hpp"
 #include "server/companion_api.hpp"
+#include "server/module_api.hpp"
 #include "server/research_api.hpp"
 #include "server/result_api.hpp"
 #include "server/http_server.hpp"
@@ -141,6 +142,12 @@ public:
     // wie beim Plan holt die Oberfläche den Schnappschuss nur bei neuer Nummer.
     std::shared_ptr<const server::CityView> city() const { return city_.snapshot(); }
     std::uint64_t city_seq() const { return city_.seq(); }
+    // Seite „Module“: zuletzt vom Plugin gemeldete Server-Module (nullptr = noch keine Meldung), wie bei der Stadt nur
+    // bei neuer Nummer holen.
+    std::shared_ptr<const server::ModuleReport> server_modules() const { return server_modules_.snapshot(); }
+    std::uint64_t server_modules_seq() const { return server_modules_.seq(); }
+    // Nur für --screenshot: Beispielmeldung des Plugins, durch denselben Parser wie POST /baumeister/v1/module.
+    void show_demo_modules();
     std::vector<ConsoleEntry> drain_console();
 
     void load_model();
@@ -251,6 +258,7 @@ private:
 
     server::ChatApi api_;
     server::CityState city_;
+    server::ModuleState server_modules_;
     server::HttpServer server_;
     // Zweiter Lauscher für einen Minecraft-Server auf diesem PC (AppConfig::local_server), gleicher Handler.
     server::HttpServer local_server_;

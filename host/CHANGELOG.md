@@ -4,6 +4,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- Reiter „Module“: die eigenen Funktionen der App (Plan-KI, Internet-Recherche, Stimme, Mikrofon, Mitspieler
+  verstehen, Stadt-Vorschau, Meldungen) als Schalter mit Zustand und Grund. Jeder Schalter schreibt denselben Schlüssel
+  wie die Einstellungen und wirkt sofort; Plan-KI lädt bzw. entlädt ein vorhandenes Modell. Die Verbindung steht nur
+  als Anzeige da. Neuer Schlüssel „stadt_vorschau“.
+- Darunter die Module des Minecraft-Servers, wie das Plugin sie meldet (POST /baumeister/v1/module, Antwort 204):
+  Zustand, Grund, Abhängigkeiten und Zeitpunkt, nur Anzeige. Kaputte, zu große oder unzulässige Meldungen bekommen
+  400, der vorige Stand bleibt.
+
+### Geändert
+- Antworten mit Status 204 tragen kein Content-Length und keinen Körper mehr (RFC 9110 §8.6).
+
 ### Sicherheit (2026-11-16)
 - Gesamtfrist von 60 s für das Lesen einer Anfrage. Vorher galt nur die Frist von 15 s je Lesevorgang, und sie
   begann mit jedem Byte neu: Wer alle 14 s ein Byte schickte, hielt eine Verbindung beliebig lange, acht solche

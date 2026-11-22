@@ -15,6 +15,7 @@ swbh_add_module(gui_core
         exit_report.hpp exit_report.cpp
         simple_mode.hpp simple_mode.cpp
         window_feed.hpp window_feed.cpp
+        host_modules.hpp host_modules.cpp
     PUBLIC_DEPS
         swbh::base swbh::llm swbh::tunnel swbh::relay)
 
@@ -27,6 +28,7 @@ swbh_add_module(gui_qt
         settings_dialog.hpp settings_dialog.cpp
         plan_preview.hpp plan_preview.cpp
         city_view.hpp city_view.cpp
+        modules_page.hpp modules_page.cpp
     PUBLIC_DEPS
         swbh::gui_core swbh::server swbh::tunnel swbh::relay swbh::voice swbh::llm swbh::components swbh::accel swbh::win Qt6::Widgets)
 set_target_properties(swbh_gui_qt PROPERTIES AUTOMOC ON)

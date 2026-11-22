@@ -7,6 +7,7 @@ swbh_add_module(server
         city_api.hpp city_api.cpp
         research_api.hpp research_api.cpp
         result_api.hpp result_api.cpp
+        module_api.hpp module_api.cpp
         companion_api.hpp companion_api.cpp
         http_server.hpp http_server.cpp
     PUBLIC_DEPS

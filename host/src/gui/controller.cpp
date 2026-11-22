@@ -1,6 +1,7 @@
 #include "gui/controller.hpp"
 
 #include "accel/runtime.hpp"
+#include "base/clock.hpp"
 #include "base/fileio.hpp"
 #include "base/log.hpp"
 #include "base/version.hpp"
@@ -712,6 +713,10 @@ server::ApiResponse Controller::route(const server::HttpRequest& r, const std::f
     if (server::is_city_path(r.target)) {
         return server::handle_city(r, city_);
     }
+    if (server::is_module_path(r.target)) {
+        // Nur Anzeige (Seite „Module“): kein Konsoleneintrag je Meldung – die Serverzeile „→ 204“ steht ohnehin da.
+        return server::handle_modules(r, server_modules_, static_cast<std::int64_t>(std::time(nullptr)), local_hms());
+    }
     if (server::is_companion_path(r.target)) {
         // Verdrahtung in gui/companion_wiring – dort samt Weiterleitung des Begleiternamens getestet (T-007).
         return server::handle_companion(
@@ -753,6 +758,24 @@ void Controller::show_result(const server::ResultNote& n) {
 }
 
 void Controller::show_demo_result(const server::ResultNote& note) { show_result(note); }
+
+void Controller::show_demo_modules() {
+    // Beispiel nach dem Vertrag v012 (interface.modul_json), keine Meldung eines echten Servers.
+    const std::string_view demo =
+        R"({"version":1,"modules":[)"
+        R"({"id":"bau-ki","name":"Bau-KI","description":"Bauaufträge im Chat über die KI dieser App","on":true,)"
+        R"("state":"aktiv","reason":"","needs":["ki"]},)"
+        R"({"id":"stadtleben","name":"Stadtleben","description":"KI-Bewohner in gebauten Städten","on":true,)"
+        R"("state":"wartet","reason":"KI nicht erreichbar","needs":["ki"]},)"
+        R"({"id":"weltbau","name":"Weltbau","description":"Erdwelt Kachel für Kachel bauen","on":false,)"
+        R"("state":"aus","reason":"ausgeschaltet","needs":[]},)"
+        R"({"id":"karte","name":"Karte","description":"Kartenbilder für die Mod","on":true,"state":"fehler",)"
+        R"("reason":"Welt fehlt","needs":[]}]})";
+    if (const std::string code = server_modules_.apply(demo, static_cast<std::int64_t>(std::time(nullptr)), local_hms());
+        !code.empty()) {
+        console(ConsoleKind::Error, "Beispiel-Module abgelehnt: " + code);
+    }
+}
 
 void Controller::companion_said(const server::Spoken& s) {
     const AppConfig cfg = config();

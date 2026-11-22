@@ -178,6 +178,7 @@ ConfigLoad load_config(const std::filesystem::path& file) {
     read_bool(*j, "mikro_automatik", c.auto_gain);
     read_bool(*j, "mikro_töne", c.speech_tones);
     read_bool(*j, "fremde_verstehen", c.hear_others);
+    read_bool(*j, "stadt_vorschau", c.city_preview);
     if (!c.model_key.empty() && c.model_key != llm::kCustomModelKey && llm::find_model(c.model_key) == nullptr) {
         out.adjusted.emplace_back("model");
         c.model_key.clear();
@@ -223,6 +224,7 @@ void save_config(const std::filesystem::path& file, const AppConfig& c) {
     j["mikro_automatik"] = c.auto_gain;
     j["mikro_töne"] = c.speech_tones;
     j["fremde_verstehen"] = c.hear_others;
+    j["stadt_vorschau"] = c.city_preview;
     try {
         write_file_atomic(file, j.dump(2) + "\n");
     } catch (const std::exception& e) {

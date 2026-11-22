@@ -93,6 +93,10 @@ struct AppConfig {
     // „fremde_verstehen“ (Wunsch 2026-11-04): Sprache von Mitspielern aus
     // Simple Voice Chat hier erkennen (server::may_hear). Vorgabe AN; aus = nur der eigene Spieler wie vorher.
     bool hear_others = true;
+    // „stadt_vorschau“ (2026-11-22, Seite „Module“, gui/host_modules): Reiter „Stadt“ zeigen. Vorgabe AN wie bisher
+    // (der Reiter war immer da); aus blendet ihn nur aus – /baumeister/v1/stadt nimmt die App weiter an, damit das
+    // Plugin keine Fehler protokolliert und die Karte beim Wiedereinschalten den laufenden Bau zeigt.
+    bool city_preview = true;
 };
 
 struct ConfigLoad {
