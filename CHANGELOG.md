@@ -21,10 +21,23 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Treppenstufen und Plattenbänken, bei der Arbeit stehen sie am Block ihres Berufs mit Armschwung, Geräusch und
   Partikeln. Einzige Weltänderung ist der Türzustand, Behälter bleiben zu. Abschaltbar über `stadtleben.nutzen.*`.
 
+- **Bewohner folgen auf Zuruf:** „Lotte, komm mit“ oder „folge mir“ – sie gehen hinter dem Spieler her; „bleib hier“
+  oder „geh nach Hause“ beenden es. Folgen endet von selbst nach 10 Minuten, beim Weltwechsel oder wenn der Spieler
+  geht. Mittags finden sich Bewohner in Gruppen von 2 bis 4 zusammen und reden dort.
+- **Arbeitsfelder:** `/bm stadtleben feld setzen <name> <radius>`, `feld entfernen <name>`, `feld liste` (nur Admins).
+  Mit `stadtleben.weltänderung: true` (Vorgabe aus) ernten Bauern dort reife Feldfrüchte und pflanzen nach, Holzfäller
+  fällen natürliche Bäume und setzen Setzlinge, Gärtner legen Pfad und Blumen an. Jede Änderung läuft über die
+  Bau- und Abbau-Ereignisse im Namen des Admins, der das Feld gesetzt hat (WorldGuard und PlotSquared können sie
+  verbieten, CoreProtect protokolliert sie), höchstens `stadtleben.feld-blöcke-je-minute` (Vorgabe 20). Ernte kommt
+  in die Kiste an der Feldmitte. Behälter und Redstone fassen sie nie an.
+
 ### Geändert
 - **Bewohner reden mit Zusammenhang:** Sie beziehen Tageszeit, Wetter, einen Bau in der Nähe, wer dabei ist und die
   letzten vier Sätze des Gesprächs ein; bei einer Begegnung antwortet der zweite auf den ersten. Ohne KI sagen sie
   361 feste Sätze statt 28, je nach Beruf, Charakter, Tageszeit, Wetter und Anlass, ohne kurze Wiederholungen.
+- **Bewohner bleiben nicht mehr hängen:** Feststecken wird stufenweise gelöst (neu planen, ausweichen mit Sprung,
+  Umweg); Teleport nur noch als letzter Ausweg und nie, wenn ein Spieler hinsieht. Wasser, Lava und hohe Kanten
+  meiden sie. Gemessen mit 12 Bewohnern im Parcours (Spigot 1.21.11, 10 min): Teleports je Bewohner-Stunde 18,8 → 0.
 - Bewohner-Chat vorher grün „[Lotte, Bäckerin] …“, jetzt im Spielerformat.
 
 ### Behoben
