@@ -17,6 +17,11 @@ import com.blackn0va.baumeister.town.WorkSpots;
 import com.blackn0va.baumeister.town.memory.TownVoice;
 import com.blackn0va.baumeister.town.presence.Gestures;
 import com.blackn0va.baumeister.town.presence.Presence;
+import com.blackn0va.baumeister.town.use.Actor;
+import com.blackn0va.baumeister.town.use.BukkitUse;
+import com.blackn0va.baumeister.town.use.TownUse;
+import com.blackn0va.baumeister.town.use.UseSettings;
+import com.blackn0va.baumeister.town.use.UseWorld;
 import com.google.gson.JsonObject;
 
 import java.lang.reflect.InvocationTargetException;
@@ -69,8 +74,10 @@ import org.bukkit.util.Vector;
  * paketweit sind.
  *
  * Grenzen, alle mit Absicht:
- * - Keine Weltänderung: Bewohner setzen und brechen nichts, öffnen keine Türen (Wegsuche ohne Türen), lösen keine
- *   Druckplatten aus und zertreten kein Ackerland (EntityInteractEvent abgesagt). KI-Aktionen werden verworfen.
+ * - Keine Weltänderung außer Türen: Bewohner setzen und brechen nichts, lösen keine Druckplatten aus und zertreten
+ *   kein Ackerland (EntityInteractEvent abgesagt). KI-Aktionen werden verworfen. Seit v013 (AK-44, town/use) öffnen
+ *   und schließen sie Türen, Tore und Falltüren auf dem Weg – nur nach Rechteprüfung (BukkitUse.Check), sofort
+ *   zurückgestellt –, schlafen in freien Betten, sitzen auf Bänken und stehen an Arbeitsblöcken.
  * - Nicht persistent (setPersistent(false)) und mit PDC-Marke „bewohner“; was nach einem harten Abbruch übrig bleibt,
  *   räumt BaumeisterListener.onEntitiesLoad weg (isStale).
  * - Takt: Wegsuche nur in geladenen Chunks (CompanionService.pathBlocks liest ungeladene als Fels), höchstens eine
@@ -118,6 +125,8 @@ final class TownLife implements Listener {
     private String lastGone = "";
     private TalkBudget budget = new TalkBudget(TownSettings.defaults().talkGapMillis());
     private TownSettings settings = TownSettings.defaults();
+    /** Benutzen von Türen, Betten, Bänken, Arbeitsblöcken (AK-44); Regeln in town/use, hier nur Einhängepunkte. */
+    private final TownUse use = new TownUse(new java.util.SplittableRandom());
     private LlmClient llm;
     private BukkitTask task;
     private long tick;
@@ -223,6 +232,16 @@ final class TownLife implements Listener {
 
         /** Wo der Baumeister gerade baut (Ort des NPC), null = kein Bau. Für die Lage im Prompt (AK-41). */
         default Location buildSite() {
+            return null;
+        }
+
+        /** Benutzen (AK-44, town/use): Welt-Sicht; null = Benutzen aus (Tests ohne Server). */
+        default UseWorld useWorld(World w) {
+            return null;
+        }
+
+        /** Benutzen: Körper eines Bewohners; null = Benutzen aus. */
+        default Actor actor(Mannequin m) {
             return null;
         }
     }
@@ -358,6 +377,8 @@ final class TownLife implements Listener {
         static final long ESSENTIALS_REFRESH_MS = 60_000L;
         private List<WorkSpots.Spot> essentialsSpots = List.of();
         private long essentialsAt = Long.MIN_VALUE / 2;
+        /** Benutzen (AK-44); Marke wie TownLife.marker, damit verwaiste Sitze wie verwaiste Bewohner wegkommen. */
+        private BukkitUse use;
 
         BukkitEnv(Server server, Plugin owner, Parts parts) {
             this.server = server;
@@ -429,6 +450,23 @@ final class TownLife implements Listener {
         @Override
         public CompanionPath.Blocks pathBlocks(World w) {
             return CompanionService.pathBlocks(w);
+        }
+
+        private BukkitUse use() {
+            if (use == null) {
+                use = new BukkitUse(server, new NamespacedKey(owner, "bewohner"), MannequinCompat::pose);
+            }
+            return use;
+        }
+
+        @Override
+        public UseWorld useWorld(World w) {
+            return use().world(w);
+        }
+
+        @Override
+        public Actor actor(Mannequin m) {
+            return use().actor(m);
         }
 
         @Override
@@ -676,6 +714,7 @@ final class TownLife implements Listener {
         if (plugin != null) {
             voice = TownVoice.open(plugin.getDataFolder().toPath().resolve("stadtleben"));
         }
+        use.namer(this::residentKey);
     }
 
     /** /bm stadtleben vergessen [bewohner] (Admin-Prüfung im Befehl); null = alle. -1 = Bewohner unbekannt. */
@@ -731,6 +770,7 @@ final class TownLife implements Listener {
         this.settings = s;
         this.llm = client;
         this.budget.gap(s.talkGapMillis());
+        use.configure(plugin != null ? UseSettings.from(plugin.getConfig()) : UseSettings.defaults());
         if (s.enabled() && !was) {
             host.askSoon();
         }
@@ -815,10 +855,13 @@ final class TownLife implements Listener {
         return true;
     }
 
-    /** Bewohner lösen nichts aus: keine Druckplatte, kein Stolperdraht, kein zertretenes Ackerland. */
+    /**
+     * Bewohner lösen nichts aus: keine Druckplatte, kein Stolperdraht, kein zertretenes Ackerland. Ausgenommen ist die
+     * eigene Rechteprüfung vor dem Benutzen (BukkitUse.Check) – sagte dieser Handler sie ab, wäre jede Tür verboten.
+     */
     @EventHandler(ignoreCancelled = true)
     public void onInteract(EntityInteractEvent e) {
-        if (isOurs(e.getEntity())) {
+        if (isOurs(e.getEntity()) && !(e instanceof BukkitUse.Check)) {
             e.setCancelled(true);
         }
     }
@@ -907,6 +950,7 @@ final class TownLife implements Listener {
         if (tick % 1200 == 0 && voice.memory().dirty()) {
             voice.save();
         }
+        useTick();
         spawnIfDue();
     }
 
@@ -1125,7 +1169,10 @@ final class TownLife implements Listener {
             if (r.nightSince == 0) {
                 r.nightSince = now;
             }
-            if (now - r.nightSince > Population.NIGHT_LEAVE_MS || r.goal == DayPlan.Goal.SLEEP && r.reached) {
+            // Mit Bett (AK-44): bleiben, solange er liegt; der Weg dorthin darf BED_WALK_MS dauern. Ohne Bett wie vorher.
+            boolean bed = use.hasBed(r.entity);
+            if (!bed && (now - r.nightSince > Population.NIGHT_LEAVE_MS || r.goal == DayPlan.Goal.SLEEP && r.reached)
+                    || bed && !use.sleeping(r.entity) && now - r.nightSince > TownUse.BED_WALK_MS) {
                 remove(r, m, "schlafen");
                 return;
             }
@@ -1141,16 +1188,21 @@ final class TownLife implements Listener {
                 r.reachedCount++;
                 LOG.fine(() -> "stadtleben | ziel | bewohner=" + TownTalk.key(r.person.name()) + " ziel=" + r.goal);
             }
-            stand(m);
-            activity(r, m, phase, near, nearSq, now);
-            gesture(r, m, talking ? Gestures.Activity.TALK : r.goal == DayPlan.Goal.WORK && r.reached
-                    ? Gestures.Activity.WORK : Gestures.Activity.IDLE, now);
+            if (!use.resting(r.entity)) {
+                stand(m);
+                activity(r, m, phase, near, nearSq, now);
+                gesture(r, m, talking ? Gestures.Activity.TALK : r.goal == DayPlan.Goal.WORK && r.reached
+                        ? Gestures.Activity.WORK : Gestures.Activity.IDLE, now);
+            }
         } else {
             walk(r, m, cur, goal, plans);
             gesture(r, m, Gestures.Activity.WALK, now);
         }
-        yieldTo(m, near);
-        greet(r, m, near, nearSq, now);
+        // Wer liegt oder sitzt, weicht nicht aus und grüßt nicht (sonst rutschte er vom Bett bzw. redete im Schlaf).
+        if (!use.resting(r.entity)) {
+            yieldTo(m, near);
+            greet(r, m, near, nearSq, now);
+        }
     }
 
     /** Ziel der Phase; wechselt das Ziel, wird neu geplant und „erreicht“ neu gezählt. */
@@ -1162,7 +1214,7 @@ final class TownLife implements Listener {
             r.plaza = null;
             hold(r, null);
         }
-        return switch (kind) {
+        Location base = switch (kind) {
             case WORK -> r.work;
             case HOME, SLEEP -> r.home;
             case PLAZA -> {
@@ -1181,6 +1233,7 @@ final class TownLife implements Listener {
                 yield r.plaza;
             }
         };
+        return useTarget(r, kind, base);
     }
 
     private void walk(Resident r, Mannequin m, Location cur, Location goal, int[] plans) {
@@ -1213,9 +1266,10 @@ final class TownLife implements Listener {
             plans[0]--;
             tickSearches++;
         }
-        CompanionPath.Blocks blocks = env.pathBlocks(w);
+        CompanionPath.Blocks blocks = useBlocks(r, w, env.pathBlocks(w));
         double[] t = r.route.next(blocks, cur.getX(), cur.getY(), cur.getZ(), leg[0], ly, leg[1], tick,
                 stalled, mayPlan);
+        usePass(m, w, t);
         Vector v = m.getVelocity();
         CompanionWalk.Step step = CompanionWalk.next(r.walk, new CompanionWalk.Body(cur.getX(), cur.getY(),
                 cur.getZ(), v.getY(), m.isOnGround(), m.isInWater(),
@@ -1539,6 +1593,62 @@ final class TownLife implements Listener {
         MannequinCompat.description(m, Texts.clean(clean, 60));
     }
 
+    // ---------------------------------------------------------------- Benutzen (AK-44, Regeln in town/use)
+
+    /** Ziel der Phase oder ein Platz an Bett, Bank, Arbeitsblock (TownUse.target); ohne Welt-Sicht unverändert. */
+    private Location useTarget(Resident r, DayPlan.Goal kind, Location base) {
+        Entity e = env.entity(r.entity);
+        if (!(e instanceof Mannequin m) || base == null) {
+            return base;
+        }
+        UseWorld w = env.useWorld(m.getWorld());
+        Actor a = w == null ? null : env.actor(m);
+        return a == null ? base : use.target(a, w, kind, base, r.person.job(), tick);
+    }
+
+    /** Wegsuche-Welt mit benutzbaren Türen als Durchgang (TownUse.blocks); ohne Welt-Sicht die alte. */
+    private CompanionPath.Blocks useBlocks(Resident r, World w, CompanionPath.Blocks base) {
+        UseWorld uw = env.useWorld(w);
+        return uw == null ? base : use.blocks(base, uw, r.entity, tick);
+    }
+
+    /** Tür vor ihm öffnen (TownUse.pass); t = nächster Wegpunkt aus Route.next. */
+    private void usePass(Mannequin m, World w, double[] t) {
+        UseWorld uw = env.useWorld(w);
+        Actor a = uw == null ? null : env.actor(m);
+        if (a != null) {
+            use.pass(a, uw, t[0], t[2], tick);
+        }
+    }
+
+    /** Türen hinter ihnen schließen, Schläfer wecken, wenn ein Spieler das Bett will (TownUse.tick). */
+    private void useTick() {
+        Map<UUID, Actor> actors = new HashMap<>();
+        for (Resident r : residents) {
+            if (env.entity(r.entity) instanceof Mannequin m && m.isValid()) {
+                Actor a = env.actor(m);
+                if (a != null) {
+                    actors.put(r.entity, a);
+                }
+            }
+        }
+        use.tick(tick, actors);
+    }
+
+    TownUse use() {
+        return use;
+    }
+
+    /** Name eines Bewohners fürs Log (wie in erschienen/weg), sonst die ersten 8 Zeichen der UUID. */
+    private String residentKey(UUID id) {
+        for (Resident r : residents) {
+            if (r.entity.equals(id)) {
+                return TownTalk.key(r.person.name());
+            }
+        }
+        return id.toString().substring(0, 8);
+    }
+
     // ---------------------------------------------------------------- Ort, Entfernen, Status
 
     /**
@@ -1572,6 +1682,7 @@ final class TownLife implements Listener {
             presence.left(r.person.name());
         }
         voice.left(r.person);
+        use.forget(r.entity);
         lastGone = reason;
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | weg | bewohner=%s grund=%s strecke=%.1f ziele=%d "
                 + "teleports=%d wegsuchen=%d minuten=%.1f", TownTalk.key(r.person.name()), reason, r.walked,
@@ -1609,6 +1720,9 @@ final class TownLife implements Listener {
         Texts.info(s, String.format(Locale.GERMANY, "Takt (letzte %d Ticks): Mittel %.3f ms · p99 %.3f ms · höchstens "
                 + "%.3f ms · teuerster Tick seit Messung %.3f ms (%s)", cost.size(), c[0], c[1], c[2],
                 worstNanos / 1e6, worstCause));
+        int[] doors = use.doorCounts();
+        Texts.info(s, "Benutzen: " + (use.settings().enabled() ? "an" : "aus") + " · Türen geöffnet " + doors[0]
+                + ", geschlossen " + doors[1] + ", verweigert " + doors[2] + ", offen " + use.openDoors());
         if (admin) {
             for (Resident r : residents) {
                 Entity e = env.entity(r.entity);

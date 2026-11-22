@@ -342,6 +342,17 @@ stadtleben:
   # Gelbe Zeile „Lotte hat das Spiel betreten/verlassen“, wenn ein Bewohner kommt oder geht – wie bei Spielern
   # (2026-11-22). In der Tab-Liste stehen die Bewohner unabhängig davon, sofern PacketEvents die Serverfassung kennt.
   kommen-gehen-melden: true
+  # Benutzen wie Spieler (2026-11-22): Türen, Tore und Falltüren auf dem Weg öffnen und gleich wieder schließen (nur
+  # wo ein Interact erlaubt ist – WorldGuard/PlotSquared können es verbieten, dann bleibt die Tür zu und der Weg führt
+  # nicht hindurch; Eisentüren nie), nachts in einem freien Bett nahe der Wohnung schlafen, mittags auf Treppen oder
+  # Plattenbänken sitzen, bei der Arbeit am passenden Arbeitsblock stehen. Türzustand ist die einzige Weltänderung;
+  # Behälter, Öfen und Betten bleiben unberührt.
+  nutzen:
+    an: true
+    türen: true
+    schlafen: true
+    sitzen: true
+    arbeitsblöcke: true
 # Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
 # und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
 fernverbindung:
