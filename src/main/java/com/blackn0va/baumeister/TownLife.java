@@ -13,12 +13,17 @@ import com.blackn0va.baumeister.town.TickCost;
 import com.blackn0va.baumeister.town.TownLines;
 import com.blackn0va.baumeister.town.TownSettings;
 import com.blackn0va.baumeister.town.TownTalk;
+import com.blackn0va.baumeister.town.WorkSpots;
 import com.google.gson.JsonObject;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,8 +40,8 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Server;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mannequin;
@@ -48,6 +53,7 @@ import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
@@ -125,6 +131,8 @@ final class TownLife implements Listener {
         final UUID entity;
         final Location home;
         Location work;
+        /** Woran er arbeitet; null = Platz nahe der Wohnung (kein vorhandener Ort passte). */
+        WorkSpots.Choice workAt;
         Location plaza;
         long plazaUntil;
         final CompanionWalk.State walk = new CompanionWalk.State();
@@ -189,62 +197,199 @@ final class TownLife implements Listener {
 
         /** Steht der Bewohner in Leiter, Ranke oder Gerüst? */
         boolean climbable(Location at);
+
+        /**
+         * Stehplatz auf der Oberfläche über (x, z): fester Boden (kein Wasser, keine Lava, kein Magma, kein Laub),
+         * darüber zwei Blöcke frei; null, wenn nicht oder der Chunk nicht geladen ist. Vorher stand das in surfaceNear
+         * und las Bukkit-Tags direkt – ohne Server lädt deren Klasse nicht, also war jede Ortswahl ungetestet.
+         */
+        Location surfaceAt(World w, int x, int z);
+
+        /** Vorhandene Orte, an denen Bewohner arbeiten können (Warps, Reisepunkte, Bauten), noch ungefiltert. */
+        List<WorkSpots.Spot> workSpots();
+    }
+
+    /**
+     * Was BukkitEnv vom Plugin braucht, je ein Getter. Vorher griff BukkitEnv direkt auf BaumeisterPlugin zu – ein
+     * JavaPlugin lässt sich ohne Server nicht bauen, also blieb jeder Einstieg ungetestet (Gedächtnis „Offen
+     * Stadtleben v1“). Jetzt steckt die Logik (Drosseln, Namen, Scheduler, Ortsquellen) in BukkitEnv und ist mit einem
+     * Fake prüfbar (TownLifeTest.bukkitEnv*); of() ist nur noch Durchreichen.
+     */
+    interface Parts {
+        /** Denkt ein Bauplan (BuildService.planning)? */
+        boolean planning();
+
+        /** Läuft ein Bau (BuildService.busy)? */
+        boolean building();
+
+        /** Laufende Messungen der Lag-Wache (LagWatch.active). */
+        int lagActive();
+
+        boolean companionThinking();
+
+        /** Name des Baumeisters, null = keiner. */
+        String npcName();
+
+        /** Name des Begleiters, null = kein Begleiter. */
+        String companionName();
+
+        void saveEnabled(boolean on);
+
+        /** Baumeister-Warps (/warp), Name → Ort; Warps in nicht geladenen Welten fehlen. */
+        Map<String, Location> warps();
+
+        /** Reisepunkte (/bm orte). */
+        List<PlaceRegistry.Place> places();
+
+        /** Ordner des Baubuchs (BuildService: plugins/Baumeister/bauten). */
+        Path ledgerDir();
+
+        static Parts of(BaumeisterPlugin p) {
+            return new Parts() {
+                @Override
+                public boolean planning() {
+                    return p.service() != null && p.service().planning();
+                }
+
+                @Override
+                public boolean building() {
+                    return p.service() != null && p.service().busy();
+                }
+
+                @Override
+                public int lagActive() {
+                    return p.lagWatch() == null ? 0 : p.lagWatch().active();
+                }
+
+                @Override
+                public boolean companionThinking() {
+                    return p.companion() != null && p.companion().anyThinking();
+                }
+
+                @Override
+                public String npcName() {
+                    return p.npc() == null ? null : p.npc().name();
+                }
+
+                @Override
+                public String companionName() {
+                    return p.companion() == null ? null : p.companion().name();
+                }
+
+                @Override
+                public void saveEnabled(boolean on) {
+                    p.getConfig().set(TownSettings.KEY_ENABLED, on);
+                    p.saveConfig();
+                }
+
+                @Override
+                public Map<String, Location> warps() {
+                    Map<String, Location> out = new LinkedHashMap<>();
+                    if (p.warps() != null) {
+                        for (String n : p.warps().names()) {
+                            p.warps().location(n).ifPresent(l -> out.put(n, l));
+                        }
+                    }
+                    return out;
+                }
+
+                @Override
+                public List<PlaceRegistry.Place> places() {
+                    return p.places() == null ? List.of() : p.places().all();
+                }
+
+                @Override
+                public Path ledgerDir() {
+                    // Derselbe Ordner wie in BuildService (new BuildLedger(…resolve("bauten"))).
+                    return p.getDataFolder().toPath().resolve("bauten");
+                }
+            };
+        }
     }
 
     /** Env im Betrieb. */
-    private record BukkitEnv(BaumeisterPlugin plugin) implements Env {
+    static final class BukkitEnv implements Env {
+
+        /** Baubuch so oft neu lesen – Bauten kommen selten hinzu, und gelesen wird außerhalb des Hauptthreads. */
+        static final long LEDGER_REFRESH_MS = 5 * 60_000L;
+        /** Name des EssentialsX-Plugins (plugin.yml dort: „name: Essentials“, geprüft im Jar 2.22.1). */
+        static final String ESSENTIALS = "Essentials";
+
+        private final Server server;
+        private final Plugin owner;
+        private final Parts parts;
+        private volatile List<BuildLedger.Entry> builds = List.of();
+        private volatile long buildsAt = Long.MIN_VALUE / 2;
+        private volatile boolean buildsLoading;
+        /**
+         * Essentials-Warps höchstens alle ESSENTIALS_REFRESH_MS neu lesen. Gemessen 2026-11-22 (Testserver): Eine
+         * kaputte Warp-Datei lässt Essentials bei JEDEM getWarp einen Stacktrace ins Log schreiben – ohne Puffer bei
+         * jedem neuen Bewohner, also bis alle 2 s.
+         */
+        static final long ESSENTIALS_REFRESH_MS = 60_000L;
+        private List<WorkSpots.Spot> essentialsSpots = List.of();
+        private long essentialsAt = Long.MIN_VALUE / 2;
+
+        BukkitEnv(Server server, Plugin owner, Parts parts) {
+            this.server = server;
+            this.owner = owner;
+            this.parts = parts;
+        }
+
         @Override
         public Entity entity(UUID id) {
-            return Bukkit.getEntity(id);
+            return server.getEntity(id);
         }
 
         @Override
         public Collection<? extends Player> players() {
-            return Bukkit.getOnlinePlayers();
+            return server.getOnlinePlayers();
         }
 
         @Override
         public void now(Runnable r) {
-            if (plugin.isEnabled()) {
-                Bukkit.getScheduler().runTask(plugin, r);
+            // Nach dem Abschalten nimmt der Scheduler keine Aufgabe mehr an (IllegalPluginAccessException); eine späte
+            // KI-Antwort fällt dann still weg.
+            if (owner.isEnabled()) {
+                server.getScheduler().runTask(owner, r);
             }
         }
 
         @Override
         public void later(Runnable r, long ticks) {
-            Bukkit.getScheduler().runTaskLater(plugin, r, ticks);
+            server.getScheduler().runTaskLater(owner, r, ticks);
         }
 
         @Override
         public boolean buildPlanning() {
-            return plugin.service() != null && plugin.service().planning();
+            return parts.planning();
         }
 
         @Override
         public boolean companionThinking() {
-            return plugin.companion() != null && plugin.companion().anyThinking();
+            return parts.companionThinking();
         }
 
         @Override
         public boolean slow() {
-            return plugin.service() != null && plugin.service().busy()
-                    || plugin.lagWatch() != null && plugin.lagWatch().active() > 0;
+            return parts.building() || parts.lagActive() > 0;
         }
 
         @Override
         public Set<String> reservedNames() {
             Set<String> out = new HashSet<>();
-            out.add(plugin.npc().name());
-            if (plugin.companion() != null) {
-                out.add(plugin.companion().name());
+            if (parts.npcName() != null) {
+                out.add(parts.npcName());
+            }
+            if (parts.companionName() != null) {
+                out.add(parts.companionName());
             }
             return out;
         }
 
         @Override
         public void saveEnabled(boolean on) {
-            plugin.getConfig().set(TownSettings.KEY_ENABLED, on);
-            plugin.saveConfig();
+            parts.saveEnabled(on);
         }
 
         @Override
@@ -256,12 +401,208 @@ final class TownLife implements Listener {
         public boolean climbable(Location at) {
             return org.bukkit.Tag.CLIMBABLE.isTagged(at.getBlock().getType());
         }
+
+        @Override
+        public Location surfaceAt(World w, int x, int z) {
+            if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+                return null;
+            }
+            int y = w.getHighestBlockYAt(x, z);
+            Material g = w.getBlockAt(x, y, z).getType();
+            if (!g.isSolid() || g == Material.MAGMA_BLOCK || org.bukkit.Tag.LEAVES.isTagged(g)) {
+                return null;
+            }
+            if (!w.getBlockAt(x, y + 1, z).isPassable() || !w.getBlockAt(x, y + 2, z).isPassable()) {
+                return null;
+            }
+            return new Location(w, x + 0.5, y + 1, z + 0.5);
+        }
+
+        @Override
+        public List<WorkSpots.Spot> workSpots() {
+            List<WorkSpots.Spot> out = new ArrayList<>();
+            out.addAll(source("essentials", this::essentials));
+            out.addAll(source("warps", this::baumeisterWarps));
+            out.addAll(source("reisepunkte", () -> places(parts.places())));
+            out.addAll(source("bauten", () -> {
+                refreshBuilds();
+                return builds(builds, id -> {
+                    World w = server.getWorld(id);
+                    return w == null ? null : w.getName();
+                });
+            }));
+            return out;
+        }
+
+        /** Quellen, die schon einmal geworfen haben – gewarnt wird je Quelle nur einmal. */
+        private final Set<String> failedSources = new HashSet<>();
+
+        /**
+         * Eine Ortsquelle, abgesichert. Bewusst fail-open: Ein Arbeitsort ist Schmuck, kein Schutz. Wirft eine Quelle
+         * (fremdes Plugin, kaputte Liste), fehlen nur ihre Orte, die übrigen und der Platz-Rückfall bleiben. Vorher
+         * (Prüfung des Dirigenten 2026-11-22) lief eine Ausnahme aus places()/warps() durch spawn bis zum Scheduler,
+         * und der schon eingetragene Bewohner blieb ohne Arbeitsort verfolgt. Wer den catch entfernt, bringt das zurück.
+         */
+        private List<WorkSpots.Spot> source(String name, java.util.function.Supplier<List<WorkSpots.Spot>> read) {
+            try {
+                return read.get();
+            } catch (RuntimeException e) {
+                if (failedSources.add(name)) {
+                    LOG.log(java.util.logging.Level.WARNING, "stadtleben | ortsquelle_fehlgeschlagen | quelle=" + name
+                            + " grund=" + e, e);
+                } else {
+                    LOG.fine(() -> "stadtleben | ortsquelle_fehlgeschlagen | quelle=" + name + " grund=" + e);
+                }
+                return List.of();
+            }
+        }
+
+        private List<WorkSpots.Spot> essentials() {
+            Plugin ess = server.getPluginManager().getPlugin(ESSENTIALS);
+            if (ess == null || !ess.isEnabled()) {
+                return List.of();
+            }
+            long now = System.currentTimeMillis();
+            if (now - essentialsAt >= ESSENTIALS_REFRESH_MS) {
+                essentialsSpots = essentialsWarps(ess);
+                essentialsAt = now;
+            }
+            return essentialsSpots;
+        }
+
+        private List<WorkSpots.Spot> baumeisterWarps() {
+            List<WorkSpots.Spot> out = new ArrayList<>();
+            for (Map.Entry<String, Location> w : parts.warps().entrySet()) {
+                Location l = w.getValue();
+                if (out.size() >= WorkSpots.MAX_PER_SOURCE) {
+                    break;
+                }
+                if (l.getWorld() != null) {
+                    out.add(WorkSpots.Spot.point(WorkSpots.Source.WARP, w.getKey(), l.getWorld().getName(), l.getX(),
+                            l.getY(), l.getZ()));
+                }
+            }
+            return out;
+        }
+
+        /** Baubuch im Hintergrund neu lesen, höchstens alle LEDGER_REFRESH_MS; bis dahin gilt der letzte Stand. */
+        private void refreshBuilds() {
+            long now = System.currentTimeMillis();
+            if (buildsLoading || now - buildsAt < LEDGER_REFRESH_MS) {
+                return;
+            }
+            long before = buildsAt;
+            buildsLoading = true;
+            buildsAt = now;
+            Path dir = parts.ledgerDir();
+            // Nur lesen: Diese BuildLedger-Instanz schreibt nie (kein add/forget). BuildLedger schreibt index.json per
+            // ATOMIC_MOVE, ein halber Stand ist also nicht zu sehen.
+            try {
+                server.getScheduler().runTaskAsynchronously(owner, () -> {
+                    try {
+                        builds = new BuildLedger(dir).entries();
+                    } finally {
+                        buildsLoading = false;
+                    }
+                });
+            } catch (RuntimeException e) {
+                // Der Scheduler nimmt nichts mehr an (Abschalten: IllegalPluginAccessException). Vorher blieb
+                // buildsLoading dann für immer true, und das Baubuch wurde nie wieder gelesen. Zurücksetzen, damit der
+                // nächste Bewohner es erneut versucht; die Ausnahme selbst meldet source("bauten").
+                buildsLoading = false;
+                buildsAt = before;
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * EssentialsX-Warps über Reflexion: Ohne harte Abhängigkeit lädt keine Essentials-Klasse, und ohne das Plugin
+     * läuft alles andere (softdepend). Aufgerufen werden nur IEssentials.getWarps(), IWarps.getList() und
+     * IWarps.getWarp(String) – geprüft mit javap im Jar EssentialsX 2.22.1 (2026-11-22).
+     *
+     * Bewusst fail-open: Ein Fehler im fremden Plugin (andere Fassung, Warp in einer nicht geladenen Welt wirft
+     * InvalidWorldException) kostet nur diesen Warp bzw. die Essentials-Warps, nie den Takt.
+     */
+    static List<WorkSpots.Spot> essentialsWarps(Object essentials) {
+        List<WorkSpots.Spot> out = new ArrayList<>();
+        try {
+            Object warps = essentials.getClass().getMethod("getWarps").invoke(essentials);
+            if (warps == null) {
+                return out;
+            }
+            Method getWarp = warps.getClass().getMethod("getWarp", String.class);
+            Object names = warps.getClass().getMethod("getList").invoke(warps);
+            if (!(names instanceof Collection<?> list)) {
+                return out;
+            }
+            for (Object name : list) {
+                if (out.size() >= WorkSpots.MAX_PER_SOURCE) {
+                    break;
+                }
+                String n = String.valueOf(name);
+                try {
+                    if (getWarp.invoke(warps, n) instanceof Location l && l.getWorld() != null) {
+                        out.add(WorkSpots.Spot.point(WorkSpots.Source.WARP, n, l.getWorld().getName(), l.getX(),
+                                l.getY(), l.getZ()));
+                    }
+                } catch (InvocationTargetException e) {
+                    LOG.fine(() -> "stadtleben | essentials_warp_übersprungen | warp=" + Texts.clean(n, 32) + " grund="
+                            + e.getCause());
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            // Einmal laut, danach leise: Gefragt wird bei jedem neuen Bewohner (bis alle 2 s), eine unpassende
+            // Essentials-Fassung schriebe sonst das Log mit Stacktraces voll.
+            if (!essentialsWarned) {
+                essentialsWarned = true;
+                LOG.log(java.util.logging.Level.WARNING, "stadtleben | essentials_warps_unlesbar | grund=" + e, e);
+            } else {
+                LOG.fine(() -> "stadtleben | essentials_warps_unlesbar | grund=" + e);
+            }
+        }
+        return out;
+    }
+
+    private static volatile boolean essentialsWarned;
+
+    /** Reisepunkte als Arbeitsorte. */
+    static List<WorkSpots.Spot> places(List<PlaceRegistry.Place> all) {
+        List<WorkSpots.Spot> out = new ArrayList<>();
+        for (PlaceRegistry.Place p : all) {
+            if (out.size() >= WorkSpots.MAX_PER_SOURCE) {
+                break;
+            }
+            out.add(WorkSpots.Spot.point(WorkSpots.Source.PLACE, p.name(), p.world(), p.x(), p.y(), p.z()));
+        }
+        return out;
+    }
+
+    /** Fertige Bauten aus dem Baubuch; worldName: UUID → Name, null = Welt nicht geladen (fällt heraus). */
+    static List<WorkSpots.Spot> builds(List<BuildLedger.Entry> entries,
+            java.util.function.Function<UUID, String> worldName) {
+        List<WorkSpots.Spot> out = new ArrayList<>();
+        for (BuildLedger.Entry e : entries) {
+            if (out.size() >= WorkSpots.MAX_PER_SOURCE) {
+                break;
+            }
+            String w = e.world() == null ? null : worldName.apply(e.world());
+            if (w != null) {
+                // Auftrag plus Kurzkennung als Name: Zwei Bauten mit demselben Auftrag („haus“) sind zwei Orte –
+                // sonst teilten sie sich die Belegung (WorkSpots.MAX_PER_SPOT).
+                String id = e.id() == null ? "" : e.id().substring(0, Math.min(8, e.id().length()));
+                out.add(new WorkSpots.Spot(WorkSpots.Source.BUILD, Texts.clean(e.order(), 40) + " #" + id, w,
+                        e.minX(), e.minY(), e.minZ(), e.maxX(), e.maxZ()));
+            }
+        }
+        return out;
     }
 
     private final Env env;
 
     TownLife(BaumeisterPlugin plugin) {
-        this(plugin, new BukkitEnv(plugin), new NamespacedKey(plugin, "bewohner"));
+        this(plugin, new BukkitEnv(plugin.getServer(), plugin, Parts.of(plugin)), new NamespacedKey(plugin,
+                "bewohner"));
     }
 
     /** Für Tests: plugin darf null sein (dann kein start()). */
@@ -492,12 +833,81 @@ final class TownLife implements Listener {
         // Erst eintragen, dann schmücken: Wirft der Schmuck, bleibt der Bewohner verfolgt und wird wieder entfernt.
         Resident r = adopt(person, m, at);
         dress(m, person);
-        Location work = surfaceNear(at, 12, 22);
-        r.work = work != null ? work : at.clone();
+        r.work = chooseWork(r, at);
         spawned++;
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | erschienen | bewohner=%s beruf=%s welt=%s x=%d y=%d "
                 + "z=%d", TownTalk.key(person.name()), person.job(), at.getWorld().getName(), at.getBlockX(),
                 at.getBlockY(), at.getBlockZ()));
+    }
+
+    /** So viele vorhandene Orte probiert chooseWork, bevor es auf den Platz zurückfällt. */
+    static final int TRY_SPOTS = 3;
+
+    /** Schon einmal gewarnt, dass Env.workSpots geworfen hat (danach still, sonst bis alle 2 s ein Stacktrace). */
+    private boolean workSpotsFailed;
+
+    /**
+     * Arbeitsort eines neuen Bewohners (AK-30): der beste vorhandene Ort (WorkSpots.rank), an dem sich ein Stehplatz
+     * findet; höchstens TRY_SPOTS Orte, dann der alte Platz 12–22 Blöcke von der Wohnung, zuletzt die Wohnung selbst.
+     * Mehr Versuche lohnen nicht: Ein Ort ohne Stehplatz (Wasser, Dach in Laub) ist meist von Nachbarn umgeben, die es
+     * auch nicht haben, und jeder Versuch liest bis zu sieben Spalten.
+     */
+    Location chooseWork(Resident r, Location home) {
+        World w = home.getWorld();
+        List<double[]> near = new ArrayList<>();
+        for (Player p : env.players()) {
+            if (p.getGameMode() != GameMode.SPECTATOR && w.equals(p.getWorld())) {
+                near.add(new double[] {p.getLocation().getX(), p.getLocation().getZ()});
+            }
+        }
+        Map<String, Integer> taken = new HashMap<>();
+        for (Resident o : residents) {
+            if (o != r && o.workAt != null) {
+                taken.merge(o.workAt.spot().key(), 1, Integer::sum);
+            }
+        }
+        List<WorkSpots.Spot> spots;
+        try {
+            spots = env.workSpots();
+        } catch (RuntimeException e) {
+            // Bewusst fail-open, wie BukkitEnv.source: chooseWork läuft in spawn NACH adopt – eine Ausnahme hier ließe
+            // den eingetragenen Bewohner ohne Arbeitsort zurück und ginge bis zum Scheduler (Prüfung 2026-11-22).
+            // Ohne Orte bleibt der Platz nahe der Wohnung.
+            if (!workSpotsFailed) {
+                workSpotsFailed = true;
+                LOG.log(java.util.logging.Level.WARNING, "stadtleben | orte_fehlgeschlagen | grund=" + e, e);
+            }
+            spots = List.of();
+        }
+        List<WorkSpots.Choice> ranked = WorkSpots.rank(spots, w.getName(), home.getX(), home.getZ(), near,
+                w::isChunkLoaded, taken);
+        for (int i = 0; i < Math.min(TRY_SPOTS, ranked.size()); i++) {
+            WorkSpots.Choice c = ranked.get(i);
+            Location stand = standAt(new Location(w, c.x(), c.spot().y(), c.z()));
+            if (stand != null) {
+                r.workAt = c;
+                LOG.info(() -> String.format(Locale.ROOT, "stadtleben | arbeitsort | bewohner=%s quelle=%s ort=%s x=%d "
+                        + "y=%d z=%d", TownTalk.key(r.person.name()), c.spot().source().label(),
+                        Texts.clean(c.spot().name(), 48), stand.getBlockX(), stand.getBlockY(), stand.getBlockZ()));
+                return stand;
+            }
+        }
+        r.workAt = null;
+        Location plain = surfaceNear(home, 12, 22);
+        Location work = plain != null ? plain : home.clone();
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | arbeitsort | bewohner=%s quelle=%s orte=%d x=%d y=%d "
+                + "z=%d", TownTalk.key(r.person.name()), WorkSpots.Source.NEAR.label(), ranked.size(),
+                work.getBlockX(), work.getBlockY(), work.getBlockZ()));
+        return work;
+    }
+
+    /** Stehplatz genau am Ort, sonst bis 2,5 Blöcke daneben (der Warp selbst kann auf einer Stufe liegen). */
+    private Location standAt(Location at) {
+        Location exact = env.surfaceAt(at.getWorld(), at.getBlockX(), at.getBlockZ());
+        if (exact != null && Math.abs(exact.getY() - at.getY()) <= 12) {
+            return exact;
+        }
+        return surfaceNear(at, 1, 2.5);
     }
 
     /** Einen Bewohner verfolgen (spawn; im Test mit einem Fake-Mannequin). */
@@ -941,10 +1351,10 @@ final class TownLife implements Listener {
     // ---------------------------------------------------------------- Ort, Entfernen, Status
 
     /**
-     * Stehplatz auf der Oberfläche min–max Blöcke von around: nur geladene Chunks, fester Boden (kein Wasser, keine
-     * Lava), zwei Blöcke Luft. null, wenn sechs Versuche nichts finden.
+     * Stehplatz auf der Oberfläche min–max Blöcke von around (Env.surfaceAt), höchstens 12 Blöcke über oder unter
+     * around; null, wenn sechs Versuche nichts finden.
      */
-    private static Location surfaceNear(Location around, double min, double max) {
+    private Location surfaceNear(Location around, double min, double max) {
         World w = around.getWorld();
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (int i = 0; i < 6; i++) {
@@ -952,20 +1362,10 @@ final class TownLife implements Listener {
             double d = min + rnd.nextDouble(max - min);
             int x = (int) Math.floor(around.getX() + Math.cos(a) * d);
             int z = (int) Math.floor(around.getZ() + Math.sin(a) * d);
-            if (!w.isChunkLoaded(x >> 4, z >> 4)) {
-                continue;
+            Location at = env.surfaceAt(w, x, z);
+            if (at != null && Math.abs(at.getY() - around.getY()) <= 12) {
+                return at;
             }
-            int y = w.getHighestBlockYAt(x, z);
-            Block ground = w.getBlockAt(x, y, z);
-            Material g = ground.getType();
-            if (!g.isSolid() || g == Material.MAGMA_BLOCK || org.bukkit.Tag.LEAVES.isTagged(g)
-                    || Math.abs(y + 1 - around.getY()) > 12) {
-                continue;
-            }
-            if (!w.getBlockAt(x, y + 1, z).isPassable() || !w.getBlockAt(x, y + 2, z).isPassable()) {
-                continue;
-            }
-            return new Location(w, x + 0.5, y + 1, z + 0.5);
         }
         return null;
     }
@@ -1017,9 +1417,11 @@ final class TownLife implements Listener {
             for (Resident r : residents) {
                 Entity e = env.entity(r.entity);
                 Texts.info(s, String.format(Locale.GERMANY, "%s (%s): %s · Strecke %.1f · Ziele %d · Teleports %d · "
-                        + "Wegsuchen %d · seit %.1f min%s", r.person.name(), r.person.job(), r.goal == null ? "–"
-                        : r.goal.name().toLowerCase(Locale.ROOT), r.walked, r.reachedCount, r.teleports,
-                        r.route.searches(), (now - r.born) / 60_000.0, e == null ? "" : String.format(Locale.ROOT,
+                        + "Wegsuchen %d · Arbeit %s · seit %.1f min%s", r.person.name(), r.person.job(), r.goal == null
+                        ? "–" : r.goal.name().toLowerCase(Locale.ROOT), r.walked, r.reachedCount, r.teleports,
+                        r.route.searches(), r.workAt == null ? WorkSpots.Source.NEAR.label()
+                                : r.workAt.spot().source().label() + " " + Texts.clean(r.workAt.spot().name(), 32),
+                        (now - r.born) / 60_000.0, e == null ? "" : String.format(Locale.ROOT,
                                 " · bei %d %d %d", e.getLocation().getBlockX(), e.getLocation().getBlockY(),
                                 e.getLocation().getBlockZ())));
             }

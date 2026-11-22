@@ -6,7 +6,8 @@ api-version: '1.21'
 # WorldEdit nur für die Bauteil-Bibliothek; ohne WorldEdit läuft alles andere.
 # voicechat (Simple Voice Chat, 2026-11-04): Begleiter im Spiel hören und sprechen lassen; ohne läuft alles andere.
 # CoreProtect (2026-11-05): Vera repariert Explosionsschäden und sagt, wer an einer Kiste war; ohne läuft alles andere.
-softdepend: [WorldEdit, voicechat, CoreProtect]
+# Essentials (2026-11-22): Stadtleben-Bewohner arbeiten auch an EssentialsX-Warps (nur per Reflexion); ohne läuft alles andere.
+softdepend: [WorldEdit, voicechat, CoreProtect, Essentials]
 description: NPC, der per lokalem LLM Bauwerke Block für Block errichtet
 author: blackn0va
 commands:
