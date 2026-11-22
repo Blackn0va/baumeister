@@ -17,7 +17,7 @@
 cmake_minimum_required(VERSION 3.30)
 
 # Einzige Versionsquelle. build.ps1, Setup und Versionsressource lesen sie von hier.
-project(BaumeisterHost VERSION 0.1.0 DESCRIPTION "StreamWizard Baumeister-Host" LANGUAGES C CXX)
+project(BaumeisterHost VERSION 0.2.0 DESCRIPTION "StreamWizard Baumeister-Host" LANGUAGES C CXX)
 
 if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Baumeister-Host baut nur mit MSVC für x64.")

@@ -1057,6 +1057,13 @@ Stand: 2026-11-22
 - Festwertspeicher (T-029, 2026-11-22, Spigot 1.21.11): festwertspeicher_4x4, 21×4×18, 726 Zellen, Gray-Zeilen 0,1,3,2,
   Komparator-Subtraktion je Bit; MachineProbe N/O/S/W BESTANDEN, ohne= Inverterfackel/Zellkomparator/Datenverstärker
   je FEHLER. Offen: Paper 26.2, Lampen-Laufzeit nach Adresswechsel (Probe wartet fest 1,2 s), Einbau ins Steuerwerk.
+- Wiederholungs-Auslauf (T-027, 2026-11-22, nicht übernommen): DRY in der Anfrage + design ≤ 500, PlanBench 24: 21/1/2,
+  sauber 10/24, aber 3 877 s statt 2 916 s und 18 932 statt 15 805 Token (+33 %/+20 %). Die Windmühle bleibt eine Leiter
+  fast gleicher Schritte – weder Prompt-Regel noch DRY halten sie auf; die Windmühle allein streut 277–498 s. Offen:
+  24er-Lauf ohne DRY, ob DRY die Mehrzeit trägt. Branch claude/orchester-t027-7b7bba bleibt liegen.
+- Module (T-030/T-031/T-032, 2026-11-22): modul_json nach Vertrag v012; Host und Mod lehnen unbekannte Felder ab (400 bzw.
+  verwerfen) – Falle: ein neues Feld im Plugin braucht Host- und Mod-Änderung zugleich. Host über 256 KiB → 413 vom
+  HTTP-Parser. Plugin-Menü schaltet über performCommand, die Rechte prüft ModuleSwitch.
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1566,7 +1573,7 @@ Stand: 2026-11-22
 
 Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 ## Offen
-- Stadtleben v1 (T-020): auf dev01 aus, Nutzer schaltet selbst. Offen: Takt auf dem Celeron,
+- Stadtleben v1 (T-020): auf dev01 seit 2026-11-22 10:14 an (Nutzerwunsch), KI-Host dort nicht erreichbar. Offen: Takt auf dem Celeron,
   sichtbare Tätigkeiten im echten Client, Arbeitsort an einem Bau nur per Unit-Test (live nur Warp und
   Reisepunkt), Paper mit EssentialsX seit T-026 gemessen, Stehplatz unter Dach seit T-026 gerichtet,
   Listener-Test liest nur den Quelltext von onEnable (T-023). v2 (Händler, Fahrzeuge, Polizei, Bauen/Ernten mit Rechten)

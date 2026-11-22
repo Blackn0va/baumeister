@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.2.0] – 2026-11-22
+
 ### Neu
 - Reiter „Module“: die eigenen Funktionen der App (Plan-KI, Internet-Recherche, Stimme, Mikrofon, Mitspieler
   verstehen, Stadt-Vorschau, Meldungen) als Schalter mit Zustand und Grund. Jeder Schalter schreibt denselben Schlüssel

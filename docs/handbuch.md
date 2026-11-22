@@ -908,7 +908,7 @@ mvn clean package
 pwsh -File host\build.ps1 -Tests
 ```
 
-Ergebnis: `target/Baumeister-0.1.0.jar` (Plugin) und `host\out\installer\StreamWizard-Baumeister-Host-Setup-<ver>.exe`
+Ergebnis: `target/Baumeister-<fassung>.jar` (Plugin) und `host\out\installer\StreamWizard-Baumeister-Host-Setup-<ver>.exe`
 (Host; ohne `-Tests` auf Rechnern mit Smart App Control). Die Server-APIs liegen in `lib/` (Herkunft und Hashes: `lib/README.md`).
 
 Messproben (brauchen einen laufenden llama-server):

@@ -4,6 +4,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 
 ## [Unveröffentlicht]
 
+## [0.2.0] – 2026-11-22
+
 ### Geändert
 - **LlmProbe mit dem Server-Katalog:** Die Messprobe prüft Blocknamen wie der Server; Gegenstände wie `redstone`
   zählen nicht mehr als Block.
@@ -58,6 +60,13 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   unverändert, 2 von 66 PlanBench-Urteilen geändert.
 
 ### Neu
+- **Module auf einen Blick:** Jede Funktion des Plugins ist ein Modul mit an/aus, Zustand und Grund (z. B. „Stadtleben:
+  wartet auf KI“). `/bm module` zeigt die Liste, `/bm module an|aus <id>` schaltet (nur Admins), ein Kistenmenü zeigt
+  dasselbe zum Anklicken. Das Plugin meldet den Stand an die Host-App (Reiter „Module“) und an die Client-Mod
+  (Bildschirm „Module“, Taste M).
+- **Stadtleben ohne KI:** Mit `stadtleben.ohne-ki: true` laufen die Bewohner auch, wenn die KI nicht erreichbar ist, und
+  reden dann mit festen Sätzen; kommt die KI zurück, reden sie wieder über sie. Vorgabe aus.
+- **Client-Mod 0.4.0:** Bildschirm „Module“ mit den eigenen Funktionen der Mod als Schalter und den Modulen des Servers.
 - **Festwertspeicher `festwertspeicher_4x4`:** erster Baustein des Steuerwerks für den Prozessor – 4 Wörter zu 4 Bit aus
   16 Hebeln, Adresshebel A0/A1, Lampen D0–D3. Auf Spigot 1.21.11 in allen vier Richtungen geprüft, mit Bedienhinweis
   nach dem Bau.

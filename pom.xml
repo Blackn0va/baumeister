@@ -6,7 +6,7 @@
 
   <groupId>com.blackn0va</groupId>
   <artifactId>baumeister</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>jar</packaging>
   <name>Baumeister</name>
   <description>Spigot-NPC, der per lokalem LLM Bauwerke Block für Block errichtet</description>
