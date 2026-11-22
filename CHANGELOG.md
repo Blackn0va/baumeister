@@ -4,6 +4,25 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Bewohner wie Spieler:** Stadtleben-Bewohner stehen mit Name, Kopf, Ping und Spielmodus in der Tab-Liste
+  (PacketEvents 2.14.0 im Plugin, verschoben und gepinnt), reden als „<Lotte> …“, kommen und gehen mit gelber
+  Zeile (abschaltbar mit `stadtleben.kommen-gehen-melden`), tragen Ausrüstung je Beruf, schwingen bei der Arbeit
+  den Arm und schleichen gelegentlich. Kennt PacketEvents die Serverfassung nicht, bleiben sie Mannequins ohne
+  Tab-Eintrag, mit einer Logzeile. Für Server-Ping, Schlaf und Rechte zählen sie nicht. Das Plugin-Jar wächst
+  dadurch von 2,4 auf 8,2 MB.
+- **Gedächtnis der Bewohner:** höchstens 20 kurze Fakten je Bewohner, Ablauf nach 7 Tagen, Spieler nur unter
+  Pseudonym. Löschen mit `/bm stadtleben vergessen [bewohner]` (nur Admin).
+
+### Geändert
+- **Bewohner reden mit Zusammenhang:** Sie beziehen Tageszeit, Wetter, einen Bau in der Nähe, wer dabei ist und die
+  letzten vier Sätze des Gesprächs ein; bei einer Begegnung antwortet der zweite auf den ersten. Ohne KI sagen sie
+  361 feste Sätze statt 28, je nach Beruf, Charakter, Tageszeit, Wetter und Anlass, ohne kurze Wiederholungen.
+- Bewohner-Chat vorher grün „[Lotte, Bäckerin] …“, jetzt im Spielerformat.
+
+### Behoben
+- Spielernamen in Chatzeilen gingen unverändert an die KI; sie werden jetzt durch das Pseudonym ersetzt.
+
 ## [0.2.0] – 2026-11-22
 
 ### Geändert
