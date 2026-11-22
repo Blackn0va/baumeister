@@ -205,6 +205,15 @@ final class TownLife implements Listener {
          */
         Location surfaceAt(World w, int x, int z);
 
+        /**
+         * Stehplatz nahe der Höhe y über (x, z) – fester Boden, darüber zwei Blöcke frei, höchstens STAND_DOWN tiefer
+         * oder STAND_UP höher; null, wenn keiner da oder der Chunk nicht geladen ist. Für Orte mit bekannter Höhe
+         * (Warp, Reisepunkt, Bau): surfaceAt nimmt den höchsten Block, unter einem Dach also das Dach.
+         */
+        default Location standNear(World w, int x, int y, int z) {
+            return null;
+        }
+
         /** Vorhandene Orte, an denen Bewohner arbeiten können (Warps, Reisepunkte, Bauten), noch ungefiltert. */
         List<WorkSpots.Spot> workSpots();
     }
@@ -416,6 +425,18 @@ final class TownLife implements Listener {
                 return null;
             }
             return new Location(w, x + 0.5, y + 1, z + 0.5);
+        }
+
+        @Override
+        public Location standNear(World w, int x, int y, int z) {
+            if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+                return null;
+            }
+            Integer at = standY(y, h -> {
+                Material g = w.getBlockAt(x, h, z).getType();
+                return g.isSolid() && g != Material.MAGMA_BLOCK && !org.bukkit.Tag.LEAVES.isTagged(g);
+            }, h -> w.getBlockAt(x, h, z).isPassable());
+            return at == null ? null : new Location(w, x + 0.5, at, z + 0.5);
         }
 
         @Override
@@ -903,11 +924,40 @@ final class TownLife implements Listener {
 
     /** Stehplatz genau am Ort, sonst bis 2,5 Blöcke daneben (der Warp selbst kann auf einer Stufe liegen). */
     private Location standAt(Location at) {
+        // Vorher nur surfaceAt (höchster Block): Ein Warp unter einem Dach bis 12 Blöcke höher legte den Stehplatz aufs
+        // Dach (Gegenprobe T-023, 2026-11-22). Jetzt zuerst die Höhe des Ortes; wer das zurückdreht, schickt Bewohner
+        // auf Markthallen und Bahnhofsdächer.
+        Location near = env.standNear(at.getWorld(), at.getBlockX(), at.getBlockY(), at.getBlockZ());
+        if (near != null) {
+            return near;
+        }
         Location exact = env.surfaceAt(at.getWorld(), at.getBlockX(), at.getBlockZ());
         if (exact != null && Math.abs(exact.getY() - at.getY()) <= 12) {
             return exact;
         }
         return surfaceNear(at, 1, 2.5);
+    }
+
+    /** So weit sucht standNear unter bzw. über der Höhe des Ortes (Warps stehen meist auf dem Boden, selten 1 höher). */
+    static final int STAND_DOWN = 3;
+    static final int STAND_UP = 2;
+
+    /**
+     * Füße-Höhe eines Stehplatzes nahe y: Boden bei h−1 fest, h und h+1 frei; zuerst y selbst, dann abwechselnd tiefer
+     * und höher. null, wenn keiner. Rein, damit die Suche ohne Server getestet ist (BukkitEnv liest nur die Blöcke).
+     */
+    static Integer standY(int y, java.util.function.IntPredicate solid, java.util.function.IntPredicate free) {
+        for (int d = 0; d <= Math.max(STAND_DOWN, STAND_UP); d++) {
+            for (int h : d == 0 ? new int[] {y} : new int[] {y - d, y + d}) {
+                if ((h < y && y - h > STAND_DOWN) || (h > y && h - y > STAND_UP)) {
+                    continue;
+                }
+                if (solid.test(h - 1) && free.test(h) && free.test(h + 1)) {
+                    return h;
+                }
+            }
+        }
+        return null;
     }
 
     /** Einen Bewohner verfolgen (spawn; im Test mit einem Fake-Mannequin). */

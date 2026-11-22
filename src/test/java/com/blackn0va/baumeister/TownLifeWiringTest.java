@@ -119,6 +119,32 @@ class TownLifeWiringTest {
         }
     }
 
+    /**
+     * Warp unter einem Dach: Stehplatz unten am Warp, nicht auf dem Dach. Vorher nahm standAt den höchsten Block
+     * (surfaceAt) und legte den Bewohner auf das Dach 7 Blöcke höher (Gegenprobe T-023, 2026-11-22).
+     */
+    @Test
+    void warpUnderARoofKeepsTheResidentDownstairs() {
+        Town t = new Town();
+        t.env.roofX = 30;
+        t.env.spots.add(WorkSpots.Spot.point(WorkSpots.Source.WARP, "Halle", "testwelt", 30.5, 64, 0.5));
+        TownLife.Resident r = t.resident(LOTTE);
+        Location work = t.life.chooseWork(r, t.home());
+        assertEquals(30, work.getBlockX(), "am Warp: " + work);
+        assertEquals(64, work.getBlockY(), "unter dem Dach, nicht darauf: " + work);
+    }
+
+    /** Die reine Suche: zuerst die Höhe selbst, dann tiefer, dann höher, nie weiter als STAND_DOWN/STAND_UP. */
+    @Test
+    void standYSearchesNearTheGivenHeight() {
+        java.util.function.IntPredicate floor = h -> h <= 63 || h == 70;
+        assertEquals(64, TownLife.standY(64, floor, h -> !floor.test(h)));
+        assertEquals(64, TownLife.standY(66, floor, h -> !floor.test(h)), "Warp 2 über dem Boden");
+        assertEquals(71, TownLife.standY(71, floor, h -> !floor.test(h)), "Warp auf dem Dach bleibt oben");
+        assertNull(TownLife.standY(68, floor, h -> !floor.test(h)), "4 über dem Boden ist zu weit");
+        assertNull(TownLife.standY(64, h -> false, h -> true), "kein Boden");
+    }
+
     @Test
     void residentWorksInFrontOfAFinishedBuild() {
         Town t = new Town();

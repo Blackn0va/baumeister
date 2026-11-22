@@ -134,10 +134,30 @@ class TownLifeTest {
 
         final List<WorkSpots.Spot> spots = new ArrayList<>();
 
-        /** Flache Welt: Stehplatz auf y=64, wo der Chunk geladen ist. */
+        /** Spalte x mit Dach auf y=70 über dem Boden (Markthalle); Integer.MIN_VALUE = keine. */
+        int roofX = Integer.MIN_VALUE;
+
+        private boolean solidAt(int x, int y) {
+            return y <= 63 || (x == roofX && y == 70);
+        }
+
+        /** Flache Welt: Stehplatz auf y=64, wo der Chunk geladen ist; über einem Dach dessen Oberseite (höchster Block). */
         @Override
         public Location surfaceAt(World w, int x, int z) {
-            return w.isChunkLoaded(x >> 4, z >> 4) ? new Location(w, x + 0.5, 64, z + 0.5) : null;
+            if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+                return null;
+            }
+            return new Location(w, x + 0.5, x == roofX ? 71 : 64, z + 0.5);
+        }
+
+        /** Wie BukkitEnv.standNear über TownLife.standY, mit der Welt oben. */
+        @Override
+        public Location standNear(World w, int x, int y, int z) {
+            if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+                return null;
+            }
+            Integer at = TownLife.standY(y, h -> solidAt(x, h), h -> !solidAt(x, h));
+            return at == null ? null : new Location(w, x + 0.5, at, z + 0.5);
         }
 
         @Override
