@@ -5,6 +5,8 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Geändert
+- **LlmProbe mit dem Server-Katalog:** Die Messprobe prüft Blocknamen wie der Server; Gegenstände wie `redstone`
+  zählen nicht mehr als Block.
 - **Bewohner arbeiten an echten Orten:** Im Stadtleben gehen Bewohner zur Arbeit an vorhandene EssentialsX-Warps,
   Baumeister-Warps, Reisepunkte (`/bm orte`) oder vor fertige Bauten in der Nähe der Spieler, höchstens zwei je Ort;
   passt keiner, bleibt es beim Platz nahe der Wohnung. `/bm stadtleben status` zeigt den Arbeitsort jedes Bewohners.
@@ -34,6 +36,11 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Prüfers gelangen, als Gespräch über mehrere Runden auf; `train_qlora.py` lernt dort nur die korrigierte Antwort.
 
 ### Behoben
+- **Tür in der Wand:** Stellt die KI eine Tür frei, in die Luft oder mitten in den Raum, rückt sie jetzt in die
+  nächste passende Außenwand auf Bodenhöhe, statt den Plan scheitern zu lassen (Wachturm, Leuchtturm). Gemessen mit
+  dem lokalen Modell an fünf Aufträgen: 5 statt 3 angenommen.
+- **Maschinen nicht mehr eingemauert:** Sand, Kies, Erde oder Wasser, die die KI vor einem Bibliotheksmodul plant,
+  ummanteln es nicht mehr (Zuckerrohrfarm). Wände, Böden, Stein und Bauteile neben dem Modul bleiben stehen.
 - **Kein Stillstand mehr bei fernen Zielen:** Die Prüfsumme des Bauplatzes (Vorschau bestätigen) und `/bm ort`
   laden ihre Chunks jetzt vorher, statt sie mitten im Server-Takt zu laden oder zu erzeugen. Lässt sich ein Chunk
   nicht laden, wird nicht gebaut bzw. nicht teleportiert – ein ungeladener Bereich zählt nie als leer.

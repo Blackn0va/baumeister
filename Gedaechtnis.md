@@ -737,7 +737,7 @@ Stand: 2026-11-22
   tür/tor/licht/lampe). Falle: Wer ein technisches Wort aus MACHINE_WORDS nimmt oder die Bedingung auf machineWanted
   verengt, nimmt Aufträgen wie „Pistontür“, „Lampe mit Tageslichtsensor“, „Zugbrücke“ die Bauteile (PlanPromptTest).
   Zu viel Liste durch Teilwörter (Glockenturm, Kornspeicher, Mausefalle) ist bewusst hingenommen – so war es vorher
-  immer. Offen: Türen bei Wachturm/Leuchtturm/Stall; Zuckerrohrfarm wird um das Modul herum gebaut.
+  immer. Türen und Modulmantel seit T-021 gerichtet (siehe unten).
 - Gegenprobe Lehrset-Filter: Generator mit absichtlich schwebenden Laternen – Filter an: Tests grün, 23 Pläne
   verworfen („ohne Halt weggelassen“); Filter aus: `everyGeneratedPlanPassesStrictReview` rot; zurückgestellt: grün.
   Richter selbst: eingemauertes Wasser, Klotz in der Luft, Hochhaus ohne skyscraper, Vollzylinder → abgelehnt, Turm
@@ -1034,6 +1034,16 @@ Stand: 2026-11-22
   chooseWork fangen RuntimeException (fail-open, Arbeitsort ist kein Schutz); wer den catch entfernt, lässt einen
   Bewohner ohne Arbeitsort verfolgt und die Ausnahme beim Scheduler.
 
+- Tür und Modulmantel (T-021, 2026-11-22, Qwen2.5 7B Vulkan 8192, Temp 0,4): Wachturm, Zuckerrohrfarm+Schmelzanlage,
+  Kirche, Leuchtturm, Pferdestall vorher 3/5 angenommen, nachher 5/5, `tür_gerichtet` bei Wachturm und Leuchtturm.
+  Gleiche Antworten mit altem/neuem Code: 2 verworfen → 1. `PlanAutoFix.doors`: Außenraum 3D geflutet, Rang
+  umschlossener Innenraum vor Lage vor Abstand; nie Becken- oder Modul-/Logikzelle. `moduleShells` nur für fill aus
+  SHELL_FILLERS (Sand, Kies, Erde, Gras, Ton, Wasser – NICHT Stein/Bruchstein: Sockel), Kasten schneidet das Modul und
+  steht ≤ 2 seitlich/≤ 1 hoch über; vorher zerschnitt die erste Fassung Hallenwände (90 Blöcke) und Böden und nahm
+  Truhen am Modul weg (Gegenprobe). Eine breite Sand-/Wasserwand an zwei Modulen vorbei bleibt (9 Füllblöcke) – gewollt.
+- Item-Sortierer auf Paper 26.2-135 (T-022, 2026-11-22): _2, _4–_7 ohne und mit Sorten, N/O/S/W, 40/40 BESTANDEN.
+  Falle: der Prüfablauf füttert fest `dirt` als Fremdgegenstand (Machines.java ~2257/2289) – steht `dirt` in der
+  Sortenliste, fallen _4/_6/_7 durch (FREMD3=1), ohne Fehler der Maschine.
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1399,7 +1409,7 @@ Stand: 2026-11-22
   (BlockTiers.knownBlock + tiers/block-ids.txt), also dieselbe Auflösung wie BukkitBlockCatalog. Gemessen: Lehrset
   0/4000 geändert, PlanBench 2/66 Urteile. Gegenprobe: PlanJudgeItemTest mit altem Katalog 3/5 rot. Falle:
   `PlanJudge.loadBlockIds` liest block-ids.txt ein zweites Mal (BlockTiers.knownBlocks ist paketprivat) – beide
-  synchron halten. `LlmProbe` hat noch den alten Material-Katalog.
+  synchron halten. `LlmProbe` nutzt seit T-021 denselben Katalog.
 - Testaufträge sind auch als Teilstück gesperrt (DatasetGenerator.nearBench): „Bau mir einen Wachturm aus Holz“ stand
   vorher fast wörtlich im Lehrset.
 - Lehrset: 21 % der Einträge (793 von 3805, 2026-11-01) sind Aufträge, die das Plugin als Schnellauftrag ohne LLM
@@ -1693,7 +1703,7 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 - Logik (bewusst offen): Ausgänge ohne Schilder (nur Reihenfolge links → rechts). Ein mehrstelliges Rechenwerk aus
   verketteten Volladdierern geht nicht (keine Rückführung, 3 Bit bräuchten 6 Eingänge). Ob ein echtes LLM mehrere
   Formeln mit „;“ nutzt, ungeprüft. Impulsverlängerer nur mit ~1,2 s Puls geprüft; Item-Sortierer seit 353c4bc für 2–8 Sorten
-  (item_sortierer_N, Spigot 4/4, Paper 26.2 nicht live).
+  (item_sortierer_N, Spigot 4/4, Paper 26.2 alle 4/4, T-018/T-022).
 - Bauformen: Mauer und Baum nicht im Spiel gebaut, Burg/Brücke/Garten nur als Schnellauftrag; mit echtem LLM prüfen,
   ob es die ops nutzt. Burg-Hof leer, Brücke ohne Rampen. Gerade Mauern ab 9 haben seit 9b75e5f ein Tor (live geprüft, noch nicht auf dev01).
 - Plan-Prüfer und Anbau mit fester Wand (die frühere Idee „Anbau deterministisch vorbereiten“ ist umgesetzt) mit
