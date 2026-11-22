@@ -100,6 +100,9 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             // Begleiter (2026-11-04): hängt an baumeister.begleiter (Vorgabe: jeder), geprüft in onCommand. In der
             // Vervollständigung wie die Karte für Bauende und Reisende sichtbar.
             new Sub("begleiter", false, false, true, List.of("companion")),
+            // Stadtleben (2026-11-21, Vertrag v008): status für jeden mit baumeister.bauen, an/aus/messung nur Admins
+            // (geprüft in townLife).
+            new Sub("stadtleben", false, List.of()),
             new Sub("bauteil", true, List.of()),
             new Sub("spawn", true, List.of()),
             new Sub("entfernen", true, List.of("remove")),
@@ -163,6 +166,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> QUEUE_VERBS = List.of("abbrechen");
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
+    private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
     private static final List<String> ADVENTURE_VERBS = List.of("normal", "hardcore", "stand", "aus", "team",
             "annehmen");
@@ -369,6 +373,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             }
             case "ort" -> place(sender, label, args);
             case "begleiter", "companion" -> companion(sender, args);
+            case "stadtleben" -> townLife(sender, args, plugin == null ? null : plugin.town());
             default -> {
                 // „/bm grab ein tunnel“ (dev01 2026-11-16, dreimal hintereinander): Ein Satz statt eines Unterbefehls
                 // zeigte nur die Hilfe. Ist es ein Grabauftrag (auch „hör auf mit dem Tunnel“), geht er den Grabweg
@@ -566,6 +571,9 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             out.add(bm + " fortschritt – Stand mit Restzeit · komm – den Baumeister zu dir holen");
             out.add(bm + " helfer <0–" + HelperWish.MAX + "|auto> – Helfer für deine Bauten, auch mitten im "
                     + "Bau; oder im Auftrag \"… mit 4 Helfern\", im Chat \"mehr helfer\"");
+            out.add(bm + " stadtleben [status] – Bewohner in deiner Nähe (nur bei laufender KI und tagsüber); "
+                    + "ansprechen im Chat mit ihrem Namen, z. B. \"Lotte, wie geht's?\""
+                    + (has.test("baumeister.admin") ? " · stadtleben an|aus|messung" : ""));
         }
         if (has.test(TRAVEL)) {
             out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
@@ -701,7 +709,39 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private boolean requireAdmin(CommandSender s) {
+    /**
+     * /bm stadtleben [an|aus|status|messung]. Schalten und Messung zurücksetzen nur Admins (fail-closed über
+     * requireAdmin, ASVS V4.1.1): Der Modus belegt Takt und den KI-Host, den Bau und Vera mitbenutzen.
+     */
+    static void townLife(CommandSender sender, String[] args, TownLife town) {
+        String verb = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "status";
+        // Rechte zuerst (ASVS V4.1.1): Wer die Prüfung entfernt, lässt jeden mit baumeister.bauen das Stadtleben
+        // schalten – TownLifeTest.switchNeedsAdmin prüft das am Zustand eines echten TownLife.
+        boolean adminVerb = verb.equals("an") || verb.equals("aus") || verb.equals("messung");
+        if (adminVerb && !requireAdmin(sender)) {
+            return;
+        }
+        if (town == null) {
+            Texts.info(sender, "Das Stadtleben ist nicht geladen.");
+            return;
+        }
+        switch (verb) {
+            case "an", "aus" -> {
+                town.setEnabled(verb.equals("an"), sender);
+                Texts.info(sender, verb.equals("an")
+                        ? "Stadtleben an – Bewohner kommen, sobald die KI antwortet und es Tag ist."
+                        : "Stadtleben aus – die Bewohner sind weg.");
+            }
+            case "messung" -> {
+                town.resetCost();
+                Texts.info(sender, "Taktmessung des Stadtlebens neu begonnen.");
+            }
+            case "status" -> town.status(sender, sender.hasPermission("baumeister.admin"));
+            default -> Texts.info(sender, "/bm stadtleben [an|aus|status|messung]");
+        }
+    }
+
+    private static boolean requireAdmin(CommandSender s) {
         if (!s.hasPermission("baumeister.admin")) {
             Texts.info(s, "Dafür fehlt dir baumeister.admin.");
             return false;
@@ -1347,6 +1387,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     : args.length == 3 && args[1].equalsIgnoreCase("ziel") ? places : List.of();
             case "kartenbild" -> args.length == 2 ? worlds : List.of();
             case "bildschirm" -> args.length == 2 ? SCREEN_VERBS : List.of();
+            case "stadtleben" -> args.length == 2 ? (admin ? TOWN_VERBS : List.of("status")) : List.of();
             case "begleiter" -> args.length == 2 ? COMPANION_VERBS
                     : args.length == 3 && args[1].equalsIgnoreCase("abenteuer") ? ADVENTURE_VERBS : List.of();
             case "bauteil" -> args.length == 3 ? DIRECTIONS : List.of();

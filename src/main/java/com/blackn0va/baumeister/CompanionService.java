@@ -443,6 +443,19 @@ final class CompanionService {
         return settings.name();
     }
 
+    /**
+     * Beantwortet gerade irgendein Begleiter eine Frage (Buddy.thinking)? Das Stadtleben fragt dann nicht (TalkBudget):
+     * Ein Spieler, der Vera etwas gefragt hat, soll nicht hinter einem Bewohner-Satz warten.
+     */
+    boolean anyThinking() {
+        for (Buddy b : buddies.values()) {
+            if (b.thinking) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     boolean isCompanion(Entity e) {
         return e.getPersistentDataContainer().has(marker, PersistentDataType.BYTE);
     }
@@ -2753,7 +2766,9 @@ final class CompanionService {
      * Welt für die Wegsuche. Zäune, Mauern und Tore sind 1,5 hoch: weder Boden noch Stufe (Sprung reicht nicht). Lava,
      * Feuer, Pulverschnee, Spinnweben und Beerensträucher meidet sie, obwohl sie „passierbar“ sind.
      */
-    private static CompanionPath.Blocks pathBlocks(World w) {
+    // Paketweit statt privat (2026-11-21): Die Bewohner des Stadtlebens (TownLife) laufen über dieselbe Welt-Sicht,
+    // damit sie Zäune, Lava und Beerensträucher genauso meiden wie Vera. Türen öffnen sie nie (ohne doors).
+    static CompanionPath.Blocks pathBlocks(World w) {
         return pathBlocks(w, false);
     }
 

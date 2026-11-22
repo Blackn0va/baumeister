@@ -325,6 +325,17 @@ begleiter:
       - hauptwelt
     # Im normalen Modus schlägt Vera Monster in der Nähe (Schwert, etwa 5 Schaden). Im Hardcore nie.
     mitkämpfen: true
+# Stadtleben (2026-11-21): Bewohner-Bots laufen nahe den Spielern herum, folgen einem Tagesablauf nach Weltzeit
+# (morgens zur Arbeit, mittags bummeln, abends heim, nachts schlafen), grüßen und reden per lokaler KI. Sie verändern
+# die Welt nicht. Nur wenn an UND die KI (llm.url) antwortet; fällt sie aus, gehen die Bewohner. Schalten: /bm
+# stadtleben an|aus (nur Admins). Ansprechen: Chatzeile mit ihrem Namen beginnen, in 16 Blöcken Nähe.
+stadtleben:
+  an: false
+  # So viele Bewohner gleichzeitig (1–12), verteilt auf die online Spieler.
+  anzahl: 4
+  # Höchstens eine KI-Anfrage aller Bewohner zusammen je so viele Sekunden (15–600). Dazwischen sagen sie feste
+  # Sätze. Solange ein Bauplan oder Vera rechnet, fragen sie nie.
+  ki-abstand-sekunden: 45
 # Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
 # und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
 fernverbindung:

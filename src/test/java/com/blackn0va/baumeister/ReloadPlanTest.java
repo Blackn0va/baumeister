@@ -58,6 +58,14 @@ class ReloadPlanTest {
         assertTrue(o.lines().getFirst().startsWith("Kartendienste übernommen"), o.lines().toString());
     }
 
+    /** Live-Probe T-020 (2026-11-21): „stadtleben.anzahl: 12“ meldete „Keine Änderung“ und blieb bei 4. */
+    @Test
+    void townLifeChangesAreTakenOver() throws Exception {
+        ReloadPlan.Outcome o = decide(with(), with("stadtleben.anzahl", "12"), false, false, false, false, false);
+        assertFalse(o.replaceBuildService());
+        assertTrue(o.lines().getFirst().startsWith("Stadtleben: stadtleben.anzahl"), o.lines().toString());
+    }
+
     @Test
     void runningBuildKeepsItsSettingsAndTheChangeWaits() throws Exception {
         ReloadPlan.Outcome o = decide(with(), with("bau.ticks-pro-block", "1"), true, false, false, false, false);

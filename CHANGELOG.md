@@ -40,6 +40,12 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   unverändert, 2 von 66 PlanBench-Urteilen geändert.
 
 ### Neu
+- **Stadtleben:** Mit `/bm stadtleben an` (nur Admins) laufen bis zu 12 Bewohner mit Name, Beruf und Tagesablauf
+  nahe den Spielern herum: morgens zur Arbeit, mittags bummeln, abends heim, nachts schlafen. Sie schauen Spieler an,
+  grüßen und reden per lokaler KI – ansprechen mit einer Chatzeile, die mit ihrem Namen beginnt. Nur bei erreichbarer
+  KI und tagsüber, ohne Weltänderung, höchstens eine KI-Anfrage je 45 s und keine, solange ein Bauplan oder Vera
+  rechnet. Vorgabe aus. `/bm stadtleben status` zeigt Bewohner, KI-Anfragen und Tickkosten; `/bm neuladen`
+  übernimmt Anzahl und Abstand.
 - **Item-Sortierer für mehrere Sorten:** `item_sortierer_N` sortiert 2 bis 8 Sorten in je eine Kiste, den Rest in den
   Überlauf – auch mit den Sorten im Namen (`item_sortierer_3:coal,iron_ingot,gold_ingot`). Sorten, die sich nicht
   bis 64 stapeln, lehnt er ab. Auf dem Spigot-Testserver in allen vier Richtungen geprüft. <!-- umlaut-ok: Maschinen-ID -->

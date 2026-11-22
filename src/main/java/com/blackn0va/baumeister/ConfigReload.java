@@ -89,6 +89,10 @@ final class ConfigReload {
                 plugin.city().running(), weltbau != null && weltbau.running()));
 
         plugin.reloadConfig();
+        if (plugin.town() != null) {
+            // Stadtleben ohne neuen KI-Client: Nur Schalter, Anzahl und Abstand ändern sich.
+            plugin.town().reload(com.blackn0va.baumeister.town.TownSettings.from(plugin.getConfig()));
+        }
         try {
             if (plan.replaceBuildService()) {
                 // Baut BuildService samt LlmClient und Bauteilen neu, benennt den NPC um, lädt die Kartendienste.

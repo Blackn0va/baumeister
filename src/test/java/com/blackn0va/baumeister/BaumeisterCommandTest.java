@@ -48,13 +48,13 @@ class BaumeisterCommandTest {
         // tunnel, treppe, brücke, weiterbauen seit 2026-11-16 (Graben und Brücken, Rechte wie bau).
         assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
                 "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm",
-                "vorschau", "warteschlange", "karte", "begleiter", "helfer"), player(""));
+                "vorschau", "warteschlange", "karte", "begleiter", "stadtleben", "helfer"), player(""));
     }
 
     @Test
     void adminsSeeEveryMainName() {
         List<String> all = admin("");
-        assertEquals(49, all.size(), all.toString());  // 49 seit tunnel, treppe, brücke, weiterbauen (2026-11-16)
+        assertEquals(50, all.size(), all.toString());  // 50 seit stadtleben (2026-11-21)
         assertTrue(all.containsAll(List.of("portal", "einrichten")));
         assertTrue(all.containsAll(List.of("befehle", "befehlsblock", "selbsttest")));
         assertTrue(all.containsAll(List.of("bauteil", "spawn", "stadt", "stadtwelt", "tempo", "helfer", "logik", "logikbei",
@@ -105,11 +105,41 @@ class BaumeisterCommandTest {
         assertEquals(List.of("0", "2", "4", "8", "auto"), player("helfer", ""));
     }
 
+    /**
+     * /bm stadtleben an|aus|messung nur für Admins – geprüft, bevor der Befehl das Plugin anfasst (hier null: käme er
+     * durch, flöge eine NullPointerException). Gegenprobe 2026-11-22: ohne requireAdmin blieb die Suite grün.
+     */
+    @Test
+    void townLifeSwitchNeedsAdmin() {
+        List<String> said = new java.util.ArrayList<>();
+        org.bukkit.command.CommandSender builder = (org.bukkit.command.CommandSender) java.lang.reflect.Proxy
+                .newProxyInstance(org.bukkit.command.CommandSender.class.getClassLoader(),
+                        new Class<?>[] {org.bukkit.command.CommandSender.class}, (proxy, m, a) -> switch (m.getName()) {
+                            case "hasPermission" -> "baumeister.bauen".equals(String.valueOf(a[0]));
+                            case "sendMessage" -> {
+                                said.add(String.valueOf(a[0]));
+                                yield null;
+                            }
+                            case "getName" -> "Gast";
+                            default -> throw new UnsupportedOperationException(m.getName());
+                        });
+        BaumeisterCommand cmd = new BaumeisterCommand(null);
+        for (String verb : List.of("an", "aus", "messung")) {
+            said.clear();
+            assertTrue(cmd.onCommand(builder, null, "bm", new String[] {"stadtleben", verb}));
+            assertEquals(1, said.size(), verb + ": " + said);
+            assertTrue(said.getFirst().contains("baumeister.admin"), said.getFirst());
+        }
+    }
+
     @Test
     void prefixFilterApplies() {
-        assertEquals(List.of("stop", "status", "stadt", "stadtwelt"), admin("st"));
-        assertEquals(List.of("stop", "status"), player("st"));
-        assertEquals(List.of("stop", "status", "stadt", "stadtwelt"), admin("ST"));
+        assertEquals(List.of("stop", "status", "stadtleben", "stadt", "stadtwelt"), admin("st"));
+        assertEquals(List.of("stop", "status", "stadtleben"), player("st"));
+        // Stadtleben (2026-11-21): schalten nur Admins – Spieler sehen nur status.
+        assertEquals(List.of("an", "aus", "status", "messung"), admin("stadtleben", ""));
+        assertEquals(List.of("status"), player("stadtleben", ""));
+        assertEquals(List.of("stop", "status", "stadtleben", "stadt", "stadtwelt"), admin("ST"));
         assertEquals(List.of("abbrechen"), admin("stadt", "ab"));
         assertEquals(List.of("stadtwelt"), admin("stadt", "los", "sta"));
         assertEquals(List.of("Heiko"), admin("spawn", "he"));
@@ -179,7 +209,7 @@ class BaumeisterCommandTest {
     void travelCommandsNeedTheTravelRight() {
         assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
                 "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm", "vorschau", "warteschlange",
-                "orte", "karte", "ort", "begleiter", "helfer"), traveller(""));
+                "orte", "karte", "ort", "begleiter", "stadtleben", "helfer"), traveller(""));
         assertEquals(List.of(), player("ort", ""));
         assertEquals(List.of(), player("orte", ""));
     }
