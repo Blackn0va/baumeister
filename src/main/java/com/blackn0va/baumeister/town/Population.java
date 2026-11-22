@@ -5,6 +5,8 @@ package com.blackn0va.baumeister.town;
  *
  * - Modus aus oder Host nicht da: sofort alle weg (REMOVE_NOW). Vorgabe des Vertrags: „binnen 60 s“; sofort ist die
  *   einfachste Art, das einzuhalten, und ohne KI wären Bewohner stumme Puppen.
+ * - Ausnahme seit 2026-11-22 (stadtleben.ohne-ki, Nutzer: „ja mach das so“): Dann zählt ein fehlender Host nicht, die
+ *   Bewohner bleiben und reden mit festen Sätzen. Der Aufrufer reicht dafür present() statt host.up() herein.
  * - Nacht: niemand Neues; wer da ist, geht heim und verschwindet dort, spätestens nach NIGHT_LEAVE_MS (GO_HOME).
  * - Sonst: count Bewohner, verteilt auf die online Spieler; ohne Spieler keiner (niemand, der sie sähe).
  *
@@ -25,6 +27,11 @@ public final class Population {
     }
 
     private Population() {
+    }
+
+    /** Dürfen Bewohner da sein: KI erreichbar, oder ohne KI ausdrücklich erlaubt. */
+    public static boolean present(boolean hostUp, boolean withoutKi) {
+        return hostUp || withoutKi;
     }
 
     /** Sollzahl. */

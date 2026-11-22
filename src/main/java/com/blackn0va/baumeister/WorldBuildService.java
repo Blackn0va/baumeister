@@ -99,6 +99,11 @@ final class WorldBuildService {
     private String blocked;
     private List<Tile> nearby = List.of();
     private boolean auto;
+
+    /** Automatik gerade an (für das Modulverzeichnis; /bm weltbau auto schaltet sie im Lauf). */
+    boolean auto() {
+        return auto;
+    }
     private long lastScan;
     private boolean scanned;
     private boolean saidNoEarth;

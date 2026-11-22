@@ -668,8 +668,8 @@ final class TownLife implements Listener {
         if (s.enabled() && !was) {
             host.askSoon();
         }
-        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | einstellungen | an=%s anzahl=%d ki_abstand_s=%d",
-                s.enabled(), s.count(), s.talkGapMillis() / 1000));
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | einstellungen | an=%s anzahl=%d ki_abstand_s=%d ohne_ki=%s",
+                s.enabled(), s.count(), s.talkGapMillis() / 1000, s.withoutKi()));
     }
 
     /** /bm neuladen: neue Einstellungen, derselbe KI-Client. */
@@ -696,6 +696,27 @@ final class TownLife implements Listener {
 
     boolean enabled() {
         return settings.enabled();
+    }
+
+    /** Für das Modulverzeichnis (ModuleService): Hat die KI-Prüfung schon geantwortet, und war sie da? */
+    boolean kiAnswered() {
+        return host.answered();
+    }
+
+    boolean kiUp() {
+        return host.up();
+    }
+
+    /** stadtleben.ohne-ki an (Modulverzeichnis: „aktiv, ohne KI“). */
+    boolean withoutKi() {
+        return settings.withoutKi();
+    }
+
+    /** Feste Sätze, die ohne KI statt einer Anfrage kamen (Test und /bm stadtleben status). */
+    private int withoutKiLines;
+
+    int withoutKiLines() {
+        return withoutKiLines;
     }
 
     /** /bm stadtleben an|aus (Admin-Prüfung im Befehl). Schreibt config.yml, damit es einen Neustart übersteht. */
@@ -790,8 +811,10 @@ final class TownLife implements Listener {
         if (settings.enabled() && llm != null && host.due(now)) {
             llm.health().thenAccept(ok -> env.now(() -> hostResult(ok)));
         }
-        // Eine Schutzstelle für beides (Population.leave): Modus aus oder KI weg → alle sofort weg, kein Takt.
-        if (Population.leave(settings.enabled(), host.up(), DayPlan.Phase.WORK) == Population.Leave.REMOVE_NOW) {
+        // Eine Schutzstelle für beides (Population.leave): Modus aus oder KI weg → alle sofort weg, kein Takt. Mit
+        // stadtleben.ohne-ki zählt die fehlende KI nicht (Population.present).
+        if (Population.leave(settings.enabled(), Population.present(host.up(), settings.withoutKi()),
+                DayPlan.Phase.WORK) == Population.Leave.REMOVE_NOW) {
             if (!residents.isEmpty()) {
                 removeAll(settings.enabled() ? "ki_weg" : "aus");
             }
@@ -832,7 +855,8 @@ final class TownLife implements Listener {
                 eligible.add(p);
             }
         }
-        int target = Population.target(settings.enabled(), host.up(), DayPlan.Phase.WORK, settings.count(),
+        int target = Population.target(settings.enabled(), Population.present(host.up(), settings.withoutKi()),
+                DayPlan.Phase.WORK, settings.count(),
                 eligible.size());
         if (!Population.maySpawn(residents.size(), target, tick, lastSpawnTick)) {
             return;
@@ -1322,6 +1346,16 @@ final class TownLife implements Listener {
         boolean building = env.buildPlanning();
         boolean vera = env.companionThinking();
         Entity e0 = env.entity(r.entity);
+        // Ohne KI im Modus ohne-ki: gar keine Anfrage – sonst liefe jeder Satz erst in die 20-s-Frist eines toten Hosts.
+        // Nur in diesem Modus: Ohne ihn gibt es bei fehlender KI ohnehin keine Bewohner, und der bestehende Weg bleibt.
+        if (settings.withoutKi() && !host.up()) {
+            withoutKiLines++;
+            if (e0 instanceof Mannequin m) {
+                speak(r, m, fallback);
+            }
+            runLater(after);
+            return;
+        }
         if (llm == null || !budget.begin(now, building, vera)) {
             refused++;
             LOG.fine(() -> "stadtleben | ki_gespart | bewohner=" + TownTalk.key(r.person.name()) + " anlass=" + reason
@@ -1459,7 +1493,8 @@ final class TownLife implements Listener {
         Texts.info(s, "Stadtleben: " + (settings.enabled() ? "an" : "aus") + " · KI: "
                 + (!host.answered() ? "noch nicht geprüft" : host.up() ? "erreichbar" : "NICHT erreichbar")
                 + (ago >= 0 ? " (vor " + ago + " s geprüft)" : "") + " · Bewohner: " + residents.size() + " von "
-                + settings.count());
+                + settings.count() + (settings.withoutKi() ? " · ohne KI erlaubt (feste Sätze: " + withoutKiLines
+                        + ")" : ""));
         long askAgo = budget.secondsSinceAsk(now);
         long[] mm = budget.timesMeanMax();
         Texts.info(s, "Letzte KI-Anfrage: " + (askAgo < 0 ? "keine" : "vor " + askAgo + " s, "
