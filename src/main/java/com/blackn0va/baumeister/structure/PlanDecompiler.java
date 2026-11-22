@@ -21,7 +21,7 @@ import java.util.TreeMap;
 
 /**
  * Rückübersetzer: ein fertiges Bauwerk (Blöcke je Stelle, lokal, aus {@link StructureFile#toLocal}) → Plan-JSON aus
- * wenigen Schritten (fill, walls, cylinder, roof, line, set, door), so wie das LLM ihn schreiben soll.
+ * wenigen Schritten (fill, walls, cylinder, sphere, roof, line, set, door), so wie das LLM ihn schreiben soll.
  *
  * Warum: Echte Bauten von Spielern sollen ins Lehrset des eigenen Modells. Block für Block wären es tausende Schritte
  * – das Modell lernte, endlos zu schreiben (Grundlinie 2026-11-01: schon 8/24 Antworten liefen bis an die
@@ -39,6 +39,12 @@ import java.util.TreeMap;
  *    Seite zur Mitte), entsteht die Grundfläche, und der Kandidat sind genau die Zellen, die PlanCompiler.roof dafür
  *    schreibt (Schleifen hier nachgebildet, verify prüft gegen den echten Compiler). Vorher (bis 2026-11-21) wurden
  *    Dachtreppen zu Dutzenden line-Schritten – das Modell lernte aus Vorbildern nie den roof-Schritt.
+ *    Kugeln und Kuppeln (sphere, voll oder hollow, ganz oder dome) ebenso: Mitte und Radius aus einer runden Fläche
+ *    einer Schicht (Äquator bzw. Kuppelboden), Zellen genau wie PlanCompiler.sphere. Vorher (bis 2026-11-22) wurde
+ *    eine Kugel zu Zylinderscheiben und Quadern – gemessen an einer Kugel mit Radius 6: voll 16, hohl 89 Schritte
+ *    statt einem.
+ *    Übernommen wird die Zerlegung mit Kugeln nur, wenn sie weniger Schritte braucht (bzw. im Budget mehr Zellen
+ *    trifft) als die ohne – sonst bleibt der Plan zeichengleich wie vorher.
  * 3. Was danach noch falsch ist: gleiche Blöcke in Reihe als line, der Rest als set.
  * 4. Türen zuletzt als door (der Compiler setzt beide Hälften).
  *
@@ -65,6 +71,12 @@ public final class PlanDecompiler {
     static final int MAX_ROOF_LAYERS = 24;
     /** Mindestzahl verschiedener Höhen mit Dachtreppen – darunter ist es eine Bank oder Stufe, kein Dach. */
     static final int MIN_ROOF_LAYERS = 2;
+    /**
+     * Kleinste Kugel wie beim Zylinder (Radius 2, 33 Blöcke): Radius 1 wären 7 Blöcke als Kreuz – das Lehrset nennte
+     * jedes Kreuz aus Blöcken „Kugel“. Größte = radius maximum in plan-schema.json.
+     */
+    static final int MIN_SPHERE_RADIUS = 2;
+    static final int MAX_SPHERE_RADIUS = 24;
 
     /**
      * @param json     Plan-JSON (design, reply, mode new, steps)
@@ -223,6 +235,16 @@ public final class PlanDecompiler {
 
     /** roofs = false: wie vor der Dach-Erkennung – nur für die Gegenprobe im Test („Bau ohne Dach unverändert“). */
     static Result decompile(Map<Pos, BlockSpec> local, String design, String reply, int budget, boolean roofs) {
+        return decompile(local, design, reply, budget, roofs, true);
+    }
+
+    /** Ein Durchlauf: Schritte, je op, und wie viele Zellen (ohne Türen) danach richtig stehen. */
+    private record Run(List<JsonObject> steps, Map<String, Integer> ops, int correct) {
+    }
+
+    /** spheres = false: wie vor der Kugel-Erkennung – nur für die Gegenprobe im Test. */
+    static Result decompile(Map<Pos, BlockSpec> local, String design, String reply, int budget, boolean roofs,
+            boolean spheres) {
         Map<Pos, BlockSpec> cells = new TreeMap<>(StructureFile::order);
         int dropped = 0;
         for (Map.Entry<Pos, BlockSpec> e : local.entrySet()) {
@@ -236,11 +258,29 @@ public final class PlanDecompiler {
             throw new IllegalArgumentException("Bauwerk hat " + cells.size() + " Blöcke, der Rückübersetzer nimmt "
                     + "höchstens " + MAX_CELLS);
         }
+        if (cells.isEmpty()) {
+            return new Result(render(design, reply, List.of()), 0, 0, dropped, new TreeMap<>());
+        }
+        Run plain = run(cells, budget, roofs, List.of());
+        Run chosen = plain;
+        List<Ball> balls = spheres ? balls(new Grid(cells)) : List.of();
+        if (!balls.isEmpty()) {
+            // Beide Zerlegungen rechnen und die bessere nehmen. Gierig ist die Kugel nicht immer ein Gewinn: Sie kann
+            // Zellen vorwegnehmen, die ein großer Quader oder Zylinder sonst in einem Zug mitgenommen hätte. Wer hier
+            // nur den Kugellauf nimmt, macht manche Vorbilder länger statt kürzer.
+            Run round = run(cells, budget, roofs, balls);
+            if (round.correct() > plain.correct()
+                    || round.correct() == plain.correct() && round.steps().size() < plain.steps().size()) {
+                chosen = round;
+            }
+        }
+        return new Result(render(design, reply, chosen.steps()), chosen.steps().size(), cells.size(), dropped,
+                chosen.ops());
+    }
+
+    private static Run run(Map<Pos, BlockSpec> cells, int budget, boolean roofs, List<Ball> balls) {
         List<JsonObject> steps = new ArrayList<>();
         Map<String, Integer> ops = new TreeMap<>();
-        if (cells.isEmpty()) {
-            return new Result(render(design, reply, steps), 0, 0, dropped, ops);
-        }
         Grid g = new Grid(cells);
         boolean[] door = doorCells(g);
         List<Piece> doorSteps = doors(g);
@@ -271,6 +311,24 @@ public final class PlanDecompiler {
                     bestRoof = s;
                 }
             }
+            Ball bestBall = null;
+            for (Ball b : balls) {
+                Ball s = scored(g, b);
+                if (bestBall == null || s.gain() > bestBall.gain()) {
+                    bestBall = s;
+                }
+            }
+            double shapeGain = best == null ? Double.NEGATIVE_INFINITY : best.gain();
+            double roofGain = bestRoof == null ? Double.NEGATIVE_INFINITY : bestRoof.gain();
+            if (bestBall != null && bestBall.gain() >= MIN_GAIN && bestBall.gain() > shapeGain
+                    && bestBall.gain() > roofGain) {
+                for (int i : bestBall.cells()) {
+                    g.write(i, bestBall.id());
+                }
+                steps.add(bestBall.json().deepCopy());
+                ops.merge("sphere", 1, Integer::sum);
+                continue;
+            }
             if (bestRoof != null && bestRoof.gain() >= MIN_GAIN && (best == null || bestRoof.gain() > best.gain())) {
                 for (int k = 0; k < bestRoof.cells().length; k++) {
                     g.write(bestRoof.cells()[k], bestRoof.ids()[k]);
@@ -287,12 +345,18 @@ public final class PlanDecompiler {
             steps.add(boxStep(g, best));
             ops.merge(opName(best.kind()), 1, Integer::sum);
         }
+        int correct = 0;
+        for (int i = 0; i < g.target.length; i++) {
+            if (g.target[i] != 0 && !door[i] && g.state[i] == g.target[i]) {
+                correct++;
+            }
+        }
         List<Piece> rest = residual(g, door);
         int left = room == Integer.MAX_VALUE ? Integer.MAX_VALUE : room - steps.size();
         if (rest.size() > left) {
             // Die längsten Reihen behalten, in ihrer ursprünglichen Reihenfolge (sie überschneiden sich nie).
             List<Piece> byLength = new ArrayList<>(rest);
-            byLength.sort((a, b) -> Integer.compare(b.cells(), a.cells()));
+            byLength.sort((x, y) -> Integer.compare(y.cells(), x.cells()));
             java.util.Set<Piece> keep = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             keep.addAll(byLength.subList(0, Math.max(0, left)));
             rest.removeIf(piece -> !keep.contains(piece));
@@ -300,12 +364,13 @@ public final class PlanDecompiler {
         for (Piece piece : rest) {
             steps.add(piece.json());
             ops.merge(piece.op(), 1, Integer::sum);
+            correct += piece.cells();
         }
         for (Piece piece : doorSteps.subList(0, Math.min(doorSteps.size(), budget))) {
             steps.add(piece.json());
             ops.merge(piece.op(), 1, Integer::sum);
         }
-        return new Result(render(design, reply, steps), steps.size(), cells.size(), dropped, ops);
+        return new Run(steps, ops, correct);
     }
 
     private static boolean[] doorCells(Grid g) {
@@ -921,6 +986,144 @@ public final class PlanDecompiler {
             }
         }
         return new Roof(r.json(), r.x0(), r.z0(), r.x1(), r.z1(), r.cells(), r.ids(), gain);
+    }
+
+    // ---------------------------------------------------------------- Kugeln
+
+    /** Ein Kugel-Kandidat: fertiger sphere-Schritt, die Zellen, die der Compiler dafür schreibt, alle mit Block id. */
+    private record Ball(JsonObject json, int id, int[] cells, double gain) {
+    }
+
+    /**
+     * Kugel-Kandidaten: Jede runde Fläche einer Schicht (8 Nachbarn, quadratisches Begrenzungsrechteck mit ungerader
+     * Seite, wie beim Zylinder) ist ein möglicher Äquator oder Kuppelboden – Mitte = Rechteckmitte in dieser Schicht,
+     * Radius = halbe Seite, denn PlanCompiler.inBall schneidet die Mittelschicht genau als inDisc. Je Fläche vier
+     * Varianten (voll/hollow, ganz/dome). Verworfen wird, was eine Zelle außerhalb des Bauwerks oder in Luft des
+     * Originals schriebe, oder wo zu wenig Hauptmaterial liegt (Anteile wie Scheibe bzw. Ring).
+     *
+     * Grenze: Berührt die Kugel in ihrer Äquatorschicht eine Wand aus demselben Block, ist die Fläche nicht mehr
+     * quadratisch – dann bleibt es bei der Zerlegung ohne Kugel. Fremdes Material daneben stört nicht.
+     */
+    private static List<Ball> balls(Grid g) {
+        Map<String, Ball> out = new LinkedHashMap<>();
+        Map<Integer, int[][]> shapes = new HashMap<>();
+        for (int id = 1; id < g.palette.size(); id++) {
+            if (g.palette.get(id).isDoor() || g.cellsOf[id].length < MIN_GAIN) {
+                continue;
+            }
+            boolean[] seen = new boolean[g.sx * g.sz];
+            int layer = -1;
+            for (int i : g.cellsOf[id]) {
+                int x = i % g.sx;
+                int z = (i / g.sx) % g.sz;
+                int y = i / (g.sx * g.sz);
+                if (y != layer) {
+                    layer = y;
+                    java.util.Arrays.fill(seen, false);
+                }
+                if (seen[z * g.sx + x]) {
+                    continue;
+                }
+                int[] bb = component(g, id, x, y, z, seen, true);
+                int side = bb[2] - bb[0];
+                if (side != bb[3] - bb[1] || side % 2 != 0) {
+                    continue;
+                }
+                int r = side / 2;
+                if (r < MIN_SPHERE_RADIUS || r > MAX_SPHERE_RADIUS) {
+                    continue;
+                }
+                for (int variant = 0; variant < 4; variant++) {
+                    boolean hollow = (variant & 1) != 0;
+                    boolean dome = (variant & 2) != 0;
+                    int[][] shape = shapes.computeIfAbsent(r * 4 + variant, k -> ballCells(r, hollow, dome));
+                    Ball b = ball(g, id, bb[0] + r, y, bb[1] + r, r, hollow, dome, shape);
+                    if (b != null) {
+                        out.putIfAbsent(b.json().toString(), b);
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(out.values());
+    }
+
+    /**
+     * Versätze {dx, dy, dz} der Zellen, die PlanCompiler.sphere schreibt – dieselben Schleifen, derselbe inBall (dort
+     * privat, und plan/** gehört nicht zu diesem Paket). Wer im Compiler etwas ändert, muss es hier nachziehen;
+     * PlanDecompilerSphereTest vergleicht jeden Radius 1..24 in allen vier Varianten mit dem echten Compiler.
+     */
+    static int[][] ballCells(int r, boolean hollow, boolean dome) {
+        List<int[]> out = new ArrayList<>();
+        for (int dy = dome ? 0 : -r; dy <= r; dy++) {
+            for (int dz = -r; dz <= r; dz++) {
+                for (int dx = -r; dx <= r; dx++) {
+                    if (!inBall(dx, dy, dz, r)) {
+                        continue;
+                    }
+                    boolean edge = !(inBall(dx + 1, dy, dz, r) && inBall(dx - 1, dy, dz, r)
+                            && inBall(dx, dy + 1, dz, r) && inBall(dx, dy - 1, dz, r)
+                            && inBall(dx, dy, dz + 1, r) && inBall(dx, dy, dz - 1, r));
+                    if (!hollow || edge) {
+                        out.add(new int[] {dx, dy, dz});
+                    }
+                }
+            }
+        }
+        return out.toArray(new int[0][]);
+    }
+
+    /** = PlanCompiler.inBall; die Mittelschicht (dy = 0) ist genau PlanCompiler.inDisc. */
+    private static boolean inBall(int dx, int dy, int dz, int r) {
+        return dx * dx + dy * dy + dz * dz < (r + 0.5) * (r + 0.5);
+    }
+
+    /** Kandidat oder null (Zelle außerhalb, in Luft des Originals, oder zu wenig Block id unter den Zellen). */
+    private static Ball ball(Grid g, int id, int cx, int cy, int cz, int r, boolean hollow, boolean dome,
+            int[][] shape) {
+        int[] cells = new int[shape.length];
+        int same = 0;
+        for (int k = 0; k < shape.length; k++) {
+            int x = cx + shape[k][0];
+            int y = cy + shape[k][1];
+            int z = cz + shape[k][2];
+            if (!g.inside(x, y, z)) {
+                return null;
+            }
+            int i = g.idx(x, y, z);
+            if (g.target[i] == 0) {
+                return null;
+            }
+            if (g.target[i] == id) {
+                same++;
+            }
+            cells[k] = i;
+        }
+        if (same < (hollow ? RING_SHARE : FILL_SHARE) * shape.length) {
+            return null;
+        }
+        S s = step("sphere", g.palette.get(id)).pos(cx, cy, cz);
+        s.json.addProperty("radius", r);
+        if (hollow) {
+            s.json.addProperty("hollow", true);
+        }
+        if (dome) {
+            s.json.addProperty("dome", true);
+        }
+        return new Ball(s.json, id, cells, 0);
+    }
+
+    /** Gewinn wie bei den Formen: neu richtig +1, zerstört −2, fremd (später überschrieben) −0,1. */
+    private static Ball scored(Grid g, Ball b) {
+        double gain = 0;
+        for (int i : b.cells()) {
+            int t = g.target[i];
+            if (t == b.id()) {
+                gain += g.state[i] == t ? 0 : 1;
+            } else {
+                gain -= g.state[i] == t ? 2 : 0.1;
+            }
+        }
+        return new Ball(b.json(), b.id(), b.cells(), gain);
     }
 
     // ---------------------------------------------------------------- Ausgabe
