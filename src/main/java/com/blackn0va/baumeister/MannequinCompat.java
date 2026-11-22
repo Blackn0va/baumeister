@@ -20,13 +20,24 @@ import org.bukkit.entity.Mannequin;
  * auf beiden Wegen, bleibt es beim fehlenden Schmuck (Beschriftung, Skin) – bewusst fail-open: Der NPC ist Anzeige,
  * kein Sicherheitspfad, und der Bau läuft ohne ihn weiter. Gewarnt wird einmal je Methode.
  *
+ * Öffentlich seit 2026-11-22 (T-033): town.presence setzt über pose() das Schleichen der Bewohner.
+ *
  * Threads: Hauptthread (Bukkit-Entities). Fehler: werden geloggt, nie geworfen.
  */
-final class MannequinCompat {
+public final class MannequinCompat {
 
     private static final Logger LOG = Logger.getLogger("Baumeister");
     private static final Map<String, Optional<Method>> METHODS = new ConcurrentHashMap<>();
     private static final Map<String, Boolean> WARNED = new ConcurrentHashMap<>();
+
+    /**
+     * Papers Adventure-Component, zusammengesetzt statt als ein Text. Gemessen 2026-11-22 (javap im Plugin-Jar): Seit
+     * PacketEvents samt Adventure geschattet wird, schreibt die Verschiebung net.kyori → com.blackn0va.baumeister.lib.kyori
+     * auch Text-Konstanten um – aus "net.kyori.adventure.text.Component" wurde unsere eigene Kopie, und unter Paper fand
+     * description() die Methode setDescription(Component) nicht mehr (Beschriftung fehlte still). Wer das wieder zu
+     * einem Literal zusammenzieht, bringt das zurück; MannequinCompatTest prüft die .class-Datei.
+     */
+    static final String PAPER_COMPONENT = String.join(".", "net", "kyori", "adventure", "text", "Component");
 
     private MannequinCompat() {
     }
@@ -37,7 +48,7 @@ final class MannequinCompat {
             return;
         }
         Object component = adventureText(text);
-        Optional<Method> paper = find(m.getClass(), "setDescription", "net.kyori.adventure.text.Component");
+        Optional<Method> paper = find(m.getClass(), "setDescription", PAPER_COMPONENT);
         if (component != null && paper.isPresent() && call(paper.get(), m, component)) {
             return;
         }
@@ -77,7 +88,7 @@ final class MannequinCompat {
      * Mannequin.setPose(Pose). Gemessen 2026-11-06 (probes/mannequin/PoseProbe, Paper 1.21.11-132): alle fünf
      * Mannequin-Posen bleiben so 40 Ticks stehen. Fail-open wie der Rest: Pose ist Schmuck.
      */
-    static void pose(Mannequin m, org.bukkit.entity.Pose pose) {
+    public static void pose(Mannequin m, org.bukkit.entity.Pose pose) {
         if (pose == m.getPose()) {
             return;
         }
@@ -133,7 +144,7 @@ final class MannequinCompat {
 
     private static Object adventureText(String text) {
         try {
-            return Class.forName("net.kyori.adventure.text.Component").getMethod("text", String.class)
+            return Class.forName(PAPER_COMPONENT).getMethod("text", String.class)
                     .invoke(null, text);
         } catch (ReflectiveOperationException | RuntimeException e) {
             return null;

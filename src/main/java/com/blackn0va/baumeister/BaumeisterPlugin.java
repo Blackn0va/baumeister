@@ -47,6 +47,12 @@ public final class BaumeisterPlugin extends JavaPlugin {
     private CompanionService companion;
     /** Stadtleben (Vertrag v008): Bewohner-Bots, nur mit stadtleben.an und erreichbarer KI. */
     private TownLife town;
+    /**
+     * PacketEvents für die Tab-Einträge der Bewohner (T-033). Seit onLoad gesetzt; im Rückfall (Serverfassung unbekannt)
+     * liefert packets.tab() Tab.NONE und die Bewohner bleiben Mannequins ohne Tab.
+     */
+    private com.blackn0va.baumeister.town.presence.PacketBoot packets;
+    private com.blackn0va.baumeister.town.presence.Presence presence;
     private RucksackService rucksack;
     private WarpService warps;
     private PortalService portals;
@@ -81,6 +87,12 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** Bauwerk-Dateien aus plugins/Baumeister/schematics/ (FileSchematics), ohne WorldEdit. */
     private FileSchematics fileSchematics;
     private boolean templatesPreloaded;
+
+    /** PacketEvents verlangt load() vor onEnable (Einhängen in Netty, Anleitung PacketEvents). */
+    @Override
+    public void onLoad() {
+        packets = com.blackn0va.baumeister.town.presence.PacketBoot.load(this);
+    }
 
     @Override
     public void onEnable() {
@@ -167,6 +179,8 @@ public final class BaumeisterPlugin extends JavaPlugin {
         screens.start();
         companion.start();
         getServer().getPluginManager().registerEvents(town, this);
+        getServer().getPluginManager().registerEvents(
+                new com.blackn0va.baumeister.town.presence.PresenceListener(presence), this);
         town.start();
         // Rucksack (ersetzt MinepacksStable, 2026-11-05): eigener Befehl /rucksack, Aliase wie bei Minepacks.
         rucksack = new RucksackService(this, RucksackService.Settings.from(getConfig()));
@@ -275,6 +289,13 @@ public final class BaumeisterPlugin extends JavaPlugin {
         if (town != null) {
             town.shutdown();
         }
+        // Nach town.shutdown (das je Bewohner left meldet), vor packets.disable – danach käme kein Paket mehr an.
+        if (presence != null) {
+            presence.shutdown();
+        }
+        if (packets != null) {
+            packets.disable();
+        }
         if (rucksack != null) {
             rucksack.shutdown();
         }
@@ -362,6 +383,29 @@ public final class BaumeisterPlugin extends JavaPlugin {
         if (town == null) {
             town = new TownLife(this);
         }
+        if (presence == null) {
+            // onLoad fehlt nur, wenn jemand das Plugin von Hand ohne Server baut; dann ohne Tab (fail-open, Anzeige).
+            if (packets != null) {
+                packets.enable();
+            }
+            org.bukkit.Server server = getServer();
+            presence = new com.blackn0va.baumeister.town.presence.Presence(
+                    new com.blackn0va.baumeister.town.presence.Presence.Server() {
+                        @Override
+                        public java.util.Collection<? extends org.bukkit.entity.Player> players() {
+                            return server.getOnlinePlayers();
+                        }
+
+                        @Override
+                        public void later(Runnable r, long ticks) {
+                            if (isEnabled()) {
+                                server.getScheduler().runTaskLater(BaumeisterPlugin.this, r, ticks);
+                            }
+                        }
+                    }, packets != null ? packets.tab() : com.blackn0va.baumeister.town.presence.Tab.NONE);
+            town.presence(presence);
+        }
+        presence.configure(com.blackn0va.baumeister.town.presence.PresenceSettings.from(getConfig()));
         town.configure(com.blackn0va.baumeister.town.TownSettings.from(getConfig()),
                 TownLife.client(s, companionSchema, getConfig().getString("llm.modell", "lokal")));
         Texts.spoken = this::builderSpeaks;

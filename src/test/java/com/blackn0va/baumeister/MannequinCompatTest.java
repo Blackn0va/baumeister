@@ -33,4 +33,22 @@ class MannequinCompatTest {
     void missingMethodIsSkippedQuietly() {
         assertTrue(MannequinCompat.find(Object.class, "setDescription", String.class.getName()).isEmpty());
     }
+
+    /**
+     * Seit PacketEvents samt Adventure geschattet wird (T-033), verschiebt maven-shade jede Text-Konstante, die mit
+     * „net.kyori“ beginnt – gemessen 2026-11-22 mit javap im Plugin-Jar. Steht der Paper-Klassenname als ein Literal in
+     * der .class-Datei, sucht Paper später nach unserer verschobenen Kopie und die Beschriftung fehlt still. Der Name muss
+     * also zur Laufzeit zusammengesetzt werden und trotzdem stimmen.
+     */
+    @Test
+    void paperComponentNameSurvivesShading() throws Exception {
+        assertEquals("net.kyori.adventure.text.Component", MannequinCompat.PAPER_COMPONENT);
+        byte[] cls;
+        try (java.io.InputStream in = MannequinCompat.class.getResourceAsStream("MannequinCompat.class")) {
+            cls = in.readAllBytes();
+        }
+        String text = new String(cls, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertTrue(!text.contains("net.kyori") && !text.contains("net/kyori"),
+                "Literal mit net.kyori in MannequinCompat.class – shade schreibt es auf die eigene Kopie um");
+    }
 }

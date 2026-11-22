@@ -473,7 +473,8 @@ class TownLifeTest {
         near.life.configure(on(), null);
         assertTrue(near.life.onChat(near.probant, "Lotte, wie geht's?"));
         assertEquals(1, near.heard.size(), near.heard.toString());
-        assertTrue(near.heard.getFirst().contains("[Lotte, Bäckerin]"), near.heard.toString());
+        // Spielerformat seit T-033 (vorher „[Lotte, Bäckerin] …“).
+        assertTrue(near.heard.getFirst().startsWith("<Lotte> "), near.heard.toString());
     }
 
     /** onChat: zweite Ansprache binnen ADDRESS_GAP_MS wird ignoriert – kein Satz, kein Anhalten (N2). */

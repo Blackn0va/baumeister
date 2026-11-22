@@ -1,6 +1,7 @@
 # lib – Server-APIs zum Kompilieren
 
-Nur zum Kompilieren. Nichts davon wird ins Plugin gepackt, der Server bringt alles mit.
+Nur zum Kompilieren. Nichts davon wird ins Plugin gepackt, der Server bringt alles mit. Ausnahme ist PacketEvents (unten):
+Es liegt nicht hier, sondern kommt über Maven und wird ins Plugin-Jar geschattet.
 
 **Die JARs stehen nicht im Repo** (seit 2026-11-09, `.gitignore`): Es sind fremde Binärdateien unter fremden
 Lizenzen (GPL-3.0, Apache-2.0, MIT, BSD, Artistic-2.0). Wer baut, legt sie selbst hierher; `pom.xml` erwartet genau
@@ -38,3 +39,22 @@ Prüfen:
 ```bash
 sha256sum lib/*.jar
 ```
+
+## Ins Plugin-Jar geschattet (seit 2026-11-22, T-033)
+
+PacketEvents für die Tab-Einträge der Stadtleben-Bewohner. Maven holt die Jars einmal (PacketEvents aus dem offiziellen
+Repo von CodeMC `https://repo.codemc.io/repository/maven-releases/`, Adventure/Examination aus Maven Central) und prüft
+dabei SHA-1 gegen das Repo (`checksumPolicy fail`); danach baut `mvn -o` ohne Netz. SHA-256 hält
+`PacketEventsPinTest` fest – stimmt eine Datei im lokalen Maven-Lager nicht, wird der Bau rot. Geschattet und
+verschoben werden nur diese Gruppen (`pom.xml`, maven-shade-plugin 3.6.0); netty bringt der Server mit.
+
+| Datei | SHA-256 |
+|---|---|
+| packetevents-api-2.14.0.jar | cf1afcfd1ccffba5108b3227918f1d8d4d0f10fc6b654901cff42d0070e427ca |
+| packetevents-spigot-2.14.0.jar | 13e771d25e75aab7c7c9d3f383464bd956a7bee49f3d948cc74a1870e8440a0f |
+| packetevents-netty-common-2.14.0.jar | ca76c618085561a3cb578c743ef88c0be0c559d3e1e7a7d9934cafb3da2fa7d8 |
+| adventure-api-4.26.1.jar | 551e536b9ea868f30e72c7900a309b35124ee7d4889fa3b3aed0910299751a26 |
+| adventure-key-4.26.1.jar | eec172d63db77b40eb7abeeb25f65eedea89bd30264d057b68b12fecb731be5e |
+| adventure-nbt-4.26.1.jar | f26ef6bff5fcdd817902b4dfd353561d98cb131b4ecb67341ff00ef2ed1336f8 |
+| examination-api-1.3.0.jar | c9237ffecb05428f6eff86216246ac70ce0b47b04c08ea7ca35020fde57f8492 |
+| examination-string-1.3.0.jar | 7d01fc25a4bb3af0e1662685455f4541fbf4626216ea5846e455c1491e156b8c |
