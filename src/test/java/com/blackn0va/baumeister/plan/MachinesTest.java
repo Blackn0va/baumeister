@@ -545,6 +545,40 @@ class MachinesTest {
         }
     }
 
+    /**
+     * Prüfablauf: Der Fremdgegenstand steht nie in der Sortenliste. Vorher fütterte er fest dirt; mit dirt als Sorte
+     * sortierte die Maschine es richtig ein, und MachineProbe meldete auf Paper 26.2 für _4/_6/_7 12/12 einen
+     * Scheinfehler (T-022, 2026-11-22). Wer dirt wieder fest einträgt, macht diesen Test rot.
+     */
+    @Test
+    void sorterProbeNeverFeedsAKindAsForeignItem() {
+        for (String name : List.of("item_sortierer_4:cobblestone,sand,dirt,oak_planks", "item_sortierer_2:dirt,coarse_dirt",
+                "item_sortierer_8:sand,dirt", "item_sortierer_5")) {
+            Machines.Machine m = LIB.machine(name).orElseThrow();
+            java.util.Set<String> kinds = new java.util.HashSet<>();
+            for (Machines.Pin p : m.outputs()) {
+                if (p.name().startsWith("SORTE")) {
+                    kinds.add(p.onState());
+                }
+            }
+            for (Machines.Pin p : m.outputs()) {
+                if (p.name().startsWith("FREMD") || p.name().equals("REST")) {
+                    assertFalse(kinds.contains(p.onState()), name + ": " + p.name() + " prüft eine Sorte " + p.onState());
+                }
+            }
+            for (Machines.Step st : m.sequence()) {
+                for (String c : st.commands()) {
+                    if (c.contains("container.4 with ")) {
+                        String item = c.substring(c.indexOf(" with ") + 6, c.lastIndexOf(' '));
+                        assertFalse(kinds.contains("items:" + item), name + ": füttert Sorte " + item + " als fremd");
+                    }
+                }
+            }
+        }
+        assertEquals("dirt", Machines.sorterForeignItem(List.of("sand", "cobblestone")), "ohne dirt bleibt es dirt");
+        assertEquals("coarse_dirt", Machines.sorterForeignItem(List.of("sand", "dirt")));
+    }
+
     /** Nur 2–8 Sorten, nur bekannte, keine doppelten, nicht mehr Sorten als Scheiben – sonst gibt es das Bauteil nicht. */
     @Test
     void multiSorterNameRejectsWhatItCannotBuild() {

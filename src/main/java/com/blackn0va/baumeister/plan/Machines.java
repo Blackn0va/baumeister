@@ -2210,6 +2210,26 @@ public final class Machines implements ModuleLibrary {
      */
     static final int SORTER_FILLED_COOLDOWN = 600;
 
+    /**
+     * Fremdgegenstände für den Prüfablauf, in dieser Reihenfolge. Vorher stand fest „dirt“ im Ablauf; gemessen
+     * 2026-11-22 (T-022, Paper 26.2): Mit dirt in der Sortenliste sortierte die Maschine dirt richtig in ihre Truhe,
+     * und item_sortierer_4/_6/_7 fielen 12/12 scheinbar durch (FREMD3 = 1, REST = 0). Neun Kandidaten bei höchstens
+     * acht Sorten: Einer ist immer frei. Keiner davon steht in den Füllsorten der Probe (sorter), sonst träfe es
+     * dieselbe Falle über die aufgefüllten Scheiben.
+     */
+    static final List<String> SORTER_FOREIGN = List.of("dirt", "coarse_dirt", "diorite", "tuff", "calcite",
+            "blackstone", "basalt", "netherrack", "end_stone");
+
+    /** Erster Fremdgegenstand, der in keiner Sorte steht – sonst zählte die Probe eine richtig sortierte Sorte als Fehler. */
+    static String sorterForeignItem(List<String> kinds) {
+        for (String f : SORTER_FOREIGN) {
+            if (!kinds.contains(f)) {
+                return f;
+            }
+        }
+        throw new IllegalArgumentException("kein_fremdgegenstand_frei: " + kinds);
+    }
+
     /** H: gibt in die Truhe davor; unter einem beim Bau gefüllten Filter erst nach SORTER_FILLED_COOLDOWN Ticks. */
     private static BlockSpec lowerHopper(boolean filled) {
         String raw = "hopper[facing=front]" + (filled ? "{TransferCooldown:" + SORTER_FILLED_COOLDOWN + "}" : "");
@@ -2239,13 +2259,14 @@ public final class Machines implements ModuleLibrary {
 
     /**
      * Ablauf für MachineProbe: Filter füllen (nur die ohne Sorte im Namen – die anderen prüft die Probe darauf, dass
-     * die Blockdaten angekommen sind), dann je Sorte 4 Stück und 3 Erde in den Einwurf. Erwartet: jede Sorte in ihrer
-     * Truhe und nicht in der Nachbartruhe, Erde nur im Rest, keine Sorte im Rest. Der erste Schritt erwartet alle
+     * die Blockdaten angekommen sind), dann je Sorte 4 Stück und 3 Fremde (sorterForeignItem, meist Erde) in den Einwurf. Erwartet: jede Sorte in ihrer
+     * Truhe und nicht in der Nachbartruhe, Fremdes nur im Rest, keine Sorte im Rest. Der erste Schritt erwartet alle
      * Truhen leer: Ein Filter, der beim Bau ausläuft (H noch offen, gemessen 2026-11-21 vor SORTER_FILLED_COOLDOWN),
      * hat dort schon seine Sorte abgelegt.
      */
     private static Machine sorterProbe(Module module, int n, List<String> kinds, int prefilled) {
         int last = (n - 1) * MULTI_SORTER_STRIDE;
+        String foreign = sorterForeignItem(kinds);
         List<Pin> outs = new ArrayList<>();
         List<String> none = new ArrayList<>();
         List<String> done = new ArrayList<>();
@@ -2254,7 +2275,7 @@ public final class Machines implements ModuleLibrary {
             String s = String.valueOf(k + 1);
             outs.add(statePin("SORTE" + s, x, 1, 0, "items:minecraft:" + kinds.get(k)));
             outs.add(statePin("QUER" + s, x, 1, 0, "items:minecraft:" + kinds.get((k + 1) % n)));
-            outs.add(statePin("FREMD" + s, x, 1, 0, "items:minecraft:dirt"));
+            outs.add(statePin("FREMD" + s, x, 1, 0, "items:minecraft:" + foreign));
             outs.add(statePin("REST_SORTE" + s, last, 3, 2, "items:minecraft:" + kinds.get(k)));
             outs.add(statePin("FILTER" + s, x, 2, 1, "items:minecraft:" + kinds.get(k)));
             none.addAll(List.of("SORTE" + s, "0", "QUER" + s, "0", "FREMD" + s, "0", "REST_SORTE" + s, "0"));
@@ -2263,7 +2284,7 @@ public final class Machines implements ModuleLibrary {
             none.addAll(List.of("FILTER" + s, "1"));
             done.addAll(List.of("FILTER" + s, "1"));
         }
-        outs.add(statePin("REST", last, 3, 2, "items:minecraft:dirt"));
+        outs.add(statePin("REST", last, 3, 2, "items:minecraft:" + foreign));
         none.addAll(List.of("REST", "0"));
         done.addAll(List.of("REST", "1"));
         String wait = "time query gametime";
@@ -2279,14 +2300,14 @@ public final class Machines implements ModuleLibrary {
         } else {
             setup.add(wait);
         }
-        // Der Einwurf hat 5 Fächer: je Sorte 4 Stück, Erde dazu; mehr Sorten als 4 kommen in einem zweiten Schub.
+        // Der Einwurf hat 5 Fächer: je Sorte 4 Stück, das Fremde dazu; mehr Sorten als 4 kommen in einem zweiten Schub.
         List<String> feed = new ArrayList<>();
         List<String> feed2 = new ArrayList<>();
         for (int k = 0; k < n; k++) {
             (k < 4 ? feed : feed2).add("item replace block {0,3,0} container." + (k % 4) + " with minecraft:"
                     + kinds.get(k) + " 4");
         }
-        feed.add("item replace block {0,3,0} container.4 with minecraft:dirt 3");
+        feed.add("item replace block {0,3,0} container.4 with minecraft:" + foreign + " 3");
         List<Step> seq = new ArrayList<>();
         seq.add(new Step(Map.of(), bits(none.toArray(String[]::new)), setup));
         List<String> first = new ArrayList<>(feed);
