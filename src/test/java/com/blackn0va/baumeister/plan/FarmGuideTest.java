@@ -278,4 +278,28 @@ class FarmGuideTest {
         assertTrue(FarmGuide.of("item_sortierer_9").isEmpty());
         assertTrue(FarmGuide.acceptReply("item_sortierer").isEmpty());
     }
+
+    /**
+     * Festwertspeicher (T-029): Wortfolge der Reihen, Lage der Adresshebel und die Bitspalten im Hinweis stimmen mit dem
+     * Bau überein – die Reihen liegen in Gray-Folge, ein „0, 1, 2, 3“ im Text ließe den Spieler falsch programmieren.
+     */
+    @Test
+    void romGuideMatchesTheBuild() {
+        Map<Pos, BlockSpec> c = cells(Machines.ROM);
+        String t = text(Machines.ROM);
+        StringBuilder rows = new StringBuilder();
+        for (int w : Machines.ROM_ROW_WORD) {
+            rows.append(rows.isEmpty() ? "" : ", ").append(w);
+        }
+        assertTrue(t.contains("Wörter " + rows + "."), t);
+        assertTrue(t.contains("16 Hebel in 4 Reihen"), t);
+        assertEquals(18, find(c, "lever").size(), "16 Bit- und 2 Adresshebel");
+        // „A0 vorn ganz links“, „A1 vier Blöcke dahinter“, „Spalte von links = Bit 0“.
+        Machines.Machine m = machine(Machines.ROM);
+        assertEquals(new Pos(0, 1, 0), m.inputs().get(0).at());
+        assertEquals(4, m.inputs().get(1).at().z());
+        assertTrue(t.contains("vier Blöcke dahinter"), t);
+        assertTrue(Machines.romLever(0, 0).x() < Machines.romLever(0, 3).x());
+        assertTrue(FarmGuide.acceptReply(Machines.ROM).orElseThrow().length() <= 200);
+    }
 }

@@ -92,6 +92,13 @@ public final class FarmGuide {
             new Guide("kaktusfarm", "Kaktusfarm", "die Kaktusfarm", "", List.of(
                     "Die Kakteen wachsen von selbst. Das dritte Stück bricht am Zaun ab und fällt herunter – sammle "
                             + "es ein. Was dabei auf einen Kaktus fällt, wird zerstört.")),
+            // Kein Farm-Auftrag, aber ohne Hinweis wüsste der Spieler nicht, welcher Hebel welches Bit ist – die
+            // Zeilen liegen in Gray-Folge (Machines.rom4x4), nicht 0 bis 3 (T-029, 2026-11-22).
+            new Guide(Machines.ROM, "Festwertspeicher", "den Festwertspeicher (4 Wörter zu 4 Bit)", "", List.of(
+                    "Die 16 Hebel in 4 Reihen sind die Bits: Spalte von links = Bit 0 bis 3, hinten die Lampen D0 bis "
+                            + "D3. Die Reihen von vorn halten die Wörter 0, 1, 3, 2.",
+                    "Die Adresse wählst du mit A0 (vorn ganz links) und A1 (vier Blöcke dahinter): Wort = A0 + 2 × A1. "
+                            + "Die Lampen zeigen es nach knapp einer Sekunde.")),
             new Guide("bruchsteingenerator", "Bruchsteingenerator", "den Bruchsteingenerator", "einen Lavaeimer",
                     List.of("Gieß den Lavaeimer von oben in das Fach links, nicht daneben – sonst läuft die Lava aus. "
                             + "In der Öffnung vorn daneben entsteht Bruchstein: abbauen, er kommt gleich nach."))));
