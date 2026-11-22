@@ -263,6 +263,9 @@ Stand: 2026-11-22
   Größenregel) → Größenregel `helfer.*`. 0–16 wie im Stadtbau. Im Lauf wird der Rest des Abschnitts neu verteilt
   (Identität, nicht equals), im Schnellgang Tempo × Arbeiter/Arbeiter_bei_Start.
 - NPC = Mannequin (Spigot-API ab 1.21.9), kein Citizens, kein NMS.
+  Geändert vom Nutzer 2026-11-22 („sie müssen als echte Spieler auftauchen und auch mit Tab zu sehen sein“, Wahl
+  „Integriere PacketEvents wenn nötig mit rea“): Stadtleben-Bewohner bekommen über PacketEvents Tab-Einträge und
+  Spieler-Auftritt; sie bleiben Mannequins (Wegsuche/Physik), weiter kein NMS, kein Citizens.
 - LLM liefert Grundformen (fill/walls/roof …), keine Einzelblöcke; Koordinaten lokal (front/back/left/right), Drehung im Plugin.
 - Spätere Schritte überschreiben den Zustand, nicht den Zeitpunkt (Fenster entstehen mit der Wand).
 - Kompiliert gegen die JARs aus dev01 (`lib/`, systemPath) statt Spigot-Nexus.
@@ -1064,6 +1067,12 @@ Stand: 2026-11-22
 - Module (T-030/T-031/T-032, 2026-11-22): modul_json nach Vertrag v012; Host und Mod lehnen unbekannte Felder ab (400 bzw.
   verwerfen) – Falle: ein neues Feld im Plugin braucht Host- und Mod-Änderung zugleich. Host über 256 KiB → 413 vom
   HTTP-Parser. Plugin-Menü schaltet über performCommand, die Rechte prüft ModuleSwitch.
+- Stadtleben v2 (T-033–T-036, 2026-11-22): Tab über PacketEvents 2.14.0 (geschattet nach com.blackn0va.baumeister.lib,
+  Pins in lib/README.md, PacketEventsPinTest), live Paper 26.2 und Spigot 1.21.11 per Paketmitschnitt; Jar 2,4 → 8,2 MB.
+  Feste Sätze 28 → 361. KI-Gespräch Qwen2.5-7B drei Runden mit Bezug, Mittel 8,1 s. Laufen 12 Bewohner Parcours 10 min:
+  Teleports 18,8 → 0 je Bewohner-h, steht ohne Grund 1,6–3,6 %. Feld 10 min: 153 Änderungen (20/min), Kiste 148,
+  Fass daneben unberührt. Nutzen live (Kopie): 10× Tür auf/zu, 30× verweigert (WG), 18× Sitzen, 2× Bett.
+
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1568,6 +1577,11 @@ Stand: 2026-11-22
 - Proben mit Ersatz-java beweisen nichts über JVM-Optionen: Die erste Vorprüfung in `start.sh` (-Xmx64m) fiel mit
   echtem JDK immer durch. `start.sh` muss LF haben. TickMonitor zählt lange Abstände erst nach 1 100 Ticks ohne
   Spieler als Pause (pause-when-empty-seconds=60).
+- Shade schreibt auch Text-Konstanten um, die wie Klassennamen aussehen (MannequinCompat suchte Papers Component unter
+  dem verschobenen Namen) – Namen zur Laufzeit zusammensetzen. Mannequins kennen keine Sitzpose: Sitzen über unsichtbaren
+  Marker-Rüstungsständer. WorldGuard zählt einen Bewohner IN einer Region zur Region (Tür von innen offen).
+  Progress beim Wegwechsel zurücksetzen hebelt die Feststeck-Erkennung aus. CityJobTest wackelt selten („World unloaded“,
+  schwache Welt-Referenz in Location) – allein wiederholen.
 
 ## Deploy
 
