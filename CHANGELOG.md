@@ -14,6 +14,13 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 - **Gedächtnis der Bewohner:** höchstens 20 kurze Fakten je Bewohner, Ablauf nach 7 Tagen, Spieler nur unter
   Pseudonym. Löschen mit `/bm stadtleben vergessen [bewohner]` (nur Admin).
 
+- **Bewohner benutzen Dinge wie Spieler:** Sie öffnen Holz- und Kupfertüren, Tore und Falltüren auf dem Weg und
+  schließen sie hinter sich, aber nur wo Interagieren erlaubt ist (WorldGuard kann es verbieten, dann bleibt die Tür
+  zu); Eisentüren öffnen sie nie. Nachts schlafen sie in einem freien Bett nahe ihrer Wohnung und stehen auf, wenn
+  ein Spieler das Bett will; Spieler-Schlaf und Nachtüberspringen bleiben unberührt. Mittags sitzen sie auf
+  Treppenstufen und Plattenbänken, bei der Arbeit stehen sie am Block ihres Berufs mit Armschwung, Geräusch und
+  Partikeln. Einzige Weltänderung ist der Türzustand, Behälter bleiben zu. Abschaltbar über `stadtleben.nutzen.*`.
+
 ### Geändert
 - **Bewohner reden mit Zusammenhang:** Sie beziehen Tageszeit, Wetter, einen Bau in der Nähe, wer dabei ist und die
   letzten vier Sätze des Gesprächs ein; bei einer Begegnung antwortet der zweite auf den ersten. Ohne KI sagen sie
