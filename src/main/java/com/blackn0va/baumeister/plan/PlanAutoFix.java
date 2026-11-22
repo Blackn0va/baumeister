@@ -184,6 +184,78 @@ public final class PlanAutoFix {
         return notes.isEmpty() ? new Fixed(json, List.of()) : new Fixed(root.toString(), List.copyOf(notes));
     }
 
+    // ---------------------------------------------------------------- Bäume ohne Ort
+
+    /** Abstand der Baumreihe vor dem Bauwerk: Krone bis Radius 7 (QuickForms.tree setzt einen Baum 8 vor den Spieler). */
+    static final int TREE_FRONT = 8;
+
+    /** Abstand der Bäume in der Reihe: zwei Kronen mit Radius bis 4 (Vorgabehöhe) berühren sich nicht. */
+    static final int TREE_SPACING = 10;
+
+    /**
+     * tree ohne pos bekommt einen Platz in einer Reihe vor dem übrigen Bauwerk (z = vorderste Kante − TREE_FRONT, auf
+     * dem Boden y = 0, mittig nebeneinander). Gemessen 2026-11-22 (PlanBench, Qwen2.5 7B): „eine Burg mit Bäumen
+     * davor“ kam zweimal mit zwei tree-Schritten ohne pos zurück, die Reparaturrunde ergänzte nur einen, und der Plan
+     * wurde verworfen („Schritt 2 (tree): pos fehlt“). Vorn ist die Seite, von der der Spieler schaut (System-Prompt:
+     * negative z) – also „davor“, wenn nichts anderes gesagt ist. Andere Ops ohne pos (set, door, module, logic)
+     * bleiben eine Absage: Dort trägt der Ort die Funktion, ein geratener Platz wäre falsch. Wer das zurückdreht,
+     * bekommt Bäume ohne Ort wieder als Absage.
+     */
+    public static Fixed treePositions(String json) {
+        JsonObject root = stepsRoot(json);
+        if (root == null) {
+            return new Fixed(json, List.of());
+        }
+        JsonArray steps = root.getAsJsonArray("steps");
+        List<JsonObject> loose = new ArrayList<>();
+        List<Integer> index = new ArrayList<>();
+        int minX = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        for (int i = 0; i < steps.size(); i++) {
+            if (!steps.get(i).isJsonObject()) {
+                continue;
+            }
+            JsonObject s = steps.get(i).getAsJsonObject();
+            String op = s.has("op") && s.get("op").isJsonPrimitive()
+                    ? s.get("op").getAsString().toLowerCase(Locale.ROOT) : "";
+            if (op.equals("tree") && vec(s, "pos") == null) {
+                loose.add(s);
+                index.add(i + 1);
+                continue;
+            }
+            for (String key : List.of("pos", "from", "to")) {
+                int[] v = vec(s, key);
+                if (v != null) {
+                    minX = Math.min(minX, v[0]);
+                    maxX = Math.max(maxX, v[0]);
+                    minZ = Math.min(minZ, v[2]);
+                }
+            }
+        }
+        if (loose.isEmpty()) {
+            return new Fixed(json, List.of());
+        }
+        // Ohne anderes Bauwerk: wie der Schnellauftrag Baum, 8 vor dem Ursprung, nebeneinander.
+        boolean alone = minX == Integer.MAX_VALUE;
+        int centerX = alone ? 0 : Math.floorDiv(minX + maxX, 2);
+        // y = 0 wie im Schnellauftrag: Der Plan legt den Boden auf y = 0, ein Keller darunter trägt keinen Baum.
+        int y = 0;
+        int z = alone ? TREE_FRONT : minZ - TREE_FRONT;
+        List<String> notes = new ArrayList<>();
+        for (int k = 0; k < loose.size(); k++) {
+            int x = centerX + (2 * k - (loose.size() - 1)) * TREE_SPACING / 2;
+            JsonArray pos = new JsonArray();
+            pos.add(x);
+            pos.add(y);
+            pos.add(z);
+            loose.get(k).add("pos", pos);
+            notes.add("Schritt " + index.get(k) + ": tree ohne pos – vor das Bauwerk auf [" + x + "," + y + "," + z
+                    + "] gesetzt");
+        }
+        return new Fixed(root.toString(), List.copyOf(notes));
+    }
+
     /** Wurzelobjekt mit steps-Feld oder null (unlesbar – das meldet dann der Parser). */
     private static JsonObject stepsRoot(String json) {
         try {

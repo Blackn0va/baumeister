@@ -203,6 +203,14 @@ public final class PlanReview {
                 LOG.info(() -> "plan | facing_gerichtet | " + String.join("; ", sideFacing.notes()) + " versuch="
                         + attempt);
             }
+            // Baum ohne Ort in eine Reihe vor das Bauwerk, ebenfalls vor dem Parser (PlanAutoFix.treePositions).
+            PlanAutoFix.Fixed trees = PlanAutoFix.treePositions(json);
+            if (!trees.notes().isEmpty()) {
+                json = trees.json();
+                assistant = json;
+                repairs.addAll(trees.notes());
+                LOG.info(() -> "plan | baum_gerichtet | " + String.join("; ", trees.notes()) + " versuch=" + attempt);
+            }
             BuildPlan plan = PlanParser.parse(json);
             CompiledBuild build = compiler.compile(plan);
             // Module ohne erkannten Maschinenwunsch: nie mehr Reparaturrunde oder Absage (PlanAutoFix.MACHINE_SHARE).
