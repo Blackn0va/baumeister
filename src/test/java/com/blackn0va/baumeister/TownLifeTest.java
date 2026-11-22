@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.blackn0va.baumeister.town.Roster;
 import com.blackn0va.baumeister.town.TownSettings;
+import com.blackn0va.baumeister.town.WorkSpots;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.OutputStream;
@@ -46,7 +47,7 @@ import org.junit.jupiter.api.Test;
  */
 class TownLifeTest {
 
-    private static final NamespacedKey MARKER = new NamespacedKey("baumeister", "bewohner");
+    static final NamespacedKey MARKER = new NamespacedKey("baumeister", "bewohner");
     private static final Roster.Person LOTTE = Roster.all().getFirst();
     private static final Roster.Person EMIL = Roster.all().get(1);
 
@@ -130,10 +131,29 @@ class TownLifeTest {
         public boolean climbable(Location at) {
             return false;
         }
+
+        final List<WorkSpots.Spot> spots = new ArrayList<>();
+
+        /** Flache Welt: Stehplatz auf y=64, wo der Chunk geladen ist. */
+        @Override
+        public Location surfaceAt(World w, int x, int z) {
+            return w.isChunkLoaded(x >> 4, z >> 4) ? new Location(w, x + 0.5, 64, z + 0.5) : null;
+        }
+
+        @Override
+        public List<WorkSpots.Spot> workSpots() {
+            if (spotsFail != null) {
+                throw spotsFail;
+            }
+            return spots;
+        }
+
+        /** Gesetzt: workSpots wirft das (Ortsquelle kaputt). */
+        RuntimeException spotsFail;
     }
 
     /** Antwort für Methoden, die der Test nicht nachbildet: Vorgabewert des Rückgabetyps. */
-    private static Object none(Class<?> t) {
+    static Object none(Class<?> t) {
         if (t == boolean.class) {
             return false;
         }
@@ -151,7 +171,7 @@ class TownLifeTest {
     }
 
     /** loaded = alle Chunks geladen, Oberfläche bei y=63 (für den Laufweg). */
-    private static World world(List<Player> players, boolean loaded) {
+    static World world(List<Player> players, boolean loaded) {
         return (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[] {World.class},
                 (proxy, m, a) -> switch (m.getName()) {
                     case "getPlayers" -> new ArrayList<>(players);
