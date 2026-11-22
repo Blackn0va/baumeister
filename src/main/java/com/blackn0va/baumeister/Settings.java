@@ -65,4 +65,15 @@ record Settings(
                 // Einmal beim Laden statt je LLM-Antwort: Ein unbekannter Wert warnt so einmal je (Neu-)Laden.
                 PlanReview.LintMode.parse(c.getString("llm.plan-prüfer", "streng")));
     }
+
+    /**
+     * Dieselben Werte mit anderer HTTP-Frist. Für den Client der Bewohner (TownLife.clientSettings): Er erbte vorher
+     * llm.timeout-sekunden (Vorgabe 900 s) und gab nur über ein abhängiges Future nach 20 s auf – die Anfrage rechnete
+     * am Host weiter (Paper-Probe 2026-11-21: Plugin 20,04 s, llama bis 21,07 s), und die nächste stapelte sich davor.
+     */
+    Settings withLlmTimeout(Duration timeout) {
+        return new Settings(npcName, llmUrl, timeout, maxTokens, temperature, repairAttempts, ticksPerBlock, maxBlocks,
+                maxExtent, distanceAhead, fallbackBlock, checkPermissions, undoDepth, savePlans, maxOverbuild,
+                secondHelperFrom, thirdHelperFrom, targetSeconds, lintMode);
+    }
 }

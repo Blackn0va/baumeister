@@ -63,7 +63,10 @@ final class ConfigCheck {
             Map.entry("weltbau.radius-standard", new Range(0, 20_000)),
             Map.entry("weltbau.radius-max", new Range(0, 20_000)),
             Map.entry("weltbau.helfer", new Range(0, 16)),
-            Map.entry("weltbau.rückgängig-tiefe", new Range(0, 20)));
+            Map.entry("weltbau.rückgängig-tiefe", new Range(0, 20)),
+            // Stadtleben (2026-11-21): Spiegel von town.TownSettings.from (TownSettingsTest gleicht ab).
+            Map.entry("stadtleben.anzahl", new Range(1, 12)),
+            Map.entry("stadtleben.ki-abstand-sekunden", new Range(15, 600)));
 
     /** Schlüssel mit fester Auswahl. */
     static final Map<String, List<String>> CHOICES = Map.of("erde.projektion", List.of("airocean", "sinus6"));

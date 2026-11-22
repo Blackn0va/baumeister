@@ -59,6 +59,11 @@ final class BaumeisterListener implements Listener {
             if (!player.isOnline()) {
                 return;
             }
+            // Bewohner vor Vera: Ihre Namen sind nie Veras (Roster.pick schließt ihn aus), und eine Zeile, die mit einem
+            // Bewohnernamen beginnt, ist nicht für Vera, auch wenn sie gerade im Gespräch ist.
+            if (plugin.town() != null && plugin.town().onChat(player, message)) {
+                return;
+            }
             if (plugin.companion() != null && plugin.companion().onChat(player, message)) {
                 return;
             }
@@ -267,14 +272,25 @@ final class BaumeisterListener implements Listener {
     @EventHandler
     public void onEntitiesLoad(EntitiesLoadEvent event) {
         for (Entity e : event.getEntities()) {
-            // Alte NPC-Kopien und Helfer, die einen Absturz überlebt haben (Helfer sind nicht persistent,
-            // aber ein harter Abbruch zwischen Speichern und Entfernen ist nicht ausgeschlossen).
-            if (plugin.npc().isOurs(e) && !plugin.npc().isCurrent(e) || plugin.npc().isHelper(e)) {
-                e.remove();
-            } else if (plugin.companion() != null && plugin.companion().isStale(e)) {
-                // Begleiter sind nicht persistent; übrig bleibt einer nur nach einem harten Abbruch.
+            if (leftover(e, plugin.npc(), plugin.companion(), plugin.town())) {
                 e.remove();
             }
         }
+    }
+
+    /**
+     * Gehört die Entity entfernt? Alte NPC-Kopien und Helfer, die einen Absturz überlebt haben (Helfer sind nicht
+     * persistent, aber ein harter Abbruch zwischen Speichern und Entfernen ist nicht ausgeschlossen), Begleiter und
+     * Bewohner, die zu keinem laufenden gehören. Statisch und null-fest, damit TownLifeTest die Bewohner-Regel ohne
+     * Plugin prüft (Gegenprobe 2026-11-22: das Abschalten blieb unbemerkt).
+     */
+    static boolean leftover(Entity e, BuilderNpc npc, CompanionService companion, TownLife town) {
+        if (npc != null && (npc.isOurs(e) && !npc.isCurrent(e) || npc.isHelper(e))) {
+            return true;
+        }
+        if (companion != null && companion.isStale(e)) {
+            return true;
+        }
+        return town != null && town.isStale(e);
     }
 }

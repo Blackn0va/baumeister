@@ -135,6 +135,13 @@ final class ReloadPlan {
             lines.add("Weltbau: " + WORLD_UNDO_DEPTH + " – gilt ab der nächsten fertigen Kachel.");
         }
 
+        // Stadtleben (2026-11-21): wirkt sofort (TownLife.reload). Vorher fehlte der Zweig – „anzahl: 12“ meldete
+        // „Keine Änderung“ und blieb bei 4 (Live-Probe T-020).
+        Set<String> town = pick(changed, k -> k.startsWith("stadtleben."));
+        if (!town.isEmpty()) {
+            lines.add("Stadtleben: " + String.join(", ", town) + " – übernommen.");
+        }
+
         for (String k : changed) {
             if (needsRestart(k)) {
                 restart.add(k);

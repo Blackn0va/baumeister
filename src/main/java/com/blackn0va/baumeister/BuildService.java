@@ -1725,6 +1725,14 @@ final class BuildService {
         }, 20L, 20L);
     }
 
+    /**
+     * true, solange ein Bauplan beim LLM ist. Das Stadtleben fragt dann nicht (TalkBudget, Vertrag v008 AK-24): Der
+     * Host rechnet Anfragen nacheinander, ein Bewohner-Satz davor wäre Wartezeit für den Auftraggeber.
+     */
+    boolean planning() {
+        return thinking;
+    }
+
     /** true, solange der Baumeister plant, baut oder zurückbaut – Stadtbau, Weltbau und Warteschlange warten dann. */
     boolean busy() {
         return thinking || active != null && active.running() || restoring != null;

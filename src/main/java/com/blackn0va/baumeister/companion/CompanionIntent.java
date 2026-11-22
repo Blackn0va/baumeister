@@ -198,6 +198,14 @@ public final class CompanionIntent {
     private static final Pattern RUDE = Pattern.compile(
             "(?iuU)\\b(eier\\s+(lutschen|in\\s+den\\s+mund)|lutsch\\w*|blas\\w*\\s+mir|fick\\w*|arschloch|hure|wichser)\\b");
 
+    /**
+     * Schimpft der Text (dasselbe Muster, mit dem Vera grobe Sätze erkennt)? Für den Ausgabefilter der Bewohner
+     * (town.TownTalk): Vertrag v008 verlangt für sie denselben Filter wie für Vera. Ändert an Vera nichts.
+     */
+    public static boolean rude(String text) {
+        return text != null && RUDE.matcher(text).find();
+    }
+
     /** Gespräch, wenn das Modell nicht antwortet. Immer eine kurze, freundliche, wahre Antwort; sonst leer. */
     public static Optional<String> chat(String raw) {
         return chat(raw, false, 0);

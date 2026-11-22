@@ -45,6 +45,8 @@ public final class BaumeisterPlugin extends JavaPlugin {
     private TickMonitor ticks;
     /** Begleiter (/bm begleiter, „Hey Vera“), null bis load() durch ist. */
     private CompanionService companion;
+    /** Stadtleben (Vertrag v008): Bewohner-Bots, nur mit stadtleben.an und erreichbarer KI. */
+    private TownLife town;
     private RucksackService rucksack;
     private WarpService warps;
     private PortalService portals;
@@ -162,6 +164,8 @@ public final class BaumeisterPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(screens, this);
         screens.start();
         companion.start();
+        getServer().getPluginManager().registerEvents(town, this);
+        town.start();
         // Rucksack (ersetzt MinepacksStable, 2026-11-05): eigener Befehl /rucksack, Aliase wie bei Minepacks.
         rucksack = new RucksackService(this, RucksackService.Settings.from(getConfig()));
         PluginCommand rc = getCommand("rucksack");
@@ -258,6 +262,9 @@ public final class BaumeisterPlugin extends JavaPlugin {
         if (companion != null) {
             companion.shutdown();
         }
+        if (town != null) {
+            town.shutdown();
+        }
         if (rucksack != null) {
             rucksack.shutdown();
         }
@@ -339,6 +346,14 @@ public final class BaumeisterPlugin extends JavaPlugin {
                 .withModel(getConfig().getString("llm.modell", "lokal")),
                 resource("begleiter-prompt.txt"), CompanionVoiceLink.from(getConfig(), s.llmUrl()));
         reopenVoice();
+        // Stadtleben: eigener Client mit eigenem OutageLog wie beim Begleiter – ein Ausfall, den die Bewohner bemerken,
+        // schaltet nicht die volle Wiederholungskette der Bauaufträge ab. Begleiter-Schema, weil der Host nur „bauplan“
+        // und „begleiter“ annimmt; Aktionen verwirft TownTalk. Ohne Wiederholung: Ein Bewohner-Satz lohnt kein Warten.
+        if (town == null) {
+            town = new TownLife(this);
+        }
+        town.configure(com.blackn0va.baumeister.town.TownSettings.from(getConfig()),
+                TownLife.client(s, companionSchema, getConfig().getString("llm.modell", "lokal")));
         Texts.spoken = this::builderSpeaks;
     }
 
@@ -614,6 +629,11 @@ public final class BaumeisterPlugin extends JavaPlugin {
 
     CompanionService companion() {
         return companion;
+    }
+
+    /** null bis load() durch ist. */
+    TownLife town() {
+        return town;
     }
 
     /** Keine fallenden Gegenstände im Baubereich (BuildJob); null, bevor onEnable lief. */

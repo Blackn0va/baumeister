@@ -115,6 +115,11 @@ final class LlmClient {
         return model;
     }
 
+    /** HTTP-Frist je Anfrage (TownLifeTest prüft sie am Bewohner-Client). */
+    java.time.Duration timeout() {
+        return settings.llmTimeout();
+    }
+
     static JsonObject message(String role, String content) {
         return com.blackn0va.baumeister.plan.LlmProtocol.message(role, content);
     }
