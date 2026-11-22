@@ -301,6 +301,29 @@ public final class PlanReview {
                 LOG.info(() -> "plan | hohl_gemacht | " + String.join("; ", hollow.get().notes()) + " versuch="
                         + attempt);
             }
+            // Tür nicht in der Wand: rückt in die nächste passende Außenwand (PlanAutoFix.doors) statt in die
+            // Reparaturrunde – PlanBench 2026-11-01 verwarf Wachturm und Kirche daran auch nach der Reparatur. Ohne
+            // passende Wand bleibt der Befund und geht wie bisher an das LLM.
+            Optional<PlanAutoFix.Fixed> doors = PlanAutoFix.doors(json, plan, build, issues, existing());
+            if (doors.isPresent()) {
+                json = doors.get().json();
+                assistant = json;
+                plan = PlanParser.parse(json);
+                build = compiler.compile(plan);
+                repairs.addAll(doors.get().notes());
+                issues = lint(plan, build);
+                LOG.info(() -> "plan | tür_gerichtet | " + String.join("; ", doors.get().notes()) + " versuch="
+                        + attempt);
+            }
+            // Mantel um ein Modul (Sand/Wasser früherer Schritte im Rand der Maschine) fällt weg (PlanAutoFix.moduleShells).
+            // Nach allen Fixes, die neu übersetzen – sonst käme der Mantel mit dem nächsten compile zurück.
+            Optional<PlanAutoFix.Cells> shells = PlanAutoFix.moduleShells(json, plan, build, compiler);
+            if (shells.isPresent()) {
+                build = withoutCells(build, shells.get().cells(), shells.get().note());
+                repairs.add(shells.get().note());
+                issues = lint(plan, build);
+                LOG.info(() -> "plan | modulmantel_gerichtet | " + shells.get().note() + " versuch=" + attempt);
+            }
             // Kleinfehler (Fenster außerhalb jeder Wand, einzelne schwebende Blöcke) lässt der Baumeister selbst weg.
             // Vorher ging jeder davon in die Reparaturrunde, und kleine Modelle bessern ihn dort nicht aus: dev01
             // 2026-10-30, Llama 3.1 8B – ein schwebender Block bei y 31 (zweimal 40 s, verworfen), eine Glasscheibe

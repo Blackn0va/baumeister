@@ -337,6 +337,494 @@ public final class PlanAutoFix {
         return Optional.empty();
     }
 
+    // ---------------------------------------------------------------- Mantel um ein Modul
+
+    /** Zellen, die weg sollen, und der Satz für Chat und Log. */
+    public record Cells(Set<Pos> cells, String note) {
+    }
+
+    /**
+     * Lose Füllmasse, aus der das LLM einen Mantel um ein Modul gießt (gemessen: Sand, Wasser) – nie Bauteile, Ziegel
+     * oder Stein. Vorher standen stone und cobblestone mit drin (Runde 2), ohne dass ein Mantel aus Stein je gemessen
+     * war; ein Steinsockel oder -podest neben der Maschine ist dagegen ein üblicher Bau, und der Fix nahm ihn still
+     * weg (18 Blöcke im Test onlyLooseFillerCountsAsShell, Prüfung Runde 3, 2026-11-22). Wer Stein wieder aufnimmt,
+     * schneidet Sockel an; ein Steinmantel geht wie vor diesem Fix ungerichtet durch.
+     */
+    static final Set<String> SHELL_FILLERS = Set.of("sand", "red_sand", "gravel", "dirt", "coarse_dirt", "grass_block",
+            "clay", "water");
+
+    /** So weit darf ein Mantel-Schritt waagerecht über den Kasten des Moduls hinausreichen (gemessen: 2). */
+    static final int SHELL_REACH = 2;
+
+    /**
+     * Ein früherer fill aus Füllmasse, der den Kasten eines Moduls ummantelt, fällt als Ganzes weg, soweit er nach dem
+     * Bau noch steht. Gemessen 2026-11-22, PlanBench „eine Zuckerrohrfarm und eine Schmelzanlage
+     * nebeneinander“ (Qwen2.5 7B): Das Modell baut Sand und Wasser VOR die Module – das Modul überschreibt seine
+     * eigenen Zellen, der Rest bleibt als Mantel stehen (70 Wasser und 18 Sand um die Farm, 46 um die Schmelzanlage),
+     * und der Plan ging „sofort“ durch. PlanLinter.buriedModules sieht nur spätere Schritte, die ein Modul überbauen;
+     * genau so war es gedacht, denn das Modul gewinnt. Nur der Rand um das Modul blieb ungeprüft – und der Prompt
+     * verlangt dort ausdrücklich 1 Block frei (PlanPrompt.TECHNICAL_RULES).
+     *
+     * Ummanteln heißt: op fill (nicht hollow) aus SHELL_FILLERS, sein Kasten schneidet den des Moduls und reicht
+     * waagerecht höchstens SHELL_REACH darüber hinaus, in der Höhe höchstens 1. Vorher fiel alles, was ein früherer
+     * Schritt in den Rand ±1 gesetzt hatte – die Prüfung fand drei Gegenbeispiele (2026-11-22): eine Hallenwand dicht
+     * am Modul verlor 90 Blöcke und behielt Reste darüber, ein Boden auf Modulhöhe bekam einen Graben aus 18 Blöcken,
+     * eine Truhe am Eingang verschwand. Wände (walls/hollow), Böden über den Rand hinaus und Bauteile bleiben jetzt
+     * unverändert wie vor diesem Fix – lieber weniger richten als ein Bauwerk still zerstören. Fällt ein Schritt weg,
+     * dann ganz: Vorher blieb vom gemessenen Mantel die Reihe bei x=4 stehen, eine Wasserwand neben der Farm.
+     *
+     * Luft bleibt (Aushöhlen vor dem Modul ist gewollt), ebenso was ein Schritt NACH dem Modul dort setzt (Lampe am
+     * Ausgang, Hebel am Eingang – das hat buriedModules schon geprüft). Module, die Zelle für Zelle bauen
+     * (ModuleLibrary.cellByCell), tragen keine group und sind hier nicht erfasst. Wer die Bedingungen lockert (andere
+     * Ops, Ziegel, größere Reichweite), schneidet wieder Hallenwände und Böden an.
+     *
+     * @param compiler derselbe Compiler, der build übersetzt hat (für die Zellen der späteren Schritte)
+     */
+    public static Optional<Cells> moduleShells(String json, BuildPlan plan, CompiledBuild build, PlanCompiler compiler) {
+        Map<Integer, int[]> boxes = new java.util.TreeMap<>();
+        for (CompiledBuild.Action a : build.actions()) {
+            for (CompiledBuild.Change c : a.changes()) {
+                int g = c.group();
+                if (g <= 0 || g > plan.steps().size() || plan.steps().get(g - 1).op() != Op.MODULE) {
+                    continue;
+                }
+                int[] b = boxes.computeIfAbsent(g, k -> new int[] {Integer.MAX_VALUE, Integer.MAX_VALUE,
+                        Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE});
+                b[0] = Math.min(b[0], c.pos().x());
+                b[1] = Math.min(b[1], c.pos().y());
+                b[2] = Math.min(b[2], c.pos().z());
+                b[3] = Math.max(b[3], c.pos().x());
+                b[4] = Math.max(b[4], c.pos().y());
+                b[5] = Math.max(b[5], c.pos().z());
+            }
+        }
+        if (boxes.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<Pos> gone = new HashSet<>();
+        Map<String, Integer> what = new java.util.TreeMap<>();
+        for (Map.Entry<Integer, int[]> e : boxes.entrySet()) {
+            int moduleIndex = e.getKey() - 1;
+            int[] b = e.getValue();
+            List<Integer> shellSteps = new ArrayList<>();
+            for (int j = 0; j < moduleIndex; j++) {
+                if (encases(plan.steps().get(j), b)) {
+                    shellSteps.add(j);
+                }
+            }
+            if (shellSteps.isEmpty()) {
+                continue;
+            }
+            Set<Pos> later = laterCells(json, plan, moduleIndex, compiler);
+            if (later == null) {
+                continue;
+            }
+            for (int j : shellSteps) {
+                BuildPlan.Step s = plan.steps().get(j);
+                String id = blockId(s.block());
+                for (CompiledBuild.Action a : build.actions()) {
+                    for (CompiledBuild.Change c : a.changes()) {
+                        Pos p = c.pos();
+                        if (c.group() == 0 && c.block().id().equals(id) && !later.contains(p)
+                                && inBox(p, s.from(), s.to()) && gone.add(p)) {
+                            what.merge(id, 1, Integer::sum);
+                        }
+                    }
+                }
+            }
+        }
+        if (gone.isEmpty()) {
+            return Optional.empty();
+        }
+        StringBuilder sb = new StringBuilder();
+        what.forEach((id, n) -> sb.append(sb.isEmpty() ? "" : ", ").append(n).append(' ').append(id));
+        return Optional.of(new Cells(Set.copyOf(gone), gone.size() + " Block/Blöcke um Module weggelassen (" + sb
+                + ") – das LLM hatte die Maschine ummantelt, sie braucht 1 Block frei."));
+    }
+
+    /** Ob ein früherer Schritt den Modulkasten b (x0,y0,z0,x1,y1,z1) als Füllmasse ummantelt – siehe moduleShells. */
+    private static boolean encases(BuildPlan.Step s, int[] b) {
+        String id = blockId(s.block());
+        if (s.op() != Op.FILL || s.hollow() || id == null || !SHELL_FILLERS.contains(id) || s.from() == null
+                || s.to() == null) {
+            return false;
+        }
+        int x0 = Math.min(s.from().x(), s.to().x());
+        int x1 = Math.max(s.from().x(), s.to().x());
+        int y0 = Math.min(s.from().y(), s.to().y());
+        int y1 = Math.max(s.from().y(), s.to().y());
+        int z0 = Math.min(s.from().z(), s.to().z());
+        int z1 = Math.max(s.from().z(), s.to().z());
+        boolean cuts = x0 <= b[3] && x1 >= b[0] && y0 <= b[4] && y1 >= b[1] && z0 <= b[5] && z1 >= b[2];
+        boolean close = x0 >= b[0] - SHELL_REACH && x1 <= b[3] + SHELL_REACH && z0 >= b[2] - SHELL_REACH
+                && z1 <= b[5] + SHELL_REACH && y0 >= b[1] - 1 && y1 <= b[4] + 1;
+        return cuts && close;
+    }
+
+    private static boolean inBox(Pos p, Pos a, Pos b) {
+        return p.x() >= Math.min(a.x(), b.x()) && p.x() <= Math.max(a.x(), b.x())
+                && p.y() >= Math.min(a.y(), b.y()) && p.y() <= Math.max(a.y(), b.y())
+                && p.z() >= Math.min(a.z(), b.z()) && p.z() <= Math.max(a.z(), b.z());
+    }
+
+    /** Block-ID ohne Zustände, null wenn unlesbar (dann richtet hier nichts). */
+    private static String blockId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return BlockSpec.parse(raw).id();
+        } catch (PlanException e) {
+            // Unlesbar: Sache des Compilers, hier wird nur nicht gerichtet.
+            return null;
+        }
+    }
+
+    /** Zellen, die Schritte nach moduleIndex schreiben; null, wenn der Rest nicht übersetzt (dann nicht richten). */
+    private static Set<Pos> laterCells(String json, BuildPlan plan, int moduleIndex, PlanCompiler compiler) {
+        if (moduleIndex + 1 >= plan.steps().size()) {
+            return Set.of();
+        }
+        List<Integer> before = new ArrayList<>();
+        for (int i = 0; i <= moduleIndex; i++) {
+            before.add(i);
+        }
+        Optional<Fixed> rest = withoutSteps(json, before, "");
+        if (rest.isEmpty()) {
+            // Unlesbar, obwohl Schritte folgen: unklar, was sie setzen – nicht richten. Vorher leere Menge, also
+            // „nichts geschützt“, entgegen dem Grundsatz unten (Prüfung 2026-11-22).
+            return null;
+        }
+        try {
+            Set<Pos> out = new HashSet<>();
+            for (CompiledBuild.Action a : compiler.compile(PlanParser.parse(rest.get().json())).actions()) {
+                for (CompiledBuild.Change c : a.changes()) {
+                    out.add(c.pos());
+                }
+            }
+            return out;
+        } catch (PlanException e) {
+            // Der Rest allein übersetzt nicht (z. B. Grenzen): lieber nichts weglassen als einen späteren Block.
+            return null;
+        }
+    }
+
+    // ---------------------------------------------------------------- Tür in die Wand
+
+    /** Ops, deren Tür-Schritt hier ersetzt werden darf: Der Compiler macht aus jedem davon genau eine Tür. */
+    private static final Set<Op> DOOR_OPS = Set.of(Op.DOOR, Op.SET, Op.FILL);
+
+    /** Bauteile mit Funktion: Deren Zellen werden nie zur Tür ausgebrochen. */
+    private static final Set<Op> KEEP_OPS = Set.of(Op.MODULE, Op.LOGIC);
+
+    /** Außenrichtung (dx, dz) → lokale Wandseite für op door (Orientation: lokal +z = hinten, +x = rechts). */
+    private static final int[][] OUTWARD = {{0, -1}, {0, 1}, {1, 0}, {-1, 0}};
+    private static final String[] OUTWARD_SIDE = {"front", "back", "right", "left"};
+    private static final int[][] SIX = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+
+    /**
+     * Eine Tür, die nicht in der Wand steht (frei, in der Luft, im Inneren), rückt in die nächste passende Außenwand
+     * auf Bodenhöhe. Vorher ging sie als PlanLinter.Rule.DOOR in die Reparaturrunde, und das 7B lieferte sie dort
+     * wieder daneben: PlanBench-Grundlinie 2026-11-01, Wachturm und Kirche „Tür nicht in der Wand“ auch nach der
+     * Reparatur verworfen; im Gedächtnis offen für Wachturm, Leuchtturm und Stall. Die Wand selbst hatte das Modell
+     * jedes Mal richtig gebaut – es fehlte nur die Stelle der Tür.
+     *
+     * Passend heißt: zwei übereinanderliegende feste Wandblöcke (keine Tür, kein Modul), darunter fester Grund, entlang
+     * der Wand beidseitig fest (keine Ecke), quer dazu beidseitig begehbar, und eine Seite gehört zum Außenraum
+     * (Flutfüllung in 3D vom Rand des Baus, auch über niedrige Mauern hinweg). Gewählt wird zuerst eine Wand mit
+     * umschlossenem Innenraum, dann die niedrigste Lage (Bodenhöhe), dann die kleinste Entfernung zur alten Tür, dann
+     * die Seite, die das LLM wollte, sonst
+     * vorn, hinten, rechts, links, zuletzt x, z – deterministisch, damit derselbe
+     * Plan immer dieselbe Tür bekommt. Der Tür-Schritt wandert ans Ende: Stünde er vor dem Wandschritt, überschriebe
+     * die Wand ihn wieder.
+     *
+     * Vorher zählte die Lage vor dem Innenraum, und der Außenraum wurde je Lage gerechnet: Ein Haus (Boden y0, Wände ab
+     * y1) in einem Garten mit 2 hoher Mauer bekam die Tür in die Gartenmauer bei y0 – der Hof galt in seiner Lage als
+     * umschlossen, und das Haus blieb ohne Eingang (Gegenbeispiel der Prüfung 2026-11-22). Mauern ohne Dach sind jetzt
+     * nur noch Rückfall, wenn es keine Wand mit Innenraum gibt.
+     *
+     * Ohne passende Wand bleibt der Plan unverändert und der Befund geht wie bisher an das LLM bzw. in die Absage –
+     * eine Tür in einen Zaun oder eine Säule zu setzen, wäre geraten. Wer hier den Außenraum-Test weglässt, setzt
+     * Türen in Zwischenwände, durch die man von draußen nie hineinkommt.
+     *
+     * @param existing was am Bauplatz schon fest steht (wie PlanLinter); ohne Scan nichts
+     */
+    public static Optional<Fixed> doors(String json, BuildPlan plan, CompiledBuild build, List<Issue> issues,
+            Predicate<Pos> existing) {
+        Map<Integer, Pos> misplaced = new java.util.TreeMap<>();
+        for (Issue i : issues) {
+            int w = i.step() - 1;
+            if (i.rule() != Rule.DOOR || i.pos() == null || w < 0 || w >= plan.steps().size()
+                    || misplaced.containsKey(w)) {
+                continue;
+            }
+            BuildPlan.Step s = plan.steps().get(w);
+            if (DOOR_OPS.contains(s.op()) && doorId(s.block()) != null) {
+                misplaced.put(w, i.pos());
+            }
+        }
+        if (misplaced.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<Pos, BlockSpec> cells = new HashMap<>();
+        Set<Pos> keep = new HashSet<>();
+        for (CompiledBuild.Action a : build.actions()) {
+            boolean functional = a.step() >= 0 && a.step() < plan.steps().size()
+                    && KEEP_OPS.contains(plan.steps().get(a.step()).op());
+            for (CompiledBuild.Change c : a.changes()) {
+                cells.put(c.pos(), c.block());
+                if (functional) {
+                    keep.add(c.pos());
+                }
+            }
+        }
+        if (cells.isEmpty()) {
+            return Optional.empty();
+        }
+        // Die falsch gesetzten Türen verschwinden; sie dürfen weder Wand sein noch den Durchgang versperren.
+        for (Pos p : misplaced.values()) {
+            removeDoorAt(cells, p);
+            removeDoorAt(cells, p.up());
+        }
+        DoorSite site = new DoorSite(cells, keep, existing);
+        Set<Pos> taken = new HashSet<>();
+        // Nur die wirklich gerichteten Schritte fallen weg; eine Tür ohne passende Wand bleibt als Befund stehen.
+        Set<Integer> gone = new HashSet<>();
+        List<JsonObject> moved = new ArrayList<>();
+        List<String> notes = new ArrayList<>();
+        for (Map.Entry<Integer, Pos> e : misplaced.entrySet()) {
+            int w = e.getKey();
+            Optional<DoorSpot> spot = site.best(e.getValue(), plan.steps().get(w).facing(), taken);
+            if (spot.isEmpty()) {
+                continue;
+            }
+            DoorSpot d = spot.get();
+            taken.add(d.pos());
+            gone.add(w);
+            JsonObject door = new JsonObject();
+            door.addProperty("op", "door");
+            door.addProperty("block", doorId(plan.steps().get(w).block()));
+            JsonArray pos = new JsonArray();
+            pos.add(d.pos().x());
+            pos.add(d.pos().y());
+            pos.add(d.pos().z());
+            door.add("pos", pos);
+            door.addProperty("facing", d.side());
+            moved.add(door);
+            Pos old = e.getValue();
+            notes.add("Schritt " + (w + 1) + ": Tür von [" + old.x() + "," + old.y() + "," + old.z() + "] in die "
+                    + "Außenwand bei [" + d.pos().x() + "," + d.pos().y() + "," + d.pos().z() + "] (" + d.side()
+                    + ") gerichtet");
+        }
+        if (moved.isEmpty()) {
+            return Optional.empty();
+        }
+        JsonObject root = stepsRoot(json);
+        if (root == null) {
+            return Optional.empty();
+        }
+        JsonArray steps = root.getAsJsonArray("steps");
+        JsonArray kept = new JsonArray();
+        for (int i = 0; i < steps.size(); i++) {
+            if (!gone.contains(i)) {
+                kept.add(steps.get(i));
+            }
+        }
+        moved.forEach(kept::add);
+        root.add("steps", kept);
+        return Optional.of(new Fixed(root.toString(), List.copyOf(notes)));
+    }
+
+    /** Block-ID der Tür ohne Zustände (facing/half/hinge setzt der Compiler neu) oder null, wenn keine Tür. */
+    private static String doorId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            BlockSpec b = BlockSpec.parse(raw);
+            return b.isDoor() ? b.id() : null;
+        } catch (PlanException e) {
+            // Unlesbarer Block: kein Tür-Schritt, den der Baumeister richten könnte – der Befund bleibt.
+            return null;
+        }
+    }
+
+    private static void removeDoorAt(Map<Pos, BlockSpec> cells, Pos p) {
+        BlockSpec b = cells.get(p);
+        if (b != null && b.isDoor()) {
+            cells.remove(p);
+        }
+    }
+
+    /** Neue Türstelle (untere Hälfte) und die Wandseite für op door. */
+    record DoorSpot(Pos pos, String side) {
+    }
+
+    /** Endzustand des Baus für die Türsuche, mit Außenraum je Lage (einmal gerechnet, dann gemerkt). */
+    private static final class DoorSite {
+        private final Map<Pos, BlockSpec> cells;
+        private final Set<Pos> keep;
+        private final Predicate<Pos> existing;
+        private final int minY;
+        /** Größter Rechenkasten für den Außenraum; darüber wird nicht gerichtet (Befund bleibt beim LLM). */
+        static final long MAX_VOLUME = 2_000_000;
+
+        private final int maxY;
+        private final int x0;
+        private final int x1;
+        private final int z0;
+        private final int z1;
+        private Set<Pos> outside;
+
+        DoorSite(Map<Pos, BlockSpec> cells, Set<Pos> keep, Predicate<Pos> existing) {
+            this.cells = cells;
+            this.keep = keep;
+            this.existing = existing;
+            int lowY = Integer.MAX_VALUE;
+            int highY = Integer.MIN_VALUE;
+            int ax = Integer.MAX_VALUE;
+            int bx = Integer.MIN_VALUE;
+            int az = Integer.MAX_VALUE;
+            int bz = Integer.MIN_VALUE;
+            for (Pos p : cells.keySet()) {
+                lowY = Math.min(lowY, p.y());
+                highY = Math.max(highY, p.y());
+                ax = Math.min(ax, p.x());
+                bx = Math.max(bx, p.x());
+                az = Math.min(az, p.z());
+                bz = Math.max(bz, p.z());
+            }
+            this.minY = lowY;
+            this.maxY = highY;
+            this.x0 = ax - 1;
+            this.x1 = bx + 1;
+            this.z0 = az - 1;
+            this.z1 = bz + 1;
+        }
+
+        /** Wie PlanLinter.Site.solid: unter der untersten Bauschicht Gelände, ohne Planblock der Bestand. */
+        boolean solid(Pos p) {
+            BlockSpec b = cells.get(p);
+            return p.y() < minY || (b == null ? existing.test(p) : PlanAutoFix.solid(b)
+                    && !PlanCompiler.needsSupport(b.id()));
+        }
+
+        /** Ein Block, der als Türrahmen herausgenommen werden darf: fest, keine Tür, kein Bauteil mit Funktion. */
+        boolean wall(Pos p) {
+            BlockSpec b = cells.get(p);
+            return b != null && solid(p) && !b.isDoor() && !keep.contains(p);
+        }
+
+        /**
+         * Begehbar: nicht fest und kein Wasser oder Lava, unten und oben. Vorher reichte „nicht fest“, und die Tür landete
+         * in der Wand eines eingemauerten Beckens (PlanReviewTest.feedbackNamesEveryKindOfErrorFirst rot, 2026-11-22) –
+         * eine Tür, durch die man ins Wasser fällt, ist keine Lösung, das Becken gehört dem LLM.
+         */
+        boolean passable(Pos p) {
+            return walkable(p) && walkable(p.up());
+        }
+
+        private boolean walkable(Pos p) {
+            BlockSpec b = cells.get(p);
+            return !solid(p) && (b == null || !b.id().equals("water") && !b.id().equals("lava"));
+        }
+
+        boolean tooBig() {
+            return (long) (x1 - x0 + 1) * (maxY - minY + 2) * (z1 - z0 + 1) > MAX_VOLUME;
+        }
+
+        /**
+         * Außenraum: alles Nichtfeste, das vom Rand des Kastens (eine Zelle Abstand, eine Lage über dem Bau) in 3D
+         * erreichbar ist. Ein Hof hinter einer niedrigen Mauer gehört dazu, der Innenraum eines Hauses mit Dach nicht.
+         */
+        Set<Pos> outside() {
+            if (outside != null) {
+                return outside;
+            }
+            Set<Pos> seen = new HashSet<>();
+            ArrayDeque<Pos> queue = new ArrayDeque<>();
+            int top = maxY + 1;
+            for (int y = minY; y <= top; y++) {
+                for (int x = x0; x <= x1; x++) {
+                    for (int z = z0; z <= z1; z++) {
+                        if (x == x0 || x == x1 || z == z0 || z == z1 || y == top) {
+                            Pos p = new Pos(x, y, z);
+                            if (!solid(p) && seen.add(p)) {
+                                queue.add(p);
+                            }
+                        }
+                    }
+                }
+            }
+            while (!queue.isEmpty()) {
+                Pos p = queue.poll();
+                for (int[] d : SIX) {
+                    Pos n = p.add(d[0], d[1], d[2]);
+                    if (n.x() >= x0 && n.x() <= x1 && n.z() >= z0 && n.z() <= z1 && n.y() >= minY && n.y() <= top
+                            && !solid(n) && seen.add(n)) {
+                        queue.add(n);
+                    }
+                }
+            }
+            outside = seen;
+            return seen;
+        }
+
+        /** @param wanted die Wandseite, die das LLM der Tür gab (leer bei set/fill) – entscheidet bei Gleichstand */
+        Optional<DoorSpot> best(Pos old, String wanted, Set<Pos> taken) {
+            if (tooBig()) {
+                return Optional.empty();
+            }
+            DoorSpot best = null;
+            long[] bestKey = null;
+            for (Pos p : cells.keySet()) {
+                if (!wall(p) || !wall(p.up()) || !solid(p.down()) || taken.contains(p) || nearDoor(p)) {
+                    continue;
+                }
+                for (int i = 0; i < OUTWARD.length; i++) {
+                    int dx = OUTWARD[i][0];
+                    int dz = OUTWARD[i][1];
+                    Pos out = p.add(dx, 0, dz);
+                    Pos in = p.add(-dx, 0, -dz);
+                    // Entlang der Wand (quer zur Außenrichtung) beidseitig fest – sonst Ecke oder Wandende.
+                    Pos side1 = p.add(dz, 0, dx);
+                    Pos side2 = p.add(-dz, 0, -dx);
+                    if (!solid(side1) || !solid(side2) || !solid(side1.up()) || !solid(side2.up())
+                            || !passable(out) || !passable(in) || !outside().contains(out)) {
+                        continue;
+                    }
+                    // 0 = Innenraum umschlossen (echte Außenwand), 1 = beidseitig Außenraum (Mauer, Zaun ohne Dach).
+                    long openInside = outside().contains(in) ? 1 : 0;
+                    long dist = (long) (p.x() - old.x()) * (p.x() - old.x()) + (long) (p.z() - old.z()) * (p.z()
+                            - old.z()) + (long) (p.y() - old.y()) * (p.y() - old.y());
+                    // Bei gleicher Entfernung die gewünschte Seite, sonst vorn (lokal vorn = Spielerseite): Gemessen
+                    // 2026-11-22, Wachturm der PlanBench – Tür in der Mitte eines Rundturms, alle vier Wandstellen
+                    // gleich weit; nach x allein landete sie links statt vorn, wo der Spieler steht.
+                    long sideRank = OUTWARD_SIDE[i].equals(wanted) ? 0 : i + 1;
+                    long[] key = {openInside, p.y(), dist, sideRank, p.x(), p.z()};
+                    if (bestKey == null || java.util.Arrays.compare(key, bestKey) < 0) {
+                        bestKey = key;
+                        best = new DoorSpot(p, OUTWARD_SIDE[i]);
+                    }
+                }
+            }
+            return Optional.ofNullable(best);
+        }
+
+        /** Direkt neben einer anderen Tür kein zweiter Durchbruch (Doppeltüren plant das LLM selbst). */
+        private boolean nearDoor(Pos p) {
+            for (int[] d : OUTWARD) {
+                for (int dy = 0; dy <= 1; dy++) {
+                    BlockSpec b = cells.get(p.add(d[0], dy, d[1]));
+                    if (b != null && b.isDoor()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
     // ---------------------------------------------------------------- Vollklötze
 
     /**
