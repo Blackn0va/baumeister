@@ -58,6 +58,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   unverändert, 2 von 66 PlanBench-Urteilen geändert.
 
 ### Neu
+- **Vorbilder mit Kugeln:** Der Rückübersetzer erkennt Kugeln und Kuppeln (voll oder hohl) als einen `sphere`-Schritt,
+  statt sie in Scheiben und Reihen zu zerlegen (Kugel mit Radius 6: voll 16 → 1 Schritt, hohl 89 → 1). Übernommen nur,
+  wenn der Plan dadurch kürzer wird; der Rückbau bleibt Block für Block gleich.
 - **Stadtleben:** Mit `/bm stadtleben an` (nur Admins) laufen bis zu 12 Bewohner mit Name, Beruf und Tagesablauf
   nahe den Spielern herum: morgens zur Arbeit, mittags bummeln, abends heim, nachts schlafen. Sie schauen Spieler an,
   grüßen und reden per lokaler KI – ansprechen mit einer Chatzeile, die mit ihrem Namen beginnt. Nur bei erreichbarer

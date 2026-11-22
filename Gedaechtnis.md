@@ -1051,6 +1051,9 @@ Stand: 2026-11-22
   Arbeit 0,097 ms (p99 0,629, max 1,874), danach 0,073 (p99 0,627). Falle: Paper 26.x startet nur mit Java 25
   (`%USERPROFILE%\.local\opt\jdk-25.0.5+8`); fremd-paper hat online-mode=true – für den Probe-Bot kurz auf false.
   Falle: der Essentials-Puffer (60 s) hält eine leere Warpliste vom Start; Bewohner, die davor kommen, nehmen den Platz.
+- Kugeln im Rückübersetzer (T-028, 2026-11-22): Kugel r 6 voll 16 → 1, hohl 89 → 1 Schritt; Kuppel auf Turm 22–25 → 2;
+  816 echte Vorbilder ohne Kugel, 0 Pläne geändert (85 118 Schritte), Rechenzeit 8,3 → 8,9 s. inBall ist in
+  PlanDecompiler aus PlanCompiler nachgebildet – Falle: beide synchron halten (Test vergleicht r 1–24).
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1639,7 +1642,8 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 - Vorbilder: saubere, frei stehende Bauten sammeln (eigene per `//copy` + `//schem save`, fremde nur mit klarer
   Lizenz), je Datei Auftrag und Vorderseite in vorbilder.json; dann `DatasetGenerator --vorbilder <ordner>`. Erkennung
   von Dächern: seit 311dde1 werden Treppenreihen aus ≥ 2 ansteigenden Lagen ein roof (PlanDecompiler, einlagige
-  Doppelbank/Freitreppe nicht); Kugeln fehlen noch.
+  Doppelbank/Freitreppe nicht); Kugeln/Kuppeln seit T-028 ein sphere-Schritt (nicht, wenn die Kugel am
+  Äquator eine Wand aus demselben Block berührt).
 - Lehrset um Reparaturrunden erweitern (kaputter Plan + Rückmeldung → korrigierter Plan) – heute nur Erstantworten.
 - Minikarte im Spiel ausprobieren: Drehung beim Umsehen (flüssig genug? ROTATE_TICKS 3), Wegpunkte und Ziel am Rand,
   Reisepunkt-Marker, Zoom mit Schleichen, Plotrahmen gedreht, ob der Klick im Kreativmodus keinen Block bricht; und mit
