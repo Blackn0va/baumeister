@@ -48,13 +48,13 @@ class BaumeisterCommandTest {
         // tunnel, treppe, brücke, weiterbauen seit 2026-11-16 (Graben und Brücken, Rechte wie bau).
         assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
                 "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm",
-                "vorschau", "warteschlange", "karte", "begleiter", "stadtleben", "helfer"), player(""));
+                "vorschau", "warteschlange", "karte", "begleiter", "stadtleben", "module", "helfer"), player(""));
     }
 
     @Test
     void adminsSeeEveryMainName() {
         List<String> all = admin("");
-        assertEquals(50, all.size(), all.toString());  // 50 seit stadtleben (2026-11-21)
+        assertEquals(51, all.size(), all.toString());  // 51 seit module (2026-11-22)
         assertTrue(all.containsAll(List.of("portal", "einrichten")));
         assertTrue(all.containsAll(List.of("befehle", "befehlsblock", "selbsttest")));
         assertTrue(all.containsAll(List.of("bauteil", "spawn", "stadt", "stadtwelt", "tempo", "helfer", "logik", "logikbei",
@@ -209,7 +209,7 @@ class BaumeisterCommandTest {
     void travelCommandsNeedTheTravelRight() {
         assertEquals(List.of("bau", "tunnel", "treppe", "brücke", "weiterbauen", "stop", "rückgängig", "status",
                 "bildschirm", "bauteile", "schematics", "katalog", "fortschritt", "komm", "vorschau", "warteschlange",
-                "orte", "karte", "ort", "begleiter", "stadtleben", "helfer"), traveller(""));
+                "orte", "karte", "ort", "begleiter", "stadtleben", "module", "helfer"), traveller(""));
         assertEquals(List.of(), player("ort", ""));
         assertEquals(List.of(), player("orte", ""));
     }
@@ -275,7 +275,7 @@ class BaumeisterCommandTest {
     @Test
     void travellerWithoutBuildRightSeesOnlyTravelCommands() {
         List<String> none = List.of();
-        assertEquals(List.of("orte", "karte", "ort", "begleiter"), BaumeisterCommand.complete(new String[] {""}, false, false, true,
+        assertEquals(List.of("orte", "karte", "ort", "begleiter", "module"), BaumeisterCommand.complete(new String[] {""}, false, false, true,
                 MODULES, WORLDS, PLAYERS, PLACES));
         assertEquals(PLACES, BaumeisterCommand.complete(new String[] {"ort", ""}, false, false, true, MODULES, WORLDS,
                 PLAYERS, PLACES));

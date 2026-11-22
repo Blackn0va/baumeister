@@ -386,6 +386,82 @@ class TownLifeTest {
         assertEquals("ki_weg", t.life.lastGone());
     }
 
+    private static TownSettings withoutKi(boolean allowed) {
+        return new TownSettings(true, TownSettings.DEFAULT_COUNT, TownSettings.DEFAULT_GAP_SECONDS * 1000L, allowed);
+    }
+
+    /** stadtleben.ohne-ki aus (Vorgabe): KI weg → keine Bewohner, wie bisher. */
+    @Test
+    void withoutKiSwitchOffMeansNoResidentsWithoutKi() {
+        Town t = new Town(3);
+        t.life.configure(withoutKi(false), null);
+        t.life.hostResult(false);
+        t.life.step();
+        assertEquals(0, t.life.count());
+        assertEquals("ki_weg", t.life.lastGone());
+    }
+
+    /**
+     * stadtleben.ohne-ki an: KI weg → der Bewohner bleibt, antwortet mit einem festen Satz und fragt die KI kein
+     * einziges Mal (Nutzer 2026-11-22). Der Host-Port ist zu – eine Anfrage fiele in budget().asked() auf.
+     */
+    @Test
+    void withoutKiResidentsStayAndSpeakFixedLinesWithoutAnyRequest() throws Exception {
+        try (ServerSocket closed = new ServerSocket(0)) {
+            int port = closed.getLocalPort();
+            closed.close();
+            Town t = new Town(5);
+            t.life.configure(withoutKi(true), client(port, Duration.ofSeconds(2)));
+            t.life.hostResult(false);
+            for (int i = 0; i < 40; i++) {
+                t.life.step();
+            }
+            assertEquals(1, t.life.count(), "Grund: " + t.life.lastGone());
+            assertFalse(t.lotte.removed);
+            // Im Takt grüßt sie den Spieler in der Nähe von selbst – auch das ein fester Satz.
+            assertEquals(1, t.heard.size(), "Gruß im Takt: " + t.heard);
+            t.heard.clear();
+            assertTrue(t.life.onChat(t.probant, "Lotte, was backst du?"));
+            assertEquals(1, t.heard.size(), "fester Satz statt Schweigen: " + t.heard);
+            assertEquals(0, t.life.budget().asked(), "KI-Anfrage ohne KI");
+            assertEquals(1, t.life.withoutKiLines());
+        }
+    }
+
+    /** Kommt die KI zurück, reden die Bewohner wieder über sie – auch mit ohne-ki. */
+    @Test
+    void withoutKiAsksTheKiAgainOnceItIsBack() throws Exception {
+        try (ServerSocket closed = new ServerSocket(0)) {
+            int port = closed.getLocalPort();
+            closed.close();
+            Town t = new Town(5);
+            t.life.configure(withoutKi(true), client(port, Duration.ofSeconds(2)));
+            t.life.hostResult(true);
+            assertTrue(t.life.onChat(t.probant, "Lotte, was backst du?"));
+            assertEquals(1, t.life.budget().asked(), "KI da, aber nicht gefragt");
+            assertEquals(0, t.life.withoutKiLines());
+        }
+    }
+
+    /** ohne-ki steht in der Vorlage (Vorgabe false), und ConfigCheck meldet einen kaputten Wert. */
+    @Test
+    void withoutKiKeyIsInTheTemplateAndChecked() {
+        org.bukkit.configuration.file.YamlConfiguration bundled = org.bukkit.configuration.file.YamlConfiguration
+                .loadConfiguration(new java.io.File("src/main/resources/config.yml"));
+        assertTrue(bundled.isBoolean(TownSettings.KEY_WITHOUT_KI));
+        assertFalse(bundled.getBoolean(TownSettings.KEY_WITHOUT_KI));
+        assertFalse(TownSettings.from(bundled).withoutKi());
+        org.bukkit.configuration.file.YamlConfiguration bad = new org.bukkit.configuration.file.YamlConfiguration();
+        bad.set(TownSettings.KEY_WITHOUT_KI, "nein");
+        List<String> warnings = ConfigCheck.check(bad, bundled);
+        assertTrue(warnings.stream().anyMatch(w -> w.contains(TownSettings.KEY_WITHOUT_KI)), warnings.toString());
+        bad.set(TownSettings.KEY_WITHOUT_KI, true);
+        assertTrue(ConfigCheck.check(bad, bundled).isEmpty());
+        assertTrue(TownSettings.from(bad).withoutKi());
+        // /bm stadtleben an|aus (TownLife.setEnabled) geht über withEnabled – ohne-ki darf dabei nicht verloren gehen.
+        assertTrue(TownSettings.from(bad).withEnabled(false).withEnabled(true).withoutKi());
+    }
+
     /** onChat: nur in Hörweite – sonst gehört die Zeile nicht dem Bewohner und er sagt nichts. */
     @Test
     void chatOutsideEarshotIsNotTaken() {

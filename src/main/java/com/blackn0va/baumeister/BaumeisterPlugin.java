@@ -59,6 +59,8 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** Minikarte (/bm karte), null bis onEnable durch ist. */
     private Minimap minimap;
     private ScreenService screens;
+    /** Modulverzeichnis (/bm module, Kistenmenü, modul_json an Host und Mod), null bis onEnable durch ist. */
+    private ModuleService modules;
     private ConfigReload configReload;
     /** Fortschrittsbalken (Komfort), null bis onEnable durch ist. */
     private ProgressBarTask bars;
@@ -235,12 +237,20 @@ public final class BaumeisterPlugin extends JavaPlugin {
         if (getServer().getPluginManager().getPlugin("voicechat") != null) {
             companion.inGameVoice(VoicechatBoot.start(this));
         }
+        // Zuletzt: Das Modulverzeichnis liest den Zustand aller Dienste oben (Vertrag v012, AK-37).
+        ModuleMenu moduleMenu = new ModuleMenu(this, () -> modules == null ? List.of() : modules.entries());
+        getServer().getPluginManager().registerEvents(moduleMenu, this);
+        modules = ModuleService.from(this, moduleMenu);
+        modules.start(this);
         LOG.info(() -> "start | bereit | llm=" + settingsUrl());
     }
 
     @Override
     public void onDisable() {
         Texts.spoken = null;
+        if (modules != null) {
+            modules.stop();
+        }
         if (localVoice != null) {
             localVoice.stop();
         }
@@ -417,6 +427,16 @@ public final class BaumeisterPlugin extends JavaPlugin {
     /** Veras Stimme; null = aus oder nicht startklar. */
     LocalVoice veraVoice() {
         return veraVoice;
+    }
+
+    /** Modulverzeichnis, null bis onEnable durch ist. */
+    ModuleService modules() {
+        return modules;
+    }
+
+    /** Modpaket-Download vom Server, null = aus oder nicht gestartet. */
+    ModDownloads modDownloads() {
+        return modDownloads;
     }
 
     /** Kistenfenster der Sammlung. */

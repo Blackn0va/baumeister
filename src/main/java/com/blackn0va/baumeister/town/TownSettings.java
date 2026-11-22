@@ -11,7 +11,7 @@ import org.bukkit.configuration.ConfigurationSection;
  *
  * Threads: unveränderlich. Fehler: keine – unlesbare Werte gelten als Vorgabe, Zahlen werden gekappt.
  */
-public record TownSettings(boolean enabled, int count, long talkGapMillis) {
+public record TownSettings(boolean enabled, int count, long talkGapMillis, boolean withoutKi) {
 
     public static final boolean DEFAULT_ENABLED = false;
     public static final int DEFAULT_COUNT = 4;
@@ -26,6 +26,17 @@ public record TownSettings(boolean enabled, int count, long talkGapMillis) {
     public static final String KEY_ENABLED = "stadtleben.an";
     public static final String KEY_COUNT = "stadtleben.anzahl";
     public static final String KEY_GAP = "stadtleben.ki-abstand-sekunden";
+    /**
+     * Bewohner auch ohne KI, dann nur mit festen Sätzen (Nutzer 2026-11-22: „ja mach das so“). Vorgabe false: Ohne
+     * den Schalter gilt weiter Vertrag v008 – keine KI, keine Bewohner.
+     */
+    public static final String KEY_WITHOUT_KI = "stadtleben.ohne-ki";
+    public static final boolean DEFAULT_WITHOUT_KI = false;
+
+    /** Stand vor stadtleben.ohne-ki (Tests und alte Aufrufer). */
+    public TownSettings(boolean enabled, int count, long talkGapMillis) {
+        this(enabled, count, talkGapMillis, DEFAULT_WITHOUT_KI);
+    }
 
     public static TownSettings defaults() {
         return new TownSettings(DEFAULT_ENABLED, DEFAULT_COUNT, DEFAULT_GAP_SECONDS * 1000L);
@@ -37,10 +48,11 @@ public record TownSettings(boolean enabled, int count, long talkGapMillis) {
         }
         return new TownSettings(root.getBoolean(KEY_ENABLED, DEFAULT_ENABLED),
                 Math.clamp(root.getInt(KEY_COUNT, DEFAULT_COUNT), MIN_COUNT, MAX_COUNT),
-                Math.clamp(root.getLong(KEY_GAP, DEFAULT_GAP_SECONDS), MIN_GAP_SECONDS, MAX_GAP_SECONDS) * 1000L);
+                Math.clamp(root.getLong(KEY_GAP, DEFAULT_GAP_SECONDS), MIN_GAP_SECONDS, MAX_GAP_SECONDS) * 1000L,
+                root.getBoolean(KEY_WITHOUT_KI, DEFAULT_WITHOUT_KI));
     }
 
     public TownSettings withEnabled(boolean on) {
-        return new TownSettings(on, count, talkGapMillis);
+        return new TownSettings(on, count, talkGapMillis, withoutKi);
     }
 }

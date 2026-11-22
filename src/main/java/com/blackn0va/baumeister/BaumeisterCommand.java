@@ -103,6 +103,9 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             // Stadtleben (2026-11-21, Vertrag v008): status für jeden mit baumeister.bauen, an/aus/messung nur Admins
             // (geprüft in townLife).
             new Sub("stadtleben", false, List.of()),
+            // Modulverzeichnis (2026-11-22, Vertrag v012): Anzeige wie die Karte für Bauende und Reisende; Schalten
+            // prüft ModuleSwitch selbst (baumeister.admin, fail-closed).
+            new Sub("module", false, false, true, List.of("modul", "modules")),
             new Sub("bauteil", true, List.of()),
             new Sub("spawn", true, List.of()),
             new Sub("entfernen", true, List.of("remove")),
@@ -167,6 +170,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
     private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung");
+    private static final List<String> MODULE_VERBS = List.of("liste", "menü", "an", "aus");
+    private static final List<String> MODULE_VIEW_VERBS = List.of("liste", "menü");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
     private static final List<String> ADVENTURE_VERBS = List.of("normal", "hardcore", "stand", "aus", "team",
             "annehmen");
@@ -374,6 +379,13 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "ort" -> place(sender, label, args);
             case "begleiter", "companion" -> companion(sender, args);
             case "stadtleben" -> townLife(sender, args, plugin == null ? null : plugin.town());
+            case "module", "modul", "modules" -> {
+                if (plugin.modules() == null) {
+                    Texts.info(sender, "Das Modulverzeichnis ist noch nicht geladen.");
+                } else {
+                    plugin.modules().command(sender, args);
+                }
+            }
             default -> {
                 // „/bm grab ein tunnel“ (dev01 2026-11-16, dreimal hintereinander): Ein Satz statt eines Unterbefehls
                 // zeigte nur die Hilfe. Ist es ein Grabauftrag (auch „hör auf mit dem Tunnel“), geht er den Grabweg
@@ -610,6 +622,10 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             out.add(bm + " pause · weiter · tempo <blöcke/tick> · helfer <n> – Stadtbau steuern, oder im "
                     + "Chat: \"" + n + ", schneller\"");
             out.add(bm + " erde · reise <Ort|lat,lon> · wo [x z] – die ganze Erde 1:1 als eine Welt");
+        }
+        if (has.test(BUILD) || has.test(TRAVEL)) {
+            out.add(bm + " module [menü] – alle Funktionen mit Zustand (grün aktiv, gelb wartet, rot Fehler) und "
+                    + "Grund" + (has.test("baumeister.admin") ? " · module an|aus <modul> – schalten" : ""));
         }
         // Begleiter darf jeder rufen (plugin.yml) – deshalb außerhalb der Admin-Zeilen.
         if (has.test(COMPANION)) {
@@ -1388,6 +1404,13 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
             case "kartenbild" -> args.length == 2 ? worlds : List.of();
             case "bildschirm" -> args.length == 2 ? SCREEN_VERBS : List.of();
             case "stadtleben" -> args.length == 2 ? (admin ? TOWN_VERBS : List.of("status")) : List.of();
+            // Schalt-Wörter und Modul-ids nur für Admins – dieselbe Grenze wie ModuleSwitch, hier nur ausgeblendet.
+            case "module" -> args.length == 2 ? (admin ? MODULE_VERBS : MODULE_VIEW_VERBS)
+                    : args.length == 3 && admin && ON_OFF.contains(args[1].toLowerCase(Locale.ROOT))
+                    ? com.blackn0va.baumeister.module.ModuleDirectory.ALL.stream()
+                            .filter(com.blackn0va.baumeister.module.ModuleDef::switchable)
+                            .map(com.blackn0va.baumeister.module.ModuleDef::id).toList()
+                    : List.of();
             case "begleiter" -> args.length == 2 ? COMPANION_VERBS
                     : args.length == 3 && args[1].equalsIgnoreCase("abenteuer") ? ADVENTURE_VERBS : List.of();
             case "bauteil" -> args.length == 3 ? DIRECTIONS : List.of();

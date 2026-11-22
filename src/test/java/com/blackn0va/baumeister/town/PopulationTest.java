@@ -21,6 +21,18 @@ class PopulationTest {
         assertEquals(0, Population.target(s.enabled(), true, DAY, s.count(), 3));
     }
 
+    /** stadtleben.ohne-ki: Ohne KI bleiben und kommen Bewohner nur, wenn es ausdrücklich erlaubt ist. */
+    @Test
+    void withoutKiOnlyWhenAllowed() {
+        assertFalse(Population.present(false, false));
+        assertTrue(Population.present(false, true));
+        assertTrue(Population.present(true, false));
+        assertEquals(0, Population.target(true, Population.present(false, false), DAY, 4, 1));
+        assertEquals(4, Population.target(true, Population.present(false, true), DAY, 4, 1));
+        assertEquals(Population.Leave.STAY, Population.leave(true, Population.present(false, true), DAY));
+        assertEquals(Population.Leave.REMOVE_NOW, Population.leave(true, Population.present(false, false), DAY));
+    }
+
     @Test
     void withoutAnswerFromTheHostNobodyAppears() {
         HostWatch h = new HostWatch();

@@ -336,6 +336,9 @@ stadtleben:
   # Höchstens eine KI-Anfrage aller Bewohner zusammen je so viele Sekunden (15–600). Dazwischen sagen sie feste
   # Sätze. Solange ein Bauplan oder Vera rechnet, fragen sie nie.
   ki-abstand-sekunden: 45
+  # Bewohner auch, wenn die KI fehlt (2026-11-22): Sie folgen ihrem Tagesablauf und sagen nur feste Sätze, ohne eine
+  # einzige KI-Anfrage. Kommt die KI zurück, reden sie wieder über sie. false = ohne KI keine Bewohner.
+  ohne-ki: false
 # Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
 # und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
 fernverbindung:
