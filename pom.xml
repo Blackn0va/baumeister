@@ -31,6 +31,24 @@
     <server.lib>${project.basedir}/lib</server.lib>
   </properties>
 
+  <!--
+    Nur für PacketEvents (2026-11-22): CodeMC ist das offizielle Maven-Repo von retrooper/packetevents. Alles andere
+    kommt weiter aus lib/ (systemPath) oder Maven Central. Nur Releases, keine Snapshots – sonst wanderte die Fassung.
+  -->
+  <repositories>
+    <repository>
+      <id>codemc-releases</id>
+      <url>https://repo.codemc.io/repository/maven-releases/</url>
+      <releases>
+        <enabled>true</enabled>
+        <checksumPolicy>fail</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
   <dependencies>
     <dependency>
       <groupId>org.spigotmc</groupId>
@@ -107,6 +125,30 @@
       <systemPath>${server.lib}/worldedit-bukkit-7.4.1.jar</systemPath>
     </dependency>
 
+    <!--
+      PacketEvents (2026-11-22, Vertrag v013 AK-40, Nutzer: „Integriere PacketEvents wenn nötig“): Tab-Einträge der
+      Stadtleben-Bewohner. Als einzige Abhängigkeit INS Plugin-Jar geschattet und verschoben (maven-shade-plugin unten),
+      damit ein Server ohne das PacketEvents-Plugin sie hat und ein Server MIT einer anderen PacketEvents-Fassung nicht
+      mit ihr kollidiert. 2.14.0 kennt ServerVersion.V_1_21_11 und V_26_2 (javap im api-Jar, 2026-11-22). Fassung und
+      SHA-256 jeder geschatteten Datei stehen in lib/README.md und werden von PacketEventsPinTest geprüft.
+      netty bringt der Server mit; die Annotationen braucht zur Laufzeit niemand.
+    -->
+    <dependency>
+      <groupId>com.github.retrooper</groupId>
+      <artifactId>packetevents-spigot</artifactId>
+      <version>2.14.0</version>
+      <exclusions>
+        <exclusion>
+          <groupId>io.netty</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.jetbrains</groupId>
+          <artifactId>annotations</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-api</artifactId>
@@ -178,6 +220,71 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.3.0</version>
+      </plugin>
+      <!--
+        PacketEvents samt Adventure ins Jar, verschoben unter com.blackn0va.baumeister.lib (Anleitung PacketEvents
+        „Shading“). Verschoben, weil sonst ein zweites PacketEvents auf dem Server (Plugin oder anderes Plugin mit
+        eigener Kopie) dieselben Klassennamen hätte – wer zuerst lädt, gewinnt, und unsere Aufrufe träfen eine fremde
+        Fassung. net.kyori mit, weil Paper ein eigenes Adventure mitbringt und Spigot keins.
+        FALLE: Die Verschiebung schreibt auch Text-Konstanten um, die wie ein Klassenname aussehen. MannequinCompat sucht
+        Papers Component deshalb über einen zusammengesetzten Namen (MannequinCompat.PAPER_COMPONENT).
+        Nur die Wurzel-Lizenz behalten (plugin.yml und Signaturen der Fremd-Jars weg): Das plugin.yml aus
+        packetevents-spigot würde sonst als zweites plugin.yml neben unserem liegen.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <artifactSet>
+                <includes>
+                  <include>com.github.retrooper:*</include>
+                  <include>net.kyori:*</include>
+                </includes>
+              </artifactSet>
+              <relocations>
+                <relocation>
+                  <pattern>com.github.retrooper.packetevents</pattern>
+                  <shadedPattern>com.blackn0va.baumeister.lib.packetevents.api</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>io.github.retrooper.packetevents</pattern>
+                  <shadedPattern>com.blackn0va.baumeister.lib.packetevents.impl</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>net.kyori</pattern>
+                  <shadedPattern>com.blackn0va.baumeister.lib.kyori</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>com.github.retrooper:packetevents-spigot</artifact>
+                  <excludes>
+                    <exclude>plugin.yml</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

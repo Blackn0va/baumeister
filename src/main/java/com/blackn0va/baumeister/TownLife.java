@@ -14,6 +14,8 @@ import com.blackn0va.baumeister.town.TownLines;
 import com.blackn0va.baumeister.town.TownSettings;
 import com.blackn0va.baumeister.town.TownTalk;
 import com.blackn0va.baumeister.town.WorkSpots;
+import com.blackn0va.baumeister.town.presence.Gestures;
+import com.blackn0va.baumeister.town.presence.Presence;
 import com.google.gson.JsonObject;
 
 import java.lang.reflect.InvocationTargetException;
@@ -34,7 +36,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -628,6 +629,15 @@ final class TownLife implements Listener {
     }
 
     private final Env env;
+    /**
+     * Spieler-Auftritt (T-033, town.presence): Tab-Eintrag, Kommen/Gehen-Zeile, Ausrüstung, Gesten. null = ohne (Tests,
+     * die nur den Tagesablauf prüfen). Einhängepunkte nur in spawn, forget, speak und stepResident.
+     */
+    private Presence presence;
+
+    void presence(Presence p) {
+        this.presence = p;
+    }
 
     TownLife(BaumeisterPlugin plugin) {
         this(plugin, new BukkitEnv(plugin.getServer(), plugin, Parts.of(plugin)), new NamespacedKey(plugin,
@@ -887,6 +897,9 @@ final class TownLife implements Listener {
         Resident r = adopt(person, m, at);
         dress(m, person);
         r.work = chooseWork(r, at);
+        if (presence != null) {
+            presence.appeared(person.name(), person.job(), person.color(), m);
+        }
         spawned++;
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | erschienen | bewohner=%s beruf=%s welt=%s x=%d y=%d "
                 + "z=%d", TownTalk.key(person.name()), person.job(), at.getWorld().getName(), at.getBlockX(),
@@ -1070,8 +1083,11 @@ final class TownLife implements Listener {
             }
             stand(m);
             activity(r, m, phase, near, nearSq, now);
+            gesture(r, m, talking ? Gestures.Activity.TALK : r.goal == DayPlan.Goal.WORK && r.reached
+                    ? Gestures.Activity.WORK : Gestures.Activity.IDLE, now);
         } else {
             walk(r, m, cur, goal, plans);
+            gesture(r, m, Gestures.Activity.WALK, now);
         }
         yieldTo(m, near);
         greet(r, m, near, nearSq, now);
@@ -1182,7 +1198,9 @@ final class TownLife implements Listener {
     private void activity(Resident r, Mannequin m, DayPlan.Phase phase, Player near, double nearSq, long now) {
         if (r.goal == DayPlan.Goal.WORK && r.reached) {
             hold(r, m);
-            if (now >= r.nextSwing && nearSq > LOOK * LOOK) {
+            // Arm schwingen ohne Presence (Tests) wie bisher; mit Presence übernimmt Gestures – auch wenn ein Spieler
+            // zusieht (vorher schwang der Arm nur, wenn keiner näher als LOOK stand).
+            if (presence == null && now >= r.nextSwing && nearSq > LOOK * LOOK) {
                 m.swingMainHand();
                 r.nextSwing = now + 1500 + ThreadLocalRandom.current().nextLong(2500);
             }
@@ -1209,6 +1227,12 @@ final class TownLife implements Listener {
         Material has = eq.getItemInMainHand().getType();
         if (want == null ? !has.isAir() : has != want) {
             BuilderNpc.hold(mm, want);
+        }
+    }
+
+    private void gesture(Resident r, Mannequin m, Gestures.Activity a, long now) {
+        if (presence != null) {
+            presence.gesture(r.person.name(), m, a, now);
         }
     }
 
@@ -1431,7 +1455,8 @@ final class TownLife implements Listener {
         }
         r.lastSpoke = System.currentTimeMillis();
         Location at = m.getLocation();
-        String line = ChatColor.GREEN + "[" + r.person.name() + ", " + r.person.job() + "] " + ChatColor.WHITE + clean;
+        // Spielerformat „<Lotte> …“ (T-033); vorher grün „[Lotte, Bäckerin] …“.
+        String line = Presence.chatLine(r.person.name(), clean);
         for (Player p : at.getWorld().getPlayers()) {
             if (p.getLocation().distanceSquared(at) <= TownTalk.HEAR * TownTalk.HEAR) {
                 p.sendMessage(line);
@@ -1469,6 +1494,9 @@ final class TownLife implements Listener {
 
     private void forget(Resident r, String reason) {
         residents.remove(r);
+        if (presence != null) {
+            presence.left(r.person.name());
+        }
         lastGone = reason;
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | weg | bewohner=%s grund=%s strecke=%.1f ziele=%d "
                 + "teleports=%d wegsuchen=%d minuten=%.1f", TownTalk.key(r.person.name()), reason, r.walked,
