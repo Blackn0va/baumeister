@@ -1044,6 +1044,13 @@ Stand: 2026-11-22
 - Item-Sortierer auf Paper 26.2-135 (T-022, 2026-11-22): _2, _4–_7 ohne und mit Sorten, N/O/S/W, 40/40 BESTANDEN.
   Falle: der Prüfablauf füttert fest `dirt` als Fremdgegenstand (Machines.java ~2257/2289) – steht `dirt` in der
   Sortenliste, fallen _4/_6/_7 durch (FREMD3=1), ohne Fehler der Maschine.
+- Sortierer-Prüfablauf (T-025, 2026-11-22, Spigot 1.21.11): Fremdgegenstand = erster aus Machines.SORTER_FOREIGN, der
+  in keiner Sorte steht. Mit dirt in der Liste vorher Nord 3 FEHLER (_4/_6/_7), nachher N/O/S/W 16/16 (mit _5 ohne dirt).
+- Stadtleben auf Paper 26.2-135 mit EssentialsX 2.22.1-dev+28 (T-026, 2026-11-22, Stub-Host, 12 Bewohner): Warp unter
+  Dach (y 87, Dach 93) → quelle=warp y=87 für 2 Bewohner (Belegungsgrenze), Reflexion ohne Warnung. Takt an der
+  Arbeit 0,097 ms (p99 0,629, max 1,874), danach 0,073 (p99 0,627). Falle: Paper 26.x startet nur mit Java 25
+  (`%USERPROFILE%\.local\opt\jdk-25.0.5+8`); fremd-paper hat online-mode=true – für den Probe-Bot kurz auf false.
+  Falle: der Essentials-Puffer (60 s) hält eine leere Warpliste vom Start; Bewohner, die davor kommen, nehmen den Platz.
 ## Sicherheitsregeln (mit Gegenprobe belegt)
 - Sicherheitsprüfung 1 zu P3 (2026-11-08), je Befund Gegenprobe rot → grün: Paar aus Bauteil- und Plan-Hälfte prüft
   beide (PlacementGateTest), JA eines Bauteils nur unter denselben Rechten, NEIN bleibt; „merk dir“ prüft Größe/Name
@@ -1555,7 +1562,7 @@ Nur in der lokalen Fassung (Betriebsprotokoll des Servers).
 ## Offen
 - Stadtleben v1 (T-020): auf dev01 aus, Nutzer schaltet selbst. Offen: Takt auf dem Celeron,
   sichtbare Tätigkeiten im echten Client, Arbeitsort an einem Bau nur per Unit-Test (live nur Warp und
-  Reisepunkt), Paper mit EssentialsX nicht gemessen, Stehplatz auf einem Dach ≤ 12 über einem Warp nicht abgefangen,
+  Reisepunkt), Paper mit EssentialsX seit T-026 gemessen, Stehplatz unter Dach seit T-026 gerichtet,
   Listener-Test liest nur den Quelltext von onEnable (T-023). v2 (Händler, Fahrzeuge, Polizei, Bauen/Ernten mit Rechten)
   erst nach Rückmeldung des Nutzers zu v1.
 - Tunnel gerade: vom Nutzer zu bestätigen – Röhre statt Halt über Tal/Wasser und Durchgraben von Mineschächten

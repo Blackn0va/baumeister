@@ -36,6 +36,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Prüfers gelangen, als Gespräch über mehrere Runden auf; `train_qlora.py` lernt dort nur die korrigierte Antwort.
 
 ### Behoben
+- **Bewohner nicht mehr auf dem Dach:** Liegt ein Warp oder Reisepunkt unter einem Dach, arbeiten Bewohner jetzt unten
+  am Ort statt oben auf dem Dach. Auf Paper 26.2 mit EssentialsX geprüft.
+- **Sortierer-Probe ohne Scheinfehler:** Steht Erde selbst in der Sortenliste eines Item-Sortierers, nimmt die
+  Maschinenprobe einen anderen Fremdgegenstand; vorher meldete sie für richtig sortierende Maschinen einen Fehler.
 - **Tür in der Wand:** Stellt die KI eine Tür frei, in die Luft oder mitten in den Raum, rückt sie jetzt in die
   nächste passende Außenwand auf Bodenhöhe, statt den Plan scheitern zu lassen (Wachturm, Leuchtturm). Gemessen mit
   dem lokalen Modell an fünf Aufträgen: 5 statt 3 angenommen.
