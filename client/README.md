@@ -26,11 +26,31 @@ Während des Baus zeigt die Aktionsleiste über der Hotbar den Stand: Blöcke, P
 | `/kbau modus spieler` · `modus befehl` | Bauweise |
 | `/kbau tempo <n>` | Blöcke bzw. Befehle je Sekunde |
 | `/kbau host <url>` | Adresse des Baumeister-Hosts (Vorgabe `http://127.0.0.1:8080/v1/chat/completions`) |
+| `/kbau module` | Bildschirm „Module“ (auch Taste `M`) |
 
 Einstellungen: `config/baumeister-client.json`. Ergebnisse meldet die Mod an die App (Reiter „Verlauf“, „(Client)“).
 Unbrauchbare Werte setzt die Mod beim Laden auf die Vorgabe zurück und schreibt das ins Log – auch die KI-Werte
 `temperature` (0 bis 2), `maxTokens` (ab 1), `repairAttempts` und `maxOverbuild` (ab 0). `llmTimeoutSeconds`
 (Vorgabe 600) ist die Wartezeit auf eine Antwort des Hosts; danach endet die Planung mit einer Meldung im Chat.
+
+## Module
+
+`M` (in der Steuerung änderbar) oder `/kbau module` öffnet den Bildschirm „Module“. Oben die Funktionen der Mod als
+Schalter – sie wirken sofort und stehen in `config/baumeister-client.json`:
+
+| Modul | Schlüssel | Wirkung |
+|---|---|---|
+| Gedächtnis (`nachtrag`) | `followUps` | Nachträge zum letzten Bau; aus = jeder Auftrag plant frisch |
+| Statuszeile (`statuszeile`) | `hudStatus` | Zeile oben links |
+| Aktionsleiste (`aktionsleiste`) | `progressBar` | Stand, Prozent, Restzeit über der Hotbar |
+| Ergebnis melden (`ergebnis-melden`) | `reportResults` | Ergebnis an die Host-App |
+
+Darunter stehen die Module des Servers, wie das Plugin sie über den Kanal `baumeister:module` meldet (beim Beitritt
+und bei jeder Änderung): Zustand (aktiv, aus, wartet, Fehler) und Grund, nur zur Anzeige – geschaltet wird mit
+`/bm module` im Plugin. Ohne Plugin oder vor der ersten Meldung steht dort „Server meldet keine Module“. Eine
+Nachricht, die nicht genau dem Vertrag entspricht (nur die Felder `version`, `modules`, `id`, `name`, `description`,
+`on`, `state`, `reason`, `needs`; id `[a-z0-9-]{1,32}`, Name ≤ 40, Beschreibung ≤ 160, Grund ≤ 120 Zeichen; höchstens
+64 Module, 16 needs und 64 KiB), verwirft die Mod ganz und schreibt den Grund ins Log; der vorige Stand bleibt.
 
 ## Nachträge (Gedächtnis)
 
@@ -77,3 +97,7 @@ Die Plan-Logik kommt unverändert aus dem Plugin (`../src/main/java`, Pakete `pl
   echten `ClientBuilder` – Start, Prüfdurchgang, Stopp, Rückgängig (`ClientBuilderMemoryTest`, 2026-11-21)
 - ⏳ Nachtrag im echten Spiel mit LLM noch nicht gelaufen
 - ⏳ Recherche und Plot-Modus gibt es nur im Plugin
+- ✅ Module (2026-11-22) in Unit-Tests: Parser für modul_json mit allen Grenzen, Kanal-Codec, Schalter gespeichert
+  (`ServerModulesTest`, `ClientModulesTest`)
+- ⏳ Bildschirm „Module“ und Empfang über `baumeister:module` im echten Spiel noch nicht gesehen (kein
+  runClientGameTest dafür, Plugin-Seite T-030 lief noch nicht dagegen)

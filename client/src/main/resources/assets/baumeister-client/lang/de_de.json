@@ -1,4 +1,22 @@
 {
   "key.baumeister-client.toggle": "Bau anhalten/fortsetzen",
-  "key.category.baumeister-client.main": "Baumeister"
+  "key.baumeister-client.modules": "Module zeigen",
+  "key.category.baumeister-client.main": "Baumeister",
+  "baumeister-client.screen.title": "Baumeister – Module",
+  "baumeister-client.screen.own": "Module der Mod (wirken sofort)",
+  "baumeister-client.screen.server": "Module des Servers (nur Anzeige, schalten mit /bm module)",
+  "baumeister-client.screen.server.none": "Server meldet keine Module",
+  "baumeister-client.screen.needs": " (braucht: %s)",
+  "baumeister-client.state.aktiv": "aktiv",
+  "baumeister-client.state.aus": "aus",
+  "baumeister-client.state.wartet": "wartet",
+  "baumeister-client.state.fehler": "Fehler",
+  "baumeister-client.module.nachtrag": "Gedächtnis",
+  "baumeister-client.module.nachtrag.desc": "Nachträge zum letzten Bau („mach das Dach rot“) binnen 1 h und 48 Blöcken",
+  "baumeister-client.module.statuszeile": "Statuszeile",
+  "baumeister-client.module.statuszeile.desc": "Zeile oben links: plant, baut, prüft, Pause",
+  "baumeister-client.module.aktionsleiste": "Aktionsleiste",
+  "baumeister-client.module.aktionsleiste.desc": "Stand, Prozent und Restzeit über der Hotbar",
+  "baumeister-client.module.ergebnis-melden": "Ergebnis melden",
+  "baumeister-client.module.ergebnis-melden.desc": "Ergebnis jedes Baus an die Host-App (Reiter „Verlauf“)"
 }

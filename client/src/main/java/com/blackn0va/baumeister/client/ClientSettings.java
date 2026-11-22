@@ -46,6 +46,15 @@ final class ClientSettings {
     int distanceAhead = 3;
     /** Ergebnis an die App melden (/baumeister/v1/ergebnis, wie gui.ergebnis-melden im Plugin). */
     boolean reportResults = true;
+    /**
+     * Module der Mod (ClientModules, AK-39, 2026-11-22) – je Funktion ein Schalter. Vorgabe überall an: so verhielt
+     * sich die Mod vorher; eine alte Datei ohne die Felder bekommt über den Konstruktor (Gson) dieselben Werte.
+     */
+    boolean followUps = true;
+    /** Zeile oben links („Baumeister: baut …“, BaumeisterClient.hud). */
+    boolean hudStatus = true;
+    /** Stand, Prozent und Restzeit in der Aktionsleiste über der Hotbar (ClientBuilder.tick). */
+    boolean progressBar = true;
 
     boolean commandMode() {
         return "befehl".equals(mode);
