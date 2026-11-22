@@ -36,6 +36,9 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
   Prüfers gelangen, als Gespräch über mehrere Runden auf; `train_qlora.py` lernt dort nur die korrigierte Antwort.
 
 ### Behoben
+- **Bäume ohne Ort:** Plant die KI einen Baum ohne Position, steht er jetzt vor dem Bauwerk, statt den Plan scheitern
+  zu lassen („eine Burg mit Bäumen davor“). Gemessen mit dem lokalen Modell an allen 24 Testaufträgen: 22 angenommen,
+  2 verworfen (vorher 4).
 - **Bewohner nicht mehr auf dem Dach:** Liegt ein Warp oder Reisepunkt unter einem Dach, arbeiten Bewohner jetzt unten
   am Ort statt oben auf dem Dach. Auf Paper 26.2 mit EssentialsX geprüft.
 - **Sortierer-Probe ohne Scheinfehler:** Steht Erde selbst in der Sortenliste eines Item-Sortierers, nimmt die
