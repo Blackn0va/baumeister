@@ -114,8 +114,7 @@ final class ClientBuilder {
         // Folgeauftrag in der Nähe des letzten Baus (ClientMemory): derselbe Rahmen wie damals – Füße, Blickrichtung
         // und Verschiebung des alten Baus –, damit alter Plan, Scan und neuer Plan dieselben Koordinaten haben. Wie
         // BuildService.request im Plugin; vorher begann jeder Client-Auftrag bei null.
-        ClientMemory.Entry<Map<BlockPos, BlockState>> mem = memory.recall(mc.level, here.getX(), here.getY(),
-                here.getZ(), prompt).orElse(null);
+        ClientMemory.Entry<Map<BlockPos, BlockState>> mem = recall(settings, memory, mc.level, here, prompt);
         BlockPos feet = mem != null ? new BlockPos(mem.x(), mem.y(), mem.z()) : here;
         Orientation o = new Orientation(mem != null ? mem.facing() : Cardinal.fromYaw(mc.player.getYRot()));
         int scanShiftX = mem != null ? mem.shiftX() : 0;
@@ -175,6 +174,20 @@ final class ClientBuilder {
                     }
                     begin(mc, prompt, planned, o, feet, survey, mem);
                 }));
+    }
+
+    /**
+     * Modul „nachtrag“ (ClientModules, AK-39): aus → jeder Auftrag plant frisch, auch in der Nähe des letzten Baus.
+     * Nur das Abrufen hängt am Schalter, nicht das Merken: Rückgängig braucht memoryBefore auch bei ausgeschaltetem
+     * Gedächtnis, und wer es wieder einschaltet, findet den letzten Bau. Statisch, damit ClientModulesTest den Schalter
+     * ohne Spielstart prüft.
+     */
+    static <T> ClientMemory.Entry<T> recall(ClientSettings settings, ClientMemory<T> memory, Object level,
+            BlockPos here, String prompt) {
+        if (!settings.followUps) {
+            return null;
+        }
+        return memory.recall(level, here.getX(), here.getY(), here.getZ(), prompt).orElse(null);
     }
 
     /** mem: voriger Bau, in dessen Rahmen geplant wurde, oder null (frischer Auftrag). */
@@ -431,7 +444,8 @@ final class ClientBuilder {
             return;
         }
         // Aktionsleiste alle 0,5 s: Stand, Prozent, Restzeit bzw. Pausengrund (ClientBuild.progressLine).
-        if (++hudTicks % 10 == 0) {
+        // Modul „aktionsleiste“ (ClientModules): je Tick gelesen, wirkt sofort.
+        if (++hudTicks % 10 == 0 && settings.progressBar) {
             // Aktionsleiste: 26.x sendOverlayMessage (vorher displayClientMessage(…, true)).
             mc.player.sendOverlayMessage(Component.literal(ClientBuild.progressLine(job.next, job.total(),
                     job.passSeconds(), job.state == ClientBuild.State.PAUSED ? job.pauseReason : null)));

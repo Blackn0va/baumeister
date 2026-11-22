@@ -1,4 +1,22 @@
 {
   "key.baumeister-client.toggle": "Pause/resume build",
-  "key.category.baumeister-client.main": "Baumeister"
+  "key.baumeister-client.modules": "Show modules",
+  "key.category.baumeister-client.main": "Baumeister",
+  "baumeister-client.screen.title": "Baumeister – Modules",
+  "baumeister-client.screen.own": "Mod modules (take effect immediately)",
+  "baumeister-client.screen.server": "Server modules (display only, switch with /bm module)",
+  "baumeister-client.screen.server.none": "Server reports no modules",
+  "baumeister-client.screen.needs": " (needs: %s)",
+  "baumeister-client.state.aktiv": "active",
+  "baumeister-client.state.aus": "off",
+  "baumeister-client.state.wartet": "waiting",
+  "baumeister-client.state.fehler": "error",
+  "baumeister-client.module.nachtrag": "Memory",
+  "baumeister-client.module.nachtrag.desc": "Follow-ups to the last build (\"make the roof red\") within 1 h and 48 blocks",
+  "baumeister-client.module.statuszeile": "Status line",
+  "baumeister-client.module.statuszeile.desc": "Top-left line: planning, building, verifying, paused",
+  "baumeister-client.module.aktionsleiste": "Action bar",
+  "baumeister-client.module.aktionsleiste.desc": "Progress, percent and time left above the hotbar",
+  "baumeister-client.module.ergebnis-melden": "Report results",
+  "baumeister-client.module.ergebnis-melden.desc": "Send each build's result to the host app (\"History\" tab)"
 }

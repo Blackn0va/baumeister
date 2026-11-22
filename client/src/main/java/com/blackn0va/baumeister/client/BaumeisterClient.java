@@ -15,7 +15,10 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -25,8 +28,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 /**
- * Einstieg der Client-Mod: Befehl /kbau, Taste K (Pause/Weiter, in den Steuerungs-Einstellungen änderbar), Anzeige
- * oben links, Tick. „kbau“ statt „bm“: /bm gehört dem Server-Plugin; beide sollen nebeneinander gehen.
+ * Einstieg der Client-Mod: Befehl /kbau, Taste K (Pause/Weiter) und M (Bildschirm „Module“, beide in den
+ * Steuerungs-Einstellungen änderbar), Anzeige oben links, Tick, Kanal baumeister:module. „kbau“ statt „bm“: /bm
+ * gehört dem Server-Plugin; beide sollen nebeneinander gehen.
  *
  * Threads: Client-Thread. Fehler: Ohne Ressourcen (system-prompt, plan-schema) startet der Planer nicht – dann sagt
  * jeder Auftrag das im Chat, das Spiel läuft weiter.
@@ -42,6 +46,7 @@ public final class BaumeisterClient implements ClientModInitializer {
     private Path settingsFile;
     private ClientBuilder builder;
     private KeyMapping toggle;
+    private KeyMapping modules;
 
     /** Für den Spieltest (gametest): derselbe Ablauf wie über /kbau. */
     public static BaumeisterClient get() {
@@ -60,13 +65,19 @@ public final class BaumeisterClient implements ClientModInitializer {
         } catch (IOException | RuntimeException e) {
             LOG.log(Level.SEVERE, "start | planer_fehlt – Aufträge gehen nicht", e);
         }
-        toggle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.baumeister-client.toggle", 75,
-                KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ID, "main"))));
+        KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ID, "main"));
+        toggle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.baumeister-client.toggle", 75, category));
+        // M (GLFW 77) ist in Minecraft unbelegt; wer eine Minikarten-Mod mit M hat, legt es in der Steuerung um.
+        modules = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.baumeister-client.modules", 77, category));
+        registerModuleChannel();
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             while (toggle.consumeClick()) {
                 if (builder != null) {
                     builder.pauseOrResume();
                 }
+            }
+            while (modules.consumeClick()) {
+                openModules(mc);
             }
             if (builder != null) {
                 builder.tick(mc);
@@ -90,9 +101,38 @@ public final class BaumeisterClient implements ClientModInitializer {
                         .executes(c -> speed(IntegerArgumentType.getInteger(c, "n")))))
                 .then(literal("host").then(argument("url", StringArgumentType.greedyString())
                         .executes(c -> host(StringArgumentType.getString(c, "url")))))
+                // mc.execute: Der Befehl läuft noch im Chat-Bildschirm, der sich danach schließt – direkt gesetzt
+                // schlösse er den neuen Bildschirm gleich mit.
+                .then(literal("module").executes(c -> {
+                    Minecraft mc = Minecraft.getInstance();
+                    mc.execute(() -> openModules(mc));
+                    return 1;
+                }))
                 .then(argument("auftrag", StringArgumentType.greedyString())
                         .executes(c -> run(() -> builder.start(Minecraft.getInstance(),
                                 StringArgumentType.getString(c, "auftrag")))))));
+    }
+
+    /**
+     * Kanal baumeister:module (Vertrag v012, plugin_zu_mod). Fabric ruft den Empfänger auf dem Client-Thread auf. Beim
+     * Beitritt und beim Verlassen wird der Stand geleert, damit die Module eines Servers nie auf einem anderen stehen
+     * und ein Server ohne Plugin „meldet keine Module“ zeigt statt eines alten Stands.
+     */
+    private static void registerModuleChannel() {
+        PayloadTypeRegistry.clientboundPlay().register(ModulePayload.TYPE, ModulePayload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(ModulePayload.TYPE, (payload, context) -> {
+            if (payload.data() == null) {
+                LOG.warning(() -> "module | server_verworfen | grund=zu_gross bytes=" + payload.size());
+                return;
+            }
+            ServerModules.accept(payload.data());
+        });
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> ServerModules.clear());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> ServerModules.clear());
+    }
+
+    private void openModules(Minecraft mc) {
+        mc.gui.setScreen(new ModulesScreen(mc.gui.screen(), settings, settingsFile));
     }
 
     /** Für den Spieltest: Auftrag wie /kbau, Modus und Tempo setzen, Zustand lesen. */
@@ -143,8 +183,8 @@ public final class BaumeisterClient implements ClientModInitializer {
 
     private int help() {
         say("/kbau <Auftrag> – z. B. /kbau bau einen Bunker · stop (auch während der Planung) · pause · weiter · "
-                + "status · rückgängig · modus spieler|befehl · tempo <n/s> · host <url>. Jede eigene Eingabe hält an, "
-                + "[K] macht weiter.");
+                + "status · rückgängig · modus spieler|befehl · tempo <n/s> · host <url> · module. Jede eigene Eingabe "
+                + "hält an, [K] macht weiter, [M] zeigt die Module.");
         say("Modus: " + settings.mode + ", Tempo " + (settings.commandMode() ? settings.commandsPerSecond + " Befehle/s"
                 : settings.blocksPerSecond + " Blöcke/s") + ", Host " + settings.llmUrl);
         return 1;
@@ -185,7 +225,8 @@ public final class BaumeisterClient implements ClientModInitializer {
     }
 
     private void hud(GuiGraphicsExtractor g) {
-        if (builder == null) {
+        // Modul „statuszeile“ (ClientModules): bei jedem Bild gelesen, wirkt also sofort.
+        if (builder == null || !settings.hudStatus) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
