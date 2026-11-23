@@ -68,7 +68,10 @@ final class ConfigCheck {
             Map.entry("stadtleben.anzahl", new Range(1, 12)),
             Map.entry("stadtleben.ki-abstand-sekunden", new Range(15, 600)),
             // Feldarbeit (2026-11-22, Vertrag v013): Spiegel von town.work.WorkSettings.from (WorkSettingsTest).
-            Map.entry("stadtleben.feld-blöcke-je-minute", new Range(1, 120)));
+            Map.entry("stadtleben.feld-blöcke-je-minute", new Range(1, 120)),
+            // Bauen im Baufeld (2026-11-22, Vertrag v013 AK-45): Spiegel von town.work.BuildSettings.from.
+            Map.entry("stadtleben.bauen.je-feld", new Range(1, 16)),
+            Map.entry("stadtleben.bauen.pause-minuten", new Range(0, 120)));
 
     /** Schlüssel mit fester Auswahl. */
     static final Map<String, List<String>> CHOICES = Map.of("erde.projektion", List.of("airocean", "sinus6"));

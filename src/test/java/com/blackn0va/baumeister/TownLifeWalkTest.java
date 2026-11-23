@@ -164,6 +164,20 @@ class TownLifeWalkTest {
         com.blackn0va.baumeister.town.work.Plot plot;
         com.blackn0va.baumeister.town.work.FieldWork.Hands hands;
         World named;
+        /** Bauen (AK-45, TownLifeBuildTest): Blockliste des Katalogs und der Baudienst; null = aus. */
+        com.blackn0va.baumeister.plan.BlockCatalog catalog;
+        TownLifeBuildTest.Builder builder;
+
+        @Override
+        public com.blackn0va.baumeister.plan.BlockCatalog blockCatalog() {
+            return catalog;
+        }
+
+        @Override
+        public String townBuild(com.blackn0va.baumeister.town.work.TownBuilds.Order order, Player actor,
+                org.bukkit.entity.Mannequin body, String name, java.util.function.Consumer<Boolean> done) {
+            return builder == null ? "aus" : builder.start(order, actor, name, done);
+        }
 
         @Override
         public com.blackn0va.baumeister.town.work.Plot plot(World w) {

@@ -13,9 +13,22 @@ import java.util.regex.Pattern;
  * oder eine Brücke darüber einschließt. UP reicht für Eiche, Birke und kleine Fichten; ragt ein Stamm über das Feld
  * hinaus, fällt der Planner den Baum gar nicht (lieber stehen lassen als halb fällen).
  *
+ * build (AK-45): Baufeld – hier bauen Bewohner auch kleine Dinge (TownBuilds). Nur ausdrücklich per Befehl, ein neu
+ * gesetztes Feld ist nie eins.
+ *
  * Threads: unveränderlich. Fehler: keine; check() sagt, was an Name oder Radius nicht passt.
  */
-public record Field(String name, String world, int x, int y, int z, int radius, UUID owner) {
+public record Field(String name, String world, int x, int y, int z, int radius, UUID owner, boolean build) {
+
+    /** Ohne Baufreigabe (AK-43): so legt /bm stadtleben feld setzen jedes Feld an. */
+    public Field(String name, String world, int x, int y, int z, int radius, UUID owner) {
+        this(name, world, x, y, z, radius, owner, false);
+    }
+
+    /** Dasselbe Feld mit Baufreigabe an oder aus (AK-45, /bm stadtleben feld bauen). */
+    public Field withBuild(boolean on) {
+        return new Field(name, world, x, y, z, radius, owner, on);
+    }
 
     public static final int MIN_RADIUS = 2;
     public static final int MAX_RADIUS = 24;

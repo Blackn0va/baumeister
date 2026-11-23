@@ -186,6 +186,11 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         return flow.statusSuffix();
     }
 
+    /** Wartet kein Auftrag? Bewohner bauen nur dann (BuildService.startTown: Spieler gehen vor). */
+    boolean queueEmpty() {
+        return flow.queue().isEmpty();
+    }
+
     // ---------------------------------------------------------------- Warteschlange
 
     private void startQueueTimer() {

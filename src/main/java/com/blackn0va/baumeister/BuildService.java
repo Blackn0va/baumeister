@@ -34,6 +34,7 @@ import com.blackn0va.baumeister.plan.Tier;
 import com.blackn0va.baumeister.plan.SpokenWords;
 import com.blackn0va.baumeister.plan.RequestHints;
 import com.blackn0va.baumeister.plan.SiteSurvey;
+import com.blackn0va.baumeister.town.work.TownBuilds;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -1840,6 +1841,134 @@ final class BuildService {
                 n, world.getName(), frame.feetX(), frame.feetY(), frame.feetZ()));
         active.start();
         return true;
+    }
+
+    /**
+     * Ein Bewohner baut im Baufeld (Stadtleben, Vertrag v013 AK-45) – derselbe Weg wie jeder Bau, nur ohne LLM, ohne
+     * Vorschau, ohne Gedächtnis, ohne Helfer, und der Bewohner ist der Arbeiter (BuildJob.lead). Gleich bleibt alles,
+     * was schützt: Plan durch Parser und Compiler, Überbau-Schutz (PlanReview.checkOverbuild), Rechteprüfung jedes
+     * Blocks im Namen von actor VOR dem ersten Block (BuildJob-Prüfphase, fail-closed), Stufen je Takt, Rückgängig-
+     * Stapel und Baubuch. done bekommt am Ende true, wenn alle Schritte gelaufen sind und etwas gesetzt wurde.
+     *
+     * Bewusst anders als ein Spielerauftrag:
+     * - Rechteprüfung immer, auch wenn bau.rechte-prüfen aus ist: Kein Spieler hat diesen Bau gewollt, er geschieht in
+     *   seinem Namen (ASVS V4.1.3). Wer checkAs hier an die Einstellung hängt, lässt Bewohner in fremden Regionen bauen.
+     * - Obergrenze Tier.EVERYONE: Der Katalog braucht nichts darüber, und geringste Rechte heißt hier auch für einen
+     *   Admin keine gefährlichen Blöcke, keine Inhalte, keine Befehle.
+     * - Kein Einreihen: Ist der Baumeister beschäftigt oder wartet ein Spielerauftrag, kommt der Bewohner nicht dran
+     *   (Grund zurück) – Spieler gehen immer vor.
+     * - Die Zellen des Plans müssen genau die sein, die TownBuilds geprüft hat; weicht der Compiler im Plugin ab (andere
+     *   Blockliste), wird nicht gebaut statt an ungeprüften Stellen.
+     *
+     * null = gestartet; sonst der Grund (nichts geändert).
+     */
+    String startTown(Player actor, Mannequin body, String bodyName, TownBuilds.Order order,
+            java.util.function.Consumer<Boolean> done) {
+        String refusal = townRefusal(otherBuildConflict(), thinking, active != null && active.running(),
+                restoring != null, comfort.queueEmpty(), actor != null && actor.isOnline(),
+                body != null && body.isValid());
+        if (refusal != null) {
+            return refusal;
+        }
+        World world = Bukkit.getWorld(order.world());
+        if (world == null || !world.equals(body.getWorld())) {
+            return "welt";
+        }
+        CompiledBuild build;
+        try {
+            build = compiler.compile(PlanParser.parse(order.kind().plan()));
+        } catch (PlanException e) {
+            return "plan: " + e.getMessage();
+        }
+        if (!PlanCommands.find(build).isEmpty()) {
+            return "befehle";
+        }
+        SiteFrame frame = new SiteFrame(world, order.x(), order.y(), order.z(), new Orientation(order.forward()), 0);
+        try {
+            PlanReview.checkOverbuild(frame.survey(), order.orderText(), build, settings.maxOverbuild());
+        } catch (PlanException e) {
+            return "überbau";
+        }
+        Orientation o = frame.orientation();
+        BlockTiers.WorldFacts facts = new BlockTiers.WorldFacts(world.isBedWorks(), world.isRespawnAnchorWorks());
+        List<WorldAction> actions = new ArrayList<>(build.actions().size());
+        Set<Long> cells = new HashSet<>();
+        for (Action a : build.actions()) {
+            List<WorldChange> changes = new ArrayList<>(a.changes().size());
+            for (Change c : a.changes()) {
+                Converted conv = toBlockData(c.block(), o);
+                if (conv.data() == null) {
+                    return "block: " + conv.problem();
+                }
+                Block b = frame.blockAt(c.pos());
+                if (!conv.data().getMaterial().isAir()) {
+                    cells.add(pack(b.getX(), b.getY(), b.getZ()));
+                }
+                changes.add(new WorldChange(b, conv.data(), placement(c.block(), c.group(), facts, o,
+                        frame::blockAt)));
+            }
+            if (!changes.isEmpty()) {
+                actions.add(new WorldAction(a.step(), List.copyOf(changes)));
+            }
+        }
+        Set<Long> planned = new HashSet<>();
+        for (int[] c : order.cells()) {
+            planned.add(pack(c[0], c[1], c[2]));
+        }
+        if (actions.isEmpty() || !cells.equals(planned)) {
+            LOG.warning(() -> "stadtleben | bauen_zellen_abweichung | art=" + order.kind().key() + " geprüft="
+                    + planned.size() + " plugin=" + cells.size() + " – nicht gebaut");
+            return "zellen";
+        }
+        Location center = frame.blockAt(new Pos(0, 0, 0)).getLocation().add(0.5, 0, 0.5);
+        Pos f = o.toWorldOffset(new Pos(0, 0, -1));
+        UUID who = actor.getUniqueId();
+        String text = order.orderText();
+        activeOrder = text;
+        activeKind = LedgerKind.NEW;
+        activeLedgerOrder = text;
+        activeLedgerInfo = "";
+        activePlot = "";
+        activeFixes = List.of();
+        activeRounds = 0;
+        activeGuides = List.of();
+        guidedJob = null;
+        active = new BuildJob(plugin, npc, settings, who, actor.getName(), who, who, actor, List.copyOf(actions),
+                build.stepNames(), center, new Vector(f.x(), 0, f.z()), order.y(), 0, false, job -> {
+                    onJobFinished(job);
+                    done.accept(job.complete() && job.placed() > 0);
+                }).cap(Tier.EVERYONE).lead(body, bodyName);
+        int n = actions.size();
+        LOG.info(() -> String.format(java.util.Locale.ROOT, "stadtleben | bauen_start | art=%s bewohner=%s im_namen=%s "
+                + "aktionen=%d welt=%s x=%d y=%d z=%d richtung=%s", order.kind().key(), bodyName, actor.getName(), n,
+                world.getName(), order.x(), order.y(), order.z(), order.forward()));
+        active.start();
+        return null;
+    }
+
+    /**
+     * Darf ein Bewohner jetzt bauen? null = ja, sonst der Grund. Ohne Server prüfbar (TownBuildServiceTest): Spieler
+     * gehen vor (Planung, Bau, Rückgängig, Warteschlange), und ohne berechtigten Spieler online oder ohne Körper wird
+     * nie gebaut – fail-closed.
+     */
+    static String townRefusal(String conflict, boolean thinking, boolean running, boolean restoring,
+            boolean queueEmpty, boolean actorOnline, boolean bodyValid) {
+        if (!actorOnline) {
+            return "niemand_berechtigt";
+        }
+        if (!bodyValid) {
+            return "bewohner_weg";
+        }
+        if (conflict != null) {
+            return "stadt_oder_weltbau";
+        }
+        if (thinking || running || restoring) {
+            return "baumeister_beschäftigt";
+        }
+        if (!queueEmpty) {
+            return "warteschlange";
+        }
+        return null;
     }
 
     /**

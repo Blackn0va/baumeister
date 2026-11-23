@@ -27,6 +27,7 @@ import com.blackn0va.baumeister.town.use.BukkitUse;
 import com.blackn0va.baumeister.town.use.TownUse;
 import com.blackn0va.baumeister.town.use.UseSettings;
 import com.blackn0va.baumeister.town.use.UseWorld;
+import com.blackn0va.baumeister.town.work.BuildSettings;
 import com.blackn0va.baumeister.town.work.Field;
 import com.blackn0va.baumeister.town.work.FieldJob;
 import com.blackn0va.baumeister.town.work.FieldWork;
@@ -35,6 +36,7 @@ import com.blackn0va.baumeister.town.work.Planner;
 import com.blackn0va.baumeister.town.work.Plot;
 import com.blackn0va.baumeister.town.work.Rate;
 import com.blackn0va.baumeister.town.work.Task;
+import com.blackn0va.baumeister.town.work.TownBuilds;
 import com.blackn0va.baumeister.town.work.WorkSettings;
 import com.google.gson.JsonObject;
 
@@ -173,6 +175,18 @@ final class TownLife implements Listener {
     private int fieldChanges;
     private int fieldDenied;
     private int fieldStale;
+    /** Bauen im Baufeld (AK-45): Schalter, Katalog (erst beim ersten Bedarf, braucht Env.blockCatalog). */
+    private BuildSettings building = BuildSettings.defaults();
+    private TownBuilds townBuilds;
+    /** Feld → seit wann dort gebaut wird (höchstens ein Bau je Feld), nächster frühester Bau, Suchstelle. */
+    private final Map<String, Long> buildRunning = new HashMap<>();
+    private final Map<String, Long> buildNextAt = new HashMap<>();
+    private final Map<String, Integer> buildCursor = new HashMap<>();
+    /** Bauen seit Start (Status und Test): gestartet, fertig, abgebrochen/verweigert, abgelehnt vor dem Start. */
+    private int buildsStarted;
+    private int buildsDone;
+    private int buildsFailed;
+    private int buildsRefused;
     /** Laufende Treffen (Gathering). */
     private final List<Meet> meets = new ArrayList<>();
     private int gatherings;
@@ -239,6 +253,8 @@ final class TownLife implements Listener {
         long swingUntil;
         long nextScan;
         int scanCursor;
+        /** Baut gerade (AK-45): Der Bau (BuildJob.lead) bewegt ihn, der Tagesablauf ruht bis zum Ende. */
+        boolean building;
 
         Resident(Roster.Person person, UUID entity, Location home) {
             this.person = person;
@@ -360,6 +376,20 @@ final class TownLife implements Listener {
         default Boolean fieldChest(World w, Field f) {
             return null;
         }
+
+        /** Block-IDs für den Bau-Katalog (TownBuilds); null = Bauen aus (Tests ohne Katalog). */
+        default com.blackn0va.baumeister.plan.BlockCatalog blockCatalog() {
+            return null;
+        }
+
+        /**
+         * Bau im Baufeld starten (AK-45, BuildService.startTown): im Namen von actor, body baut. null = gestartet, done
+         * kommt am Ende (true = fertig); sonst der Grund, nichts geändert. Vorgabe: nie (fail-closed).
+         */
+        default String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
+                java.util.function.Consumer<Boolean> done) {
+            return "aus";
+        }
     }
 
     /**
@@ -402,8 +432,21 @@ final class TownLife implements Listener {
             return null;
         }
 
+        /** Bewohner-Bau starten (BuildService.startTown); null = gestartet, sonst Grund. */
+        default String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
+                java.util.function.Consumer<Boolean> done) {
+            return "aus";
+        }
+
         static Parts of(BaumeisterPlugin p) {
             return new Parts() {
+                @Override
+                public String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
+                        java.util.function.Consumer<Boolean> done) {
+                    return p.service() == null ? "kein_baudienst" : p.service().startTown(actor, body, name, order,
+                            done);
+                }
+
                 @Override
                 public Location buildSite() {
                     boolean busy = p.service() != null && p.service().busy();
@@ -647,6 +690,17 @@ final class TownLife implements Listener {
         }
 
         @Override
+        public com.blackn0va.baumeister.plan.BlockCatalog blockCatalog() {
+            return new BukkitBlockCatalog();
+        }
+
+        @Override
+        public String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
+                java.util.function.Consumer<Boolean> done) {
+            return parts.townBuild(order, actor, body, name, done);
+        }
+
+        @Override
         public FieldWork.Hands hands(World w, Player actor, Field f, FieldJob job,
                 java.util.function.Consumer<String> log) {
             return TownWork.hands(w, actor, f, job, server.getPluginManager()::callEvent, log);
@@ -821,6 +875,11 @@ final class TownLife implements Listener {
                 break;
             }
             String w = e.world() == null ? null : worldName.apply(e.world());
+            // Bauten der Bewohner kennt TownLife selbst (fieldBuildSpots, sofort und mit Rückgängig-Erkennung); aus dem
+            // Baubuch kämen sie ein zweites Mal und teilten sich dann die Belegung nicht.
+            if (w != null && e.order() != null && e.order().startsWith(TownBuilds.ORDER_PREFIX)) {
+                continue;
+            }
             if (w != null) {
                 // Auftrag plus Kurzkennung als Name: Zwei Bauten mit demselben Auftrag („haus“) sind zwei Orte –
                 // sonst teilten sie sich die Belegung (WorkSpots.MAX_PER_SPOT).
@@ -925,6 +984,7 @@ final class TownLife implements Listener {
             // Hier statt in BaumeisterPlugin/ConfigReload: configure läuft beim Start und (über reload) bei
             // /bm neuladen – eine Stelle, kein neuer Aufruf im Plugin.
             configureWork(WorkSettings.from(plugin.getConfig()));
+            configureBuilding(BuildSettings.from(plugin.getConfig()));
         }
         if (s.enabled() && !was) {
             host.askSoon();
@@ -943,6 +1003,22 @@ final class TownLife implements Listener {
         }
         LOG.info(() -> String.format(Locale.ROOT, "stadtleben | feldarbeit | weltänderung=%s blöcke_je_minute=%d "
                 + "felder=%d", w.worldChange(), w.blocksPerMinute(), fields.all().size()));
+    }
+
+    /** Bauen schalten und begrenzen (configure; im Test direkt). */
+    void configureBuilding(BuildSettings b) {
+        this.building = b;
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | bauen | an=%s je_feld=%d pause_min=%d baufelder=%d",
+                b.enabled(), b.perField(), b.pauseMinutes(), fields.all().stream().filter(Field::build).count()));
+    }
+
+    BuildSettings building() {
+        return building;
+    }
+
+    /** {gestartet, fertig, abgebrochen, abgelehnt} seit Start. */
+    int[] buildCounts() {
+        return new int[] {buildsStarted, buildsDone, buildsFailed, buildsRefused};
     }
 
     /** Feldberufe suchen ihren Arbeitsort neu (Schalter umgelegt, Feld gesetzt oder entfernt). */
@@ -1255,7 +1331,8 @@ final class TownLife implements Listener {
         }
         List<WorkSpots.Spot> spots;
         try {
-            spots = env.workSpots();
+            spots = new ArrayList<>(env.workSpots());
+            spots.addAll(fieldBuildSpots());
         } catch (RuntimeException e) {
             // Bewusst fail-open, wie BukkitEnv.source: chooseWork läuft in spawn NACH adopt – eine Ausnahme hier ließe
             // den eingetragenen Bewohner ohne Arbeitsort zurück und ginge bis zum Scheduler (Prüfung 2026-11-22).
@@ -1433,6 +1510,11 @@ final class TownLife implements Listener {
             }
         } else {
             r.nightSince = 0;
+        }
+        if (r.building) {
+            // Der Bau (BuildJob.lead) bewegt ihn und setzt seine Statuszeile; hier liefe er sonst zum Tagesziel zurück
+            // und risse den Arbeiter alle paar Takte von der Baustelle.
+            return;
         }
         Location special = override(r, cur, now);
         Location goal = special != null ? special : goal(r, phase.goal(), near, now, cur);
@@ -1895,6 +1977,9 @@ final class TownLife implements Listener {
             }
             fieldScans--;
             r.nextScan = tick + SCAN_GAP_TICKS;
+            if (tryBuild(r, m, actor, plot, now)) {
+                return;
+            }
             Planner.Found f = Planner.find(plot, r.field, r.job, r.scanCursor, k -> claimed.contains(k)
                     || locked.getOrDefault(k, 0L) > now);
             r.scanCursor = f.cursor();
@@ -1962,6 +2047,141 @@ final class TownLife implements Listener {
                 dropTask(r, 0);
             }
         }
+    }
+
+    // ---------------------------------------------------------------- Bauen im Baufeld (AK-45)
+
+    /** Ohne Platz im Feld: so lange bis zur nächsten Suche dort (alle Ecken einmal durch kostet sonst jeden Takt). */
+    static final long BUILD_NO_ROOM_MS = 60_000L;
+    /** Baumeister beschäftigt, Spielerauftrag wartet: kurz warten, dann wieder fragen. */
+    static final long BUILD_BUSY_MS = 30_000L;
+
+    private TownBuilds townBuilds() {
+        if (townBuilds == null) {
+            com.blackn0va.baumeister.plan.BlockCatalog c = env.blockCatalog();
+            if (c != null) {
+                townBuilds = new TownBuilds(c);
+            }
+        }
+        return townBuilds;
+    }
+
+    /**
+     * Im Baufeld einen Kleinbau beginnen (AK-45), statt Feldarbeit zu suchen. Alle Schutzstellen fail-closed in
+     * TownBuilds.gate (Schalter, Weltänderung, Freigabe, ein Bau je Feld, Obergrenze, Pause), Platz und Überbau-Schutz in
+     * TownBuilds.plan, Rechte und Rückgängig in BuildService.startTown. actor ist schon geprüft (fieldActivity: ohne
+     * berechtigten Spieler kommt es gar nicht hierher). true = er baut jetzt.
+     */
+    private boolean tryBuild(Resident r, Mannequin m, Player actor, Plot plot, long now) {
+        Field f = fields.get(r.field.name());
+        if (f == null || !f.build()) {
+            return false;
+        }
+        List<TownBuilds.Built> all = fields.built(f.name());
+        List<TownBuilds.Built> standing = TownBuilds.standing(all, plot);
+        if (standing.size() != all.size()) {
+            int gone = all.size() - standing.size();
+            LOG.info(() -> "stadtleben | bau_weg | feld=" + f.name() + " anzahl=" + gone
+                    + " – zurückgebaut oder abgerissen, zählt nicht mehr, Feld ruht " + LOCK_DENIED_MS / 60_000
+                    + " min");
+            saveBuilt(f.name(), standing);
+            // Wer einen Bau zurücknimmt, will ihn los sein. Live gemessen (T-037, Lauf 2, 00:46:01): Ohne Ruhe begann
+            // Karl in derselben Sekunde, in der /bm rückgängig die Hütte entfernt hatte, eine neue drei Blöcke daneben.
+            buildNextAt.merge(f.name(), now + LOCK_DENIED_MS, Math::max);
+        }
+        String why = TownBuilds.gate(building, work.worldChange(), f, buildRunning.containsKey(f.name()),
+                standing.size(), now, buildNextAt.getOrDefault(f.name(), 0L));
+        if (why != null) {
+            return false;
+        }
+        TownBuilds tb = townBuilds();
+        if (tb == null) {
+            return false;
+        }
+        TownBuilds.Found found = tb.plan(f, plot, standing, buildCursor.getOrDefault(f.name(), 0),
+                k -> claimed.contains(k) || locked.getOrDefault(k, 0L) > now);
+        buildCursor.put(f.name(), found.cursor());
+        if (found.order() == null) {
+            buildNextAt.put(f.name(), now + BUILD_NO_ROOM_MS);
+            LOG.fine(() -> "stadtleben | bauen_kein_platz | feld=" + f.name());
+            return false;
+        }
+        TownBuilds.Order o = found.order();
+        String who = TownTalk.key(r.person.name());
+        // Belegen VOR dem Start: Endet der Bau schon im Aufruf (done sofort), räumt builtDone wieder ab. Andersherum
+        // bliebe das Feld danach für immer „läuft“ und der Bewohner für immer „baut“.
+        buildRunning.put(f.name(), now);
+        r.building = true;
+        String refused = env.townBuild(o, actor, m, r.person.name(), ok -> builtDone(f.name(), r, o, ok));
+        if (refused != null) {
+            buildRunning.remove(f.name());
+            r.building = false;
+            buildsRefused++;
+            buildNextAt.put(f.name(), now + BUILD_BUSY_MS);
+            LOG.info(() -> "stadtleben | bauen_abgelehnt | feld=" + f.name() + " bewohner=" + who + " art="
+                    + o.kind().key() + " grund=" + refused);
+            return false;
+        }
+        buildsStarted++;
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | bauen | feld=%s bewohner=%s art=%s x=%d y=%d z=%d "
+                + "im_namen=%s", f.name(), who, o.kind().key(), o.x(), o.y(), o.z(), actor.getName()));
+        return true;
+    }
+
+    /** Ende eines Bewohner-Baus (BuildJob → BuildService.startTown → done). Paketweit für Tests. */
+    void builtDone(String field, Resident r, TownBuilds.Order o, boolean complete) {
+        buildRunning.remove(field);
+        r.building = false;
+        r.reached = false;
+        r.route.reset();
+        long now = System.currentTimeMillis();
+        World w = env.world(o.world());
+        Plot plot = w == null ? null : env.plot(w);
+        TownBuilds tb = townBuilds();
+        TownBuilds.Built b = complete && plot != null && tb != null ? tb.remember(o, plot, now) : null;
+        if (b == null) {
+            // Verweigert (Rechteprüfung), abgebrochen oder nichts gesetzt: nichts merken, das Feld ruht wie nach einer
+            // Ablehnung bei der Feldarbeit – sonst fragte er jede halbe Minute neu bei WorldGuard an.
+            buildsFailed++;
+            buildNextAt.put(field, now + LOCK_DENIED_MS);
+            LOG.info(() -> "stadtleben | bauen_ende | feld=" + field + " art=" + o.kind().key() + " ergebnis="
+                    + (complete ? "nichts_gesetzt" : "abgebrochen"));
+            return;
+        }
+        buildsDone++;
+        buildNextAt.put(field, now + building.pauseMillis());
+        List<TownBuilds.Built> list = new ArrayList<>(fields.built(field));
+        list.add(b);
+        saveBuilt(field, list);
+        LOG.info(() -> String.format(Locale.ROOT, "stadtleben | bauen_fertig | feld=%s art=%s x=%d y=%d z=%d "
+                + "bauten=%d", field, o.kind().key(), b.minX(), b.y(), b.minZ(), list.size()));
+    }
+
+    private void saveBuilt(String field, List<TownBuilds.Built> list) {
+        try {
+            fields.setBuilt(field, list);
+        } catch (IOException e) {
+            // Bauen ist Komfort, der Bau steht schon: fail-open fürs Merken, laut im Log. Nach einem Neustart fehlt der
+            // Eintrag – dann zählt er nicht zur Obergrenze, der Platz ist aber belegt (fit sieht den Bau).
+            LOG.log(java.util.logging.Level.WARNING, "stadtleben | bauten_speichern_fehlgeschlagen | feld=" + field, e);
+        }
+    }
+
+    /** Fertige Bauten der Bewohner als Arbeitsorte (WorkSpots, Quelle „bau“). */
+    List<WorkSpots.Spot> fieldBuildSpots() {
+        List<WorkSpots.Spot> out = new ArrayList<>();
+        for (Field f : fields.all()) {
+            int i = 0;
+            for (TownBuilds.Built b : fields.built(f.name())) {
+                i++;
+                if (out.size() >= WorkSpots.MAX_PER_SOURCE) {
+                    return out;
+                }
+                out.add(new WorkSpots.Spot(WorkSpots.Source.BUILD, b.kind().german() + " #" + f.name() + "-" + i,
+                        f.world(), b.minX(), b.y(), b.minZ(), b.maxX(), b.maxZ()));
+            }
+        }
+        return out;
     }
 
     /**
@@ -2627,6 +2847,10 @@ final class TownLife implements Listener {
                 + "verworfen %d) · Rate %d/%d je Minute · Treffen %d", work.worldChange() ? "an" : "aus (weltänderung)",
                 fields.all().size(), fieldChanges, fieldDenied, fieldStale, rate.used(now), work.blocksPerMinute(),
                 gatherings));
+        Texts.info(s, String.format(Locale.GERMANY, "Bauen: %s · Baufelder %d · gestartet %d, fertig %d, abgebrochen "
+                + "%d, abgelehnt %d · läuft %d", building.enabled() ? "an" : "aus (stadtleben.bauen.an)",
+                fields.all().stream().filter(Field::build).count(), buildsStarted, buildsDone, buildsFailed,
+                buildsRefused, buildRunning.size()));
         double[] c = cost.millis();
         Texts.info(s, String.format(Locale.GERMANY, "Takt (letzte %d Ticks): Mittel %.3f ms · p99 %.3f ms · höchstens "
                 + "%.3f ms · teuerster Tick seit Messung %.3f ms (%s)", cost.size(), c[0], c[1], c[2],
@@ -2653,7 +2877,7 @@ final class TownLife implements Listener {
     // ---------------------------------------------------------------- Befehl feld
 
     static final String FIELD_USAGE = "/bm stadtleben feld setzen <name> <radius> · feld entfernen <name> · feld liste"
-            + " (Konsole: feld setzen <name> <radius> <welt> <x> <y> <z>)";
+            + " · feld bauen <name> an|aus (Konsole: feld setzen <name> <radius> <welt> <x> <y> <z>)";
 
     /**
      * /bm stadtleben feld … (AK-43). Admin-Prüfung VOR dem Aufruf in BaumeisterCommand.townLife (fail-closed,
@@ -2663,6 +2887,7 @@ final class TownLife implements Listener {
         String verb = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "liste";
         switch (verb) {
             case "setzen" -> setField(s, args);
+            case "bauen" -> buildField(s, args);
             case "entfernen" -> {
                 if (args.length < 4) {
                     Texts.info(s, FIELD_USAGE);
@@ -2694,13 +2919,47 @@ final class TownLife implements Listener {
                         + work.blocksPerMinute() + " Blöcke je Minute");
                 for (Field f : all) {
                     Boolean chest = env.fieldChest(env.world(f.world()), f);
-                    Texts.info(s, String.format(Locale.ROOT, "%s: %s %d %d %d, Radius %d · Ablage %s", f.name(),
+                    Texts.info(s, String.format(Locale.ROOT, "%s: %s %d %d %d, Radius %d · Ablage %s%s", f.name(),
                             f.world(), f.x(), f.y(), f.z(), f.radius(), chest == null ? "nicht geladen"
-                                    : chest ? "Kiste" : "keine (Ernte bleibt liegen)"));
+                                    : chest ? "Kiste" : "keine (Ernte bleibt liegen)", f.build()
+                                    ? " · Baufeld, Bauten " + fields.built(f.name()).size() + " von "
+                                            + building.perField() : ""));
                 }
             }
             default -> Texts.info(s, FIELD_USAGE);
         }
+    }
+
+    /** /bm stadtleben feld bauen <name> an|aus (AK-45). Admin-Prüfung wie bei allen Feldbefehlen vorher. */
+    private void buildField(CommandSender s, String[] args) {
+        if (args.length < 5 || !args[4].equalsIgnoreCase("an") && !args[4].equalsIgnoreCase("aus")) {
+            Texts.info(s, FIELD_USAGE);
+            return;
+        }
+        boolean on = args[4].equalsIgnoreCase("an");
+        String problem;
+        try {
+            problem = fields.setBuild(args[3], on);
+        } catch (IOException e) {
+            LOG.log(java.util.logging.Level.WARNING, "stadtleben | baufeld_speichern_fehlgeschlagen | feld="
+                    + Field.key(args[3]), e);
+            Texts.info(s, "Speichern fehlgeschlagen: " + Texts.clean(e.getMessage(), 120));
+            return;
+        }
+        if (problem != null) {
+            Texts.info(s, problem);
+            return;
+        }
+        String name = Field.key(args[3]);
+        LOG.info(() -> "stadtleben | baufeld | feld=" + name + " an=" + on + " von=" + Texts.clean(s.getName(), 16));
+        refreshFieldWork();
+        String missing = !building.enabled() ? " Hinweis: stadtleben.bauen.an ist aus – ohne den Schalter baut "
+                + "niemand." : !work.worldChange() ? " Hinweis: stadtleben.weltänderung ist aus – ohne den Schalter "
+                        + "baut niemand." : "";
+        Texts.info(s, on ? "Feld „" + name + "“ ist jetzt Baufeld: Bauer, Holzfäller und Gärtnerin bauen dort nach "
+                + "und nach höchstens " + building.perField() + " kleine Dinge (Zaun, Laterne, Beet, Marktstand, "
+                + "Brunnen, Hütte) – im Namen eines Admins, Rückgängig mit /bm rückgängig." + missing
+                : "Feld „" + name + "“ ist kein Baufeld mehr – was steht, bleibt stehen.");
     }
 
     private void setField(CommandSender s, String[] args) {

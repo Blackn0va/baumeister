@@ -170,7 +170,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
     private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung", "vergessen", "feld");
-    private static final List<String> FIELD_VERBS = List.of("setzen", "entfernen", "liste");
+    private static final List<String> FIELD_VERBS = List.of("setzen", "entfernen", "liste", "bauen");
     private static final List<String> MODULE_VERBS = List.of("liste", "menü", "an", "aus");
     private static final List<String> MODULE_VIEW_VERBS = List.of("liste", "menü");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
@@ -589,7 +589,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                     + (has.test("baumeister.admin") ? " · stadtleben an|aus|messung · stadtleben vergessen "
                             + "[bewohner] – Gedächtnis der Bewohner löschen · stadtleben feld setzen <name> "
                             + "<radius>|entfernen <name>|liste – Arbeitsfeld, in dem Bewohner ernten und Bäume fällen "
-                            + "(nur mit stadtleben.weltänderung)" : ""));
+                            + "(nur mit stadtleben.weltänderung) · stadtleben feld bauen <name> an|aus – Baufeld, in "
+                            + "dem Bewohner kleine Dinge bauen (nur mit stadtleben.bauen.an)" : ""));
         }
         if (has.test(TRAVEL)) {
             out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
@@ -1355,7 +1356,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         }
         // Feldnamen kennt nur das laufende Stadtleben – wie die Portalziele hier statt in complete().
         if (args.length == 4 && args[0].equalsIgnoreCase("stadtleben") && args[1].equalsIgnoreCase("feld")
-                && args[2].equalsIgnoreCase("entfernen") && sender.hasPermission("baumeister.admin")
+                && (args[2].equalsIgnoreCase("entfernen") || args[2].equalsIgnoreCase("bauen"))
+                && sender.hasPermission("baumeister.admin")
                 && plugin.town() != null) {
             String typed = args[3].toLowerCase(Locale.ROOT);
             return plugin.town().fields().all().stream().map(com.blackn0va.baumeister.town.work.Field::name)
@@ -1435,6 +1437,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                             && args[2].equalsIgnoreCase("setzen") ? List.of("<name>")
                     : args.length == 5 && admin && args[1].equalsIgnoreCase("feld")
                             && args[2].equalsIgnoreCase("setzen") ? List.of("8", "12", "16")
+                    : args.length == 5 && admin && args[1].equalsIgnoreCase("feld")
+                            && args[2].equalsIgnoreCase("bauen") ? List.of("an", "aus")
                     : List.of();
             // Schalt-Wörter und Modul-ids nur für Admins – dieselbe Grenze wie ModuleSwitch, hier nur ausgeblendet.
             case "module" -> args.length == 2 ? (admin ? MODULE_VERBS : MODULE_VIEW_VERBS)
