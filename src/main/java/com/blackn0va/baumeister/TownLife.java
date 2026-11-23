@@ -390,6 +390,14 @@ final class TownLife implements Listener {
                 java.util.function.Consumer<Boolean> done) {
             return "aus";
         }
+
+        /**
+         * Letzten Bewohner-Bau des Feldes zurücknehmen (BuildService.undoTown). Schlüssel true = es wird zurückgebaut;
+         * Wert = Satz für den Admin. Vorgabe: nichts da.
+         */
+        default Map.Entry<Boolean, String> townUndo(CommandSender s, String field) {
+            return Map.entry(false, "Rückgängig für Felder gibt es hier nicht.");
+        }
     }
 
     /**
@@ -432,6 +440,11 @@ final class TownLife implements Listener {
             return null;
         }
 
+        /** Letzten Bewohner-Bau des Feldes zurücknehmen (BuildService.undoTown). */
+        default Map.Entry<Boolean, String> townUndo(CommandSender s, String field) {
+            return Map.entry(false, "Kein Baudienst.");
+        }
+
         /** Bewohner-Bau starten (BuildService.startTown); null = gestartet, sonst Grund. */
         default String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
                 java.util.function.Consumer<Boolean> done) {
@@ -440,6 +453,11 @@ final class TownLife implements Listener {
 
         static Parts of(BaumeisterPlugin p) {
             return new Parts() {
+                @Override
+                public Map.Entry<Boolean, String> townUndo(CommandSender s, String field) {
+                    return p.service() == null ? Map.entry(false, "Kein Baudienst.") : p.service().undoTown(s, field);
+                }
+
                 @Override
                 public String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
                         java.util.function.Consumer<Boolean> done) {
@@ -698,6 +716,11 @@ final class TownLife implements Listener {
         public String townBuild(TownBuilds.Order order, Player actor, Mannequin body, String name,
                 java.util.function.Consumer<Boolean> done) {
             return parts.townBuild(order, actor, body, name, done);
+        }
+
+        @Override
+        public Map.Entry<Boolean, String> townUndo(CommandSender s, String field) {
+            return parts.townUndo(s, field);
         }
 
         @Override
@@ -2877,7 +2900,8 @@ final class TownLife implements Listener {
     // ---------------------------------------------------------------- Befehl feld
 
     static final String FIELD_USAGE = "/bm stadtleben feld setzen <name> <radius> · feld entfernen <name> · feld liste"
-            + " · feld bauen <name> an|aus (Konsole: feld setzen <name> <radius> <welt> <x> <y> <z>)";
+            + " · feld bauen <name> an|aus · feld rückgängig <name> (Konsole: feld setzen <name> <radius> <welt> <x> <y> "
+            + "<z>)";
 
     /**
      * /bm stadtleben feld … (AK-43). Admin-Prüfung VOR dem Aufruf in BaumeisterCommand.townLife (fail-closed,
@@ -2888,6 +2912,7 @@ final class TownLife implements Listener {
         switch (verb) {
             case "setzen" -> setField(s, args);
             case "bauen" -> buildField(s, args);
+            case "rückgängig", "rueckgaengig", "undo" -> undoField(s, args); // umlaut-ok: Alias ohne Umlaut-Tastatur
             case "entfernen" -> {
                 if (args.length < 4) {
                     Texts.info(s, FIELD_USAGE);
@@ -2928,6 +2953,28 @@ final class TownLife implements Listener {
             }
             default -> Texts.info(s, FIELD_USAGE);
         }
+    }
+
+    /**
+     * /bm stadtleben feld rückgängig <name>: letzten Bewohner-Bau dieses Feldes zurücknehmen (eigener Stapel, nie der
+     * des Admins). Admin-Prüfung wie bei allen Feldbefehlen vorher. Danach ruht das Feld wie nach einem erkannten
+     * Abriss – sonst stünde in derselben Sekunde der nächste Bau daneben.
+     */
+    private void undoField(CommandSender s, String[] args) {
+        if (args.length < 4) {
+            Texts.info(s, FIELD_USAGE);
+            return;
+        }
+        String name = Field.key(args[3]);
+        if (fields.get(name) == null) {
+            Texts.info(s, "Kein Feld „" + Texts.clean(args[3], 24) + "“ – /bm stadtleben feld liste.");
+            return;
+        }
+        Map.Entry<Boolean, String> r = env.townUndo(s, name);
+        if (r.getKey()) {
+            buildNextAt.merge(name, System.currentTimeMillis() + LOCK_DENIED_MS, Math::max);
+        }
+        Texts.info(s, r.getValue());
     }
 
     /** /bm stadtleben feld bauen <name> an|aus (AK-45). Admin-Prüfung wie bei allen Feldbefehlen vorher. */

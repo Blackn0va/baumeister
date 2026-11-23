@@ -220,6 +220,44 @@ class TownLifeBuildTest {
         assertEquals(1, s.builder().orders.size(), "nach Rückgängig sofort neu gebaut");
     }
 
+    /**
+     * /bm stadtleben feld rückgängig <name>: nur Admins, geht mit dem Feldnamen an den Bewohner-Stapel (nie /bm
+     * rückgängig des Admins), danach ruht das Feld.
+     */
+    @Test
+    void fieldUndoIsForAdminsTakesTheFieldsBuildAndTheFieldRests() {
+        Setup s = village(true, true, true, 4);
+        release(s);
+        s.town().run(400);
+        s.builder().complete();
+        List<String> asked = new ArrayList<>();
+        // Wie BuildService.undoTown: Das Zurücksetzen läuft danach im RestoreJob – die Blöcke stehen im Moment der
+        // Antwort noch. Die Ruhe muss also vom Befehl kommen, nicht erst von der Abriss-Erkennung.
+        s.town().env.townUndo = (who, field) -> {
+            asked.add(field);
+            return java.util.Map.entry(true, "zurückgebaut");
+        };
+        List<String> said = new ArrayList<>();
+        BaumeisterCommand.townLife(TownLifeFieldTest.sender(false, said), cmd("feld", "rückgängig", "dorf"),
+                s.town().life);
+        assertTrue(asked.isEmpty(), "Feld-Rückgängig ohne Admin");
+        assertTrue(said.getFirst().contains("baumeister.admin"), said.toString());
+
+        said.clear();
+        BaumeisterCommand.townLife(TownLifeFieldTest.sender(true, said), cmd("feld", "rückgängig", "DORF"),
+                s.town().life);
+        assertEquals(List.of("dorf"), asked);
+        assertTrue(said.stream().anyMatch(l -> l.contains("zurückgebaut")), said.toString());
+        BaumeisterCommand.townLife(TownLifeFieldTest.sender(true, said), cmd("feld", "rückgängig", "gibtsnicht"),
+                s.town().life);
+        assertEquals(1, asked.size(), "unbekanntes Feld an den Stapel gegeben");
+        s.town().run(1200);
+        assertEquals(1, s.builder().orders.size(), "nach Feld-Rückgängig sofort neu gebaut");
+        s.builder().undoLast();
+        s.town().run(400);
+        assertTrue(s.town().life.fields().built("dorf").isEmpty(), "zurückgebauter Bau zählt noch");
+    }
+
     @Test
     void oneRunningBuildPerFieldAndTheCapHolds() {
         Setup s = village(true, true, true, 2);

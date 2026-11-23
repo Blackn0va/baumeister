@@ -170,7 +170,7 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SCREEN_VERBS = List.of("animation", "uhr", "laufschrift", "zeig", "liste",
             "weg", "groß", "klein", "4x3", "bei");
     private static final List<String> TOWN_VERBS = List.of("an", "aus", "status", "messung", "vergessen", "feld");
-    private static final List<String> FIELD_VERBS = List.of("setzen", "entfernen", "liste", "bauen");
+    private static final List<String> FIELD_VERBS = List.of("setzen", "entfernen", "liste", "bauen", "rückgängig");
     private static final List<String> MODULE_VERBS = List.of("liste", "menü", "an", "aus");
     private static final List<String> MODULE_VIEW_VERBS = List.of("liste", "menü");
     private static final List<String> COMPANION_VERBS = List.of("weg", "abenteuer", "charakter", "rechte", "recht");
@@ -590,7 +590,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
                             + "[bewohner] – Gedächtnis der Bewohner löschen · stadtleben feld setzen <name> "
                             + "<radius>|entfernen <name>|liste – Arbeitsfeld, in dem Bewohner ernten und Bäume fällen "
                             + "(nur mit stadtleben.weltänderung) · stadtleben feld bauen <name> an|aus – Baufeld, in "
-                            + "dem Bewohner kleine Dinge bauen (nur mit stadtleben.bauen.an)" : ""));
+                            + "dem Bewohner kleine Dinge bauen (nur mit stadtleben.bauen.an) · stadtleben feld rückgängig <name> – letzten "
+                            + "Bau der Bewohner dort zurücknehmen" : ""));
         }
         if (has.test(TRAVEL)) {
             out.add(bm + " karte – Minikarte in die Hand; Linksklick zoomt hinein, Rechtsklick hinaus "
@@ -1356,7 +1357,8 @@ final class BaumeisterCommand implements CommandExecutor, TabCompleter {
         }
         // Feldnamen kennt nur das laufende Stadtleben – wie die Portalziele hier statt in complete().
         if (args.length == 4 && args[0].equalsIgnoreCase("stadtleben") && args[1].equalsIgnoreCase("feld")
-                && (args[2].equalsIgnoreCase("entfernen") || args[2].equalsIgnoreCase("bauen"))
+                && (args[2].equalsIgnoreCase("entfernen") || args[2].equalsIgnoreCase("bauen")
+                        || args[2].equalsIgnoreCase("rückgängig"))
                 && sender.hasPermission("baumeister.admin")
                 && plugin.town() != null) {
             String typed = args[3].toLowerCase(Locale.ROOT);

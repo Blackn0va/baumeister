@@ -140,7 +140,7 @@ class BaumeisterCommandTest {
         // (AK-43) ebenso.
         assertEquals(List.of("an", "aus", "status", "messung", "vergessen", "feld"), admin("stadtleben", ""));
         // bauen (AK-45): Baufeld freigeben, nur Admins.
-        assertEquals(List.of("setzen", "entfernen", "liste", "bauen"), admin("stadtleben", "feld", ""));
+        assertEquals(List.of("setzen", "entfernen", "liste", "bauen", "rückgängig"), admin("stadtleben", "feld", ""));
         assertEquals(List.of("an", "aus"), admin("stadtleben", "feld", "bauen", "acker", ""));
         assertEquals(List.of(), player("stadtleben", "feld", "bauen", "acker", ""), "bauen nur für Admins");
         assertEquals(List.of(), player("stadtleben", "feld", ""), "Feld-Wörter nur für Admins");

@@ -36,6 +36,22 @@ import java.util.function.LongPredicate;
  */
 public final class TownBuilds {
 
+    /**
+     * Besitzer aller Bewohner-Bauten (Rückgängig-Stapel, Journal, Baubuch) – fest und künstlich, kein Spieler. Der Admin,
+     * in dessen Namen geprüft wird, ist nur der Berechtigte; so berührt ein Bewohner-Bau nie seinen Stapel.
+     */
+    public static final java.util.UUID TOWN_OWNER = java.util.UUID.nameUUIDFromBytes(
+            "baumeister:stadtleben:bauen".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+    /**
+     * Besitzername je Feld („Stadt-dorf“): damit findet /bm stadtleben feld rückgängig den letzten Bau des Feldes, auch
+     * nach einem Neustart. Nur Zeichen, die das Rückgängig-Journal unverändert speichert (UndoJournal.NAME) – mit
+     * Klammern käme „Stadt _dorf_“ zurück und das Feld fände seinen Bau nicht mehr.
+     */
+    public static String ownerName(String field) {
+        return "Stadt-" + field;
+    }
+
     /** Präfix im Baubuch (BuildLedger): Daran erkennt TownLife.builds die Bauten der Bewohner (keine Doppelorte). */
     public static final String ORDER_PREFIX = "stadtleben:";
     /** So viele Ecken prüft plan() je Aufruf höchstens – der Rest beim nächsten Mal ab cursor. */

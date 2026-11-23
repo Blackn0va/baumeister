@@ -167,6 +167,13 @@ class TownLifeWalkTest {
         /** Bauen (AK-45, TownLifeBuildTest): Blockliste des Katalogs und der Baudienst; null = aus. */
         com.blackn0va.baumeister.plan.BlockCatalog catalog;
         TownLifeBuildTest.Builder builder;
+        /** Feld-Rückgängig (BuildService.undoTown); null = Vorgabe von Env. */
+        java.util.function.BiFunction<org.bukkit.command.CommandSender, String, Map.Entry<Boolean, String>> townUndo;
+
+        @Override
+        public Map.Entry<Boolean, String> townUndo(org.bukkit.command.CommandSender s, String field) {
+            return townUndo == null ? TownLife.Env.super.townUndo(s, field) : townUndo.apply(s, field);
+        }
 
         @Override
         public com.blackn0va.baumeister.plan.BlockCatalog blockCatalog() {
