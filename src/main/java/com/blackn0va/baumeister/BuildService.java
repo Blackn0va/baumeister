@@ -34,6 +34,7 @@ import com.blackn0va.baumeister.plan.Tier;
 import com.blackn0va.baumeister.plan.SpokenWords;
 import com.blackn0va.baumeister.plan.RequestHints;
 import com.blackn0va.baumeister.plan.SiteSurvey;
+import com.blackn0va.baumeister.town.work.TownBuilds;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -93,6 +94,13 @@ final class BuildService {
     private final PlanCompiler compiler;
     private final ModuleLibrary modules;
     private final Deque<UndoRecord> undo = new ArrayDeque<>();
+    /**
+     * Rückgängig der Bewohner-Bauten (Stadtleben, AK-45), Besitzer TownBuilds.TOWN_OWNER. Eigener Stapel mit derselben
+     * Tiefe und demselben Journal wie undo: Vorher (T-037, erste Fassung) lagen sie auf dem Stapel des Admins, in dessen
+     * Namen gebaut wurde – live fielen vier eigene Bauten des Admins heraus, und sein /bm rückgängig nahm zuerst den
+     * letzten Bewohner-Bau. Zurück nur über /bm stadtleben feld rückgängig (undoTown).
+     */
+    private final Deque<UndoRecord> townUndo = new ArrayDeque<>();
 
     private boolean thinking;
     private BuildJob active;
@@ -442,6 +450,7 @@ final class BuildService {
 
     private void directAt(CommandSender sender, Location corner, Cardinal facing, JsonObject step, String label,
             String announce) {
+        yieldTown();
         if (thinking || active != null && active.running()) {
             Texts.info(sender, "Ich bin gerade beschäftigt – /bm stop oder kurz warten.");
             return;
@@ -536,6 +545,7 @@ final class BuildService {
             LOG.info(() -> "bau | abgelehnt | besitzer=" + p.getName() + " grund=abenteuer");
             return;
         }
+        yieldTown();
         // Grabwege vor Warteschlange und LLM (TunnelService.early, Vorfall 2026-11-16 auf dev01): „tunnel stopp“ hält
         // an, eine zu lange Länge wird abgesagt, ein neuer Grabauftrag löst den eigenen laufenden ab.
         if (tunnels.early(r)) {
@@ -1495,6 +1505,67 @@ final class BuildService {
                 BlockDataWriter.Expectation.of(spec.id(), data), group);
     }
 
+    /** Gehört der Eintrag den Bewohnern (eigener Stapel)? */
+    static boolean isTown(UndoRecord rec) {
+        return TownBuilds.TOWN_OWNER.equals(rec.owner());
+    }
+
+    /** Welcher Stapel einen Eintrag bekommt – nur nach Besitzer, beim Bau wie beim Laden nach einem Neustart. */
+    static Deque<UndoRecord> stackFor(UndoRecord rec, Deque<UndoRecord> players, Deque<UndoRecord> town) {
+        return isTown(rec) ? town : players;
+    }
+
+    /**
+     * Meldet die App einen Bau? Bewohner-Bauten nicht: Die App zeigt Ergebnisse von Aufträgen, die jemand gegeben hat –
+     * ein „gebaut: stadtleben: ein Zaun“ alle drei Minuten verdrängte dort die echten (T-037, Prüfung des Dirigenten).
+     */
+    static boolean reportsToApp(String order) {
+        return order == null || !order.startsWith(TownBuilds.ORDER_PREFIX);
+    }
+
+    /** Neuester Eintrag dieses Feldes im Bewohner-Stapel (Besitzername TownBuilds.ownerName), null = keiner. */
+    static UndoRecord newestOfField(Deque<UndoRecord> town, String field) {
+        String name = TownBuilds.ownerName(field);
+        for (UndoRecord r : town) {
+            if (name.equals(r.ownerName())) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    private void pushTownUndo(UndoRecord rec) {
+        if (rec.empty()) {
+            return;
+        }
+        townUndo.push(rec);
+        comfort.persistUndo(rec);
+        trimUndo();
+    }
+
+    /**
+     * /bm stadtleben feld rückgängig <feld> (Admin-Prüfung im Befehl): den letzten Bau dieses Feldes zurücknehmen,
+     * ein laufender Bau dort wird vorher beendet. Zurück: Satz für den Admin; true im ersten Feld = es wird
+     * zurückgesetzt.
+     */
+    Map.Entry<Boolean, String> undoTown(CommandSender sender, String field) {
+        String name = TownBuilds.ownerName(field);
+        if (active != null && active.running() && active.byResident() && name.equals(active.ownerName())) {
+            active.cancel("Gestoppt – das Feld wird zurückgebaut.");
+        }
+        UndoRecord rec = newestOfField(townUndo, field);
+        if (rec == null) {
+            return Map.entry(false, "Im Feld „" + field + "“ gibt es keinen Bau der Bewohner, den ich zurücknehmen kann.");
+        }
+        townUndo.remove(rec);
+        long when = rec.when().toEpochMilli();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> ledger.forget(TownBuilds.TOWN_OWNER, when));
+        LOG.info(() -> "stadtleben | feld_rückgängig | feld=" + field + " blöcke=" + rec.size() + " von="
+                + Texts.clean(sender.getName(), 16));
+        restore(sender, rec);
+        return Map.entry(true, "Der letzte Bau im Feld „" + field + "“ wird zurückgebaut (" + rec.size() + " Blöcke).");
+    }
+
     /** Rückgängig-Eintrag von außen (Stadtbau, CityJob) – dieselbe Liste wie für normale Bauten. */
     void pushUndo(UndoRecord rec) {
         if (rec.empty()) {
@@ -1513,9 +1584,11 @@ final class BuildService {
      * alles aus dieser Sitzung. Zurück kommt die Größe des Stapels.
      */
     int adoptUndo(List<UndoRecord> older) {
-        undo.addAll(older);
+        for (UndoRecord r : older) {
+            stackFor(r, undo, townUndo).addLast(r);
+        }
         trimUndo();
-        return undo.size();
+        return undo.size() + townUndo.size();
     }
 
     // ---------------------------------------------------------------- Befehle bestätigen (Plan B5)
@@ -1689,14 +1762,16 @@ final class BuildService {
      */
     private void trimUndo() {
         int depth = settings.undoDepth();
-        UndoStack.trim(undo, depth, dropped -> {
-            LOG.info(() -> UndoStack.dropLine(dropped, depth, java.time.Instant.now()));
-            comfort.forget(dropped);
-            if (dropped.spool() != null) {
-                dropped.spool().delete();
-            }
-        });
-        UndoStack.offload(undo, UndoStack.IN_MEMORY, comfort::onDisk);
+        for (Deque<UndoRecord> stack : List.of(undo, townUndo)) {
+            UndoStack.trim(stack, depth, dropped -> {
+                LOG.info(() -> UndoStack.dropLine(dropped, depth, java.time.Instant.now()));
+                comfort.forget(dropped);
+                if (dropped.spool() != null) {
+                    dropped.spool().delete();
+                }
+            });
+            UndoStack.offload(stack, UndoStack.IN_MEMORY, comfort::onDisk);
+        }
     }
 
     /**
@@ -1743,14 +1818,19 @@ final class BuildService {
         // Graben aus der Kiste: kein Rückgängig und kein Baubuch (TunnelService) – Rückgängig stellte den Fels wieder
         // her, obwohl das Abgebaute schon in der Kiste liegt, und „reparieren“ setzte Blöcke ohne Bezahlung.
         if (job.undoable()) {
-            pushUndo(finished);
-            watchForLag(job, finished);
+            if (isTown(finished)) {
+                // Kein watchForLag: Der Katalog setzt kein Redstone, und die Lag-Wache sucht im Stapel undo.
+                pushTownUndo(finished);
+            } else {
+                pushUndo(finished);
+                watchForLag(job, finished);
+            }
         }
         if (active == job && activeKind != LedgerKind.REPAIR && job.done() >= job.total() && job.undoable()) {
             record(job, activeKind == LedgerKind.UPDATE, activeLedgerOrder, activeLedgerInfo);
         }
         ResultReporter rr = plugin.resultReporter();
-        if (rr != null && active == job) {
+        if (rr != null && active == job && reportsToApp(activeOrder)) {
             rr.report(activeOrder, job.done() >= job.total() ? "gebaut" : "abgebrochen",
                     job.done() >= job.total() ? "" : job.done() + " von " + job.total() + " Schritten", job.placed(),
                     activePlot, activeFixes, activeRounds);
@@ -1781,6 +1861,7 @@ final class BuildService {
      * (anderer Bau, nichts umsetzbar); der Spieler hat dann Bescheid.
      */
     boolean startDig(Request r, CompiledBuild build, SiteFrame frame, BuildJob.Dig dig) {
+        yieldTown();
         String conflict = otherBuildConflict();
         if (conflict != null) {
             Texts.info(r.sender(), conflict);
@@ -1840,6 +1921,163 @@ final class BuildService {
                 n, world.getName(), frame.feetX(), frame.feetY(), frame.feetZ()));
         active.start();
         return true;
+    }
+
+    /**
+     * Ein Bewohner baut im Baufeld (Stadtleben, Vertrag v013 AK-45) – derselbe Weg wie jeder Bau, nur ohne LLM, ohne
+     * Vorschau, ohne Gedächtnis, ohne Helfer, und der Bewohner ist der Arbeiter (BuildJob.lead). Gleich bleibt alles,
+     * was schützt: Plan durch Parser und Compiler, Überbau-Schutz (PlanReview.checkOverbuild), Rechteprüfung jedes
+     * Blocks im Namen von actor VOR dem ersten Block (BuildJob-Prüfphase, fail-closed), Stufen je Takt, Rückgängig-
+     * Stapel und Baubuch. done bekommt am Ende true, wenn alle Schritte gelaufen sind und etwas gesetzt wurde.
+     *
+     * Bewusst anders als ein Spielerauftrag:
+     * - Rechteprüfung immer, auch wenn bau.rechte-prüfen aus ist: Kein Spieler hat diesen Bau gewollt, er geschieht in
+     *   seinem Namen (ASVS V4.1.3). Wer checkAs hier an die Einstellung hängt, lässt Bewohner in fremden Regionen bauen.
+     * - Obergrenze Tier.EVERYONE: Der Katalog braucht nichts darüber, und geringste Rechte heißt hier auch für einen
+     *   Admin keine gefährlichen Blöcke, keine Inhalte, keine Befehle.
+     * - Kein Einreihen: Ist der Baumeister beschäftigt oder wartet ein Spielerauftrag, kommt der Bewohner nicht dran
+     *   (Grund zurück) – Spieler gehen immer vor.
+     * - Die Zellen des Plans müssen genau die sein, die TownBuilds geprüft hat; weicht der Compiler im Plugin ab (andere
+     *   Blockliste), wird nicht gebaut statt an ungeprüften Stellen.
+     *
+     * null = gestartet; sonst der Grund (nichts geändert).
+     */
+    String startTown(Player actor, Mannequin body, String bodyName, TownBuilds.Order order,
+            java.util.function.Consumer<Boolean> done) {
+        String refusal = townRefusal(otherBuildConflict(), thinking, active != null && active.running(),
+                restoring != null, comfort.queueEmpty(), actor != null && actor.isOnline(),
+                body != null && body.isValid());
+        if (refusal != null) {
+            return refusal;
+        }
+        World world = Bukkit.getWorld(order.world());
+        if (world == null || !world.equals(body.getWorld())) {
+            return "welt";
+        }
+        CompiledBuild build;
+        try {
+            build = compiler.compile(PlanParser.parse(order.kind().plan()));
+        } catch (PlanException e) {
+            return "plan: " + e.getMessage();
+        }
+        if (!PlanCommands.find(build).isEmpty()) {
+            return "befehle";
+        }
+        SiteFrame frame = new SiteFrame(world, order.x(), order.y(), order.z(), new Orientation(order.forward()), 0);
+        try {
+            PlanReview.checkOverbuild(frame.survey(), order.orderText(), build, settings.maxOverbuild());
+        } catch (PlanException e) {
+            return "überbau";
+        }
+        Orientation o = frame.orientation();
+        BlockTiers.WorldFacts facts = new BlockTiers.WorldFacts(world.isBedWorks(), world.isRespawnAnchorWorks());
+        List<WorldAction> actions = new ArrayList<>(build.actions().size());
+        Set<Long> cells = new HashSet<>();
+        for (Action a : build.actions()) {
+            List<WorldChange> changes = new ArrayList<>(a.changes().size());
+            for (Change c : a.changes()) {
+                Converted conv = toBlockData(c.block(), o);
+                if (conv.data() == null) {
+                    return "block: " + conv.problem();
+                }
+                Block b = frame.blockAt(c.pos());
+                if (!conv.data().getMaterial().isAir()) {
+                    cells.add(pack(b.getX(), b.getY(), b.getZ()));
+                }
+                changes.add(new WorldChange(b, conv.data(), placement(c.block(), c.group(), facts, o,
+                        frame::blockAt)));
+            }
+            if (!changes.isEmpty()) {
+                actions.add(new WorldAction(a.step(), List.copyOf(changes)));
+            }
+        }
+        Set<Long> planned = new HashSet<>();
+        for (int[] c : order.cells()) {
+            planned.add(pack(c[0], c[1], c[2]));
+        }
+        if (actions.isEmpty() || !cells.equals(planned)) {
+            LOG.warning(() -> "stadtleben | bauen_zellen_abweichung | art=" + order.kind().key() + " geprüft="
+                    + planned.size() + " plugin=" + cells.size() + " – nicht gebaut");
+            return "zellen";
+        }
+        Location center = frame.blockAt(new Pos(0, 0, 0)).getLocation().add(0.5, 0, 0.5);
+        Pos f = o.toWorldOffset(new Pos(0, 0, -1));
+        TownJob tj = townJob(actor.getUniqueId(), order.field());
+        String text = order.orderText();
+        activeOrder = text;
+        activeKind = LedgerKind.NEW;
+        activeLedgerOrder = text;
+        activeLedgerInfo = "";
+        activePlot = "";
+        activeFixes = List.of();
+        activeRounds = 0;
+        activeGuides = List.of();
+        guidedJob = null;
+        active = new BuildJob(plugin, npc, settings, tj.owner(), tj.ownerName(), tj.checkAs(), tj.rightsOf(), actor,
+                List.copyOf(actions),
+                build.stepNames(), center, new Vector(f.x(), 0, f.z()), order.y(), 0, false, job -> {
+                    onJobFinished(job);
+                    done.accept(job.complete() && job.placed() > 0);
+                }).cap(Tier.EVERYONE).lead(body, bodyName);
+        int n = actions.size();
+        LOG.info(() -> String.format(java.util.Locale.ROOT, "stadtleben | bauen_start | art=%s bewohner=%s im_namen=%s "
+                + "aktionen=%d welt=%s x=%d y=%d z=%d richtung=%s", order.kind().key(), bodyName, actor.getName(), n,
+                world.getName(), order.x(), order.y(), order.z(), order.forward()));
+        active.start();
+        return null;
+    }
+
+    /**
+     * Wem ein Bewohner-Bau gehört und in wessen Namen er prüft: Besitzer (Rückgängig, Baubuch) ist die Stadt
+     * (TownBuilds.TOWN_OWNER, Name „Stadt-<feld>“), Rechte und Stufen bleiben die des berechtigten Admins actor. Wer
+     * owner wieder auf actor setzt, legt Bewohner-Bauten auf den Stapel des Admins (TownBuildServiceTest).
+     */
+    record TownJob(UUID owner, String ownerName, UUID checkAs, UUID rightsOf) {
+    }
+
+    static TownJob townJob(UUID actor, String field) {
+        return new TownJob(TownBuilds.TOWN_OWNER, TownBuilds.ownerName(field), actor, actor);
+    }
+
+    /**
+     * Ein Spielerauftrag geht vor: Baut gerade ein Bewohner, wird sein Bau beendet (was steht, bleibt und ist über
+     * /bm stadtleben feld rückgängig zurückzunehmen), statt den Spieler abzuweisen oder warten zu lassen. Gewählt, weil
+     * es ohne die Warteschlange auskommt (die kann aus sein) und ein Bewohner-Bau ohnehin nur Sekunden dauert.
+     */
+    static boolean playerPreempts(boolean running, boolean byResident) {
+        return running && byResident;
+    }
+
+    private void yieldTown() {
+        if (active != null && playerPreempts(active.running(), active.byResident())) {
+            LOG.info(() -> "stadtleben | bauen_unterbrochen | grund=spielerauftrag");
+            active.cancel("Ein Spieler braucht den Baumeister – ich höre hier auf.");
+        }
+    }
+
+    /**
+     * Darf ein Bewohner jetzt bauen? null = ja, sonst der Grund. Ohne Server prüfbar (TownBuildServiceTest): Spieler
+     * gehen vor (Planung, Bau, Rückgängig, Warteschlange), und ohne berechtigten Spieler online oder ohne Körper wird
+     * nie gebaut – fail-closed.
+     */
+    static String townRefusal(String conflict, boolean thinking, boolean running, boolean restoring,
+            boolean queueEmpty, boolean actorOnline, boolean bodyValid) {
+        if (!actorOnline) {
+            return "niemand_berechtigt";
+        }
+        if (!bodyValid) {
+            return "bewohner_weg";
+        }
+        if (conflict != null) {
+            return "stadt_oder_weltbau";
+        }
+        if (thinking || running || restoring) {
+            return "baumeister_beschäftigt";
+        }
+        if (!queueEmpty) {
+            return "warteschlange";
+        }
+        return null;
     }
 
     /**
@@ -2505,6 +2743,8 @@ final class BuildService {
     void takeOver(BuildService old) {
         undo.addAll(old.undo);
         old.undo.clear();
+        townUndo.addAll(old.townUndo);
+        old.townUndo.clear();
         helperWish.putAll(old.helperWish);
         comfort.takeOver(old.comfort);
         trimUndo();

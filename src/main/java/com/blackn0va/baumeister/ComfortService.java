@@ -186,6 +186,11 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         return flow.statusSuffix();
     }
 
+    /** Wartet kein Auftrag? Bewohner bauen nur dann (BuildService.startTown: Spieler gehen vor). */
+    boolean queueEmpty() {
+        return flow.queue().isEmpty();
+    }
+
     // ---------------------------------------------------------------- Warteschlange
 
     private void startQueueTimer() {
@@ -403,7 +408,10 @@ final class ComfortService implements ComfortFlow.Port<BuildService.Request, Com
         if (!journal.enabled() || candidates.isEmpty()) {
             return;
         }
-        journal.loadAsync(candidates, UndoJournal.Limits.of(settings.undoDepth(), comfort), task -> {
+        // Zweimal die Tiefe: Bewohner-Bauten haben einen eigenen Stapel gleicher Tiefe (BuildService.townUndo). Mit nur
+        // einer Tiefe löschte das Laden die ältesten Einträge über der Grenze – auch Spielerbauten, die die Bewohner-
+        // Einträge verdrängt hätten. adoptUndo kürzt danach jeden Stapel für sich.
+        journal.loadAsync(candidates, UndoJournal.Limits.of(settings.undoDepth() * 2, comfort), task -> {
             if (plugin.isEnabled()) {
                 Bukkit.getScheduler().runTask(plugin, task);
             }

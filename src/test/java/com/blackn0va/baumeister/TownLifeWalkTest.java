@@ -164,6 +164,27 @@ class TownLifeWalkTest {
         com.blackn0va.baumeister.town.work.Plot plot;
         com.blackn0va.baumeister.town.work.FieldWork.Hands hands;
         World named;
+        /** Bauen (AK-45, TownLifeBuildTest): Blockliste des Katalogs und der Baudienst; null = aus. */
+        com.blackn0va.baumeister.plan.BlockCatalog catalog;
+        TownLifeBuildTest.Builder builder;
+        /** Feld-Rückgängig (BuildService.undoTown); null = Vorgabe von Env. */
+        java.util.function.BiFunction<org.bukkit.command.CommandSender, String, Map.Entry<Boolean, String>> townUndo;
+
+        @Override
+        public Map.Entry<Boolean, String> townUndo(org.bukkit.command.CommandSender s, String field) {
+            return townUndo == null ? TownLife.Env.super.townUndo(s, field) : townUndo.apply(s, field);
+        }
+
+        @Override
+        public com.blackn0va.baumeister.plan.BlockCatalog blockCatalog() {
+            return catalog;
+        }
+
+        @Override
+        public String townBuild(com.blackn0va.baumeister.town.work.TownBuilds.Order order, Player actor,
+                org.bukkit.entity.Mannequin body, String name, java.util.function.Consumer<Boolean> done) {
+            return builder == null ? "aus" : builder.start(order, actor, name, done);
+        }
 
         @Override
         public com.blackn0va.baumeister.town.work.Plot plot(World w) {

@@ -180,7 +180,7 @@ final class BuildJob {
 
         Mannequin entity() {
             if (helper == null) {
-                return npc.get();
+                return leadBody();
             }
             return helper.isValid() ? helper : null;
         }
@@ -295,6 +295,14 @@ final class BuildJob {
     static final long MATERIAL_LIMIT_MS = 10 * 60_000L;
 
     private Dig dig;
+    /**
+     * Ein Bewohner baut statt des Baumeisters (Stadtleben, Vertrag v013 AK-45; null = der Baumeister). Er läuft, setzt
+     * und spricht; Rechte, Stufen, Rückgängig und Baubuch bleiben die des Auftrags – nur der Körper ist ein anderer.
+     * Geht der Bewohner während des Baus (Nacht, Spieler fern), endet der Bau dort: Würde der Baumeister einspringen,
+     * stünde er plötzlich mitten im Dorf.
+     */
+    private Mannequin lead;
+    private String leadName;
     /** Material, auf das der Bau gerade wartet (null = keins), und seit wann. */
     private Material waitingFor;
     private long waitingSince;
@@ -351,6 +359,42 @@ final class BuildJob {
 
     Dig dig() {
         return dig;
+    }
+
+    /** Ein Bewohner als Arbeiter (vor start). Zurück: dieser Job. */
+    BuildJob lead(Mannequin body, String name) {
+        this.lead = body;
+        this.leadName = name;
+        return this;
+    }
+
+    /** Baut ein Bewohner (lead) statt des Baumeisters? */
+    boolean byResident() {
+        return lead != null;
+    }
+
+    /** Wer baut: der Bewohner (nur gültig) oder der Baumeister. */
+    private Mannequin leadBody() {
+        if (lead != null) {
+            return lead.isValid() ? lead : null;
+        }
+        return npc.get();
+    }
+
+    /** Name in Chat und Sprache. */
+    private String speaker() {
+        return lead != null ? leadName : npc.name();
+    }
+
+    /** Statuszeile über dem Kopf des Arbeiters. */
+    private void status(String text) {
+        if (lead != null) {
+            if (lead.isValid()) {
+                MannequinCompat.description(lead, text);
+            }
+            return;
+        }
+        npc.status(text);
     }
 
     /** Darf dieser Bau auf den Rückgängig-Stapel? Graben aus der Kiste nicht (Dig.undoable). */
@@ -423,7 +467,7 @@ final class BuildJob {
     void start() {
         started = Instant.now();
         startedNanos = System.nanoTime();
-        npc.status("prüft den Bauplatz …");
+        status("prüft den Bauplatz …");
         LOG.info(() -> String.format("bau | prüfung | besitzer=%s aktionen=%d rechteprüfung=%s", ownerName,
                 actions.size(), checkAs != null));
         // Erst vorladen, dann halten (ChunkPrefetch, 2026-11-14): Vorher lud addPluginChunkTicket fehlende Chunks
@@ -618,7 +662,7 @@ final class BuildJob {
             plugin.dropGuard().open(dropBox);
         }
         workers.add(new Worker(null));
-        Mannequin main = npc.get();
+        Mannequin main = leadBody();
         Location base = main != null ? main.getLocation() : center.clone();
         for (int i = 1; i <= helperCount; i++) {
             workers.add(new Worker(spawnHelperNear(base, i)));
@@ -628,9 +672,9 @@ final class BuildJob {
             // Nur gewünschte Helfer laut bestätigen; sonst nur in den Chat (Texts.chat): Vorher sprach er bei jedem
             // größeren Bau „Das ist ein großer Bau – ich hole mir 2 Helfer dazu!“ – bei zehn Bauten zehnmal.
             if (helpersWished) {
-                Texts.say(npc.name(), base, replyTo, "Ich hole mir " + who + " dazu!");
+                Texts.say(speaker(), base, replyTo, "Ich hole mir " + who + " dazu!");
             } else {
-                Texts.chat(npc.name(), base, replyTo, "Großer Bau – ich hole mir " + who + " dazu.");
+                Texts.chat(speaker(), base, replyTo, "Großer Bau – ich hole mir " + who + " dazu.");
             }
         }
         // Block für Block mit Laufen dauert ticksPerBlock je Aktion und Arbeiter. Ein Hochhaus mit 16 810 Blöcken
@@ -644,19 +688,19 @@ final class BuildJob {
             fastBase = fastPerTick;
             fastWorkers = workers.size();
             if (fastPerTick > 0) {
-                Texts.chat(npc.name(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
+                Texts.chat(speaker(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
             }
         } else if (normalTicks(actions.size(), settings.ticksPerBlock(), workers.size()) > targetTicks) {
             fastPerTick = (int) Math.min(5000, Math.ceilDiv(actions.size(), targetTicks));
             fastBase = fastPerTick;
             fastWorkers = workers.size();
             // Nur im Chat: „vierhundertvierzig Blöcke Schrägstrich s“ wollte niemand hören.
-            Texts.chat(npc.name(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
+            Texts.chat(speaker(), base, replyTo, "Ich baue im Schnellgang (" + fastPerTick * 20 + " Blöcke/s).");
         }
         LOG.info(() -> String.format("bau | los | besitzer=%s aktionen=%d schritte=%d helfer=%d schnell=%d prüfung_ms=%d "
                 + "prüf_ticks=%d", ownerName, actions.size(), stepNames.size(), helperCount, fastPerTick, meter.checkMillis(),
                 meter.ticks() + 1));
-        npc.status("baut 0/" + actions.size());
+        status("baut 0/" + actions.size());
     }
 
     // ---------------------------------------------------------------- Bauen
@@ -733,7 +777,7 @@ final class BuildJob {
             }
         }
         if (done % 10 == 0 || fastPerTick > 10) {
-            npc.status("baut " + done + "/" + actions.size());
+            status("baut " + done + "/" + actions.size());
         }
     }
 
@@ -840,7 +884,7 @@ final class BuildJob {
         if (phase != Phase.BUILD) {
             return;
         }
-        Mannequin main = npc.get();
+        Mannequin main = leadBody();
         Location base = main != null ? main.getLocation() : center.clone();
         while (workers.size() - 1 < helperCount) {
             workers.add(new Worker(spawnHelperNear(base, workers.size())));
@@ -903,7 +947,11 @@ final class BuildJob {
         Location stand = dig != null ? dig.stand(a.step()) : standFor(a);
         Mannequin m = w.entity();
         if (m == null) {
-            if (w.helper == null) {
+            if (w.helper == null && lead != null) {
+                LOG.info(() -> "bau | bewohner_weg | besitzer=" + ownerName + " bewohner=" + leadName + " fertig="
+                        + done + "/" + actions.size());
+                finish(leadName + " ist nicht mehr da – der Bau bleibt so stehen. Rückgängig mit /bm stadtleben feld rückgängig.");
+            } else if (w.helper == null) {
                 npc.ensureNear(stand);
             } else {
                 // Helfer weg (z. B. per /kill): seine Arbeit übernimmt der Baumeister.
@@ -931,7 +979,7 @@ final class BuildJob {
         // Spieler hinterher, der mitgeht. Mit bau.ticks-pro-block (3) bräuchte jeder Abschnitt 4 s.
         w.cooldown = dig != null ? 0 : settings.ticksPerBlock() - 1;
         if (w.helper == null && done % 10 == 0) {
-            npc.status("baut " + done + "/" + actions.size());
+            status("baut " + done + "/" + actions.size());
         }
     }
 
@@ -946,7 +994,7 @@ final class BuildJob {
                 if (!c.data().getMaterial().isAir() && occupied(b)) {
                     if (!deferSaid) {
                         deferSaid = true;
-                        Texts.chat(npc.name(), b.getLocation(), replyTo, "Geh mal kurz einen Schritt zurück – da "
+                        Texts.chat(speaker(), b.getLocation(), replyTo, "Geh mal kurz einen Schritt zurück – da "
                                 + "setze ich gerade einen Block hin.");
                     }
                     return Outcome.DEFERRED;
@@ -1066,7 +1114,7 @@ final class BuildJob {
         if (!dig.ready(a.step())) {
             if (gateSince == 0) {
                 gateSince = now;
-                npc.status("wartet auf dich");
+                status("wartet auf dich");
             } else if (now - gateSince > GATE_LIMIT_MS) {
                 finish("Du bist nicht mehr mitgekommen – ich mache hier Schluss. Sag Bescheid, wenn's "
                         + "weitergehen soll.");
@@ -1075,7 +1123,7 @@ final class BuildJob {
         }
         if (gateSince != 0) {
             gateSince = 0;
-            npc.status("baut " + done + "/" + actions.size());
+            status("baut " + done + "/" + actions.size());
         }
         for (WorldChange c : a.changes()) {
             Material miss = dig.missing(c.block(), c.data());
@@ -1086,9 +1134,9 @@ final class BuildJob {
                 waitingFor = miss;
                 waitingSince = now;
                 String name = com.blackn0va.baumeister.plan.TunnelStyle.german(miss.getKey().getKey());
-                npc.status("wartet auf " + name);
+                status("wartet auf " + name);
                 String where = dig.chestAt();
-                Texts.say(npc.name(), c.block().getLocation(), replyTo, "Mir fehlen " + name + " – leg welche in die "
+                Texts.say(speaker(), c.block().getLocation(), replyTo, "Mir fehlen " + name + " – leg welche in die "
                         + "Kiste" + (where.isEmpty() ? "" : " bei " + where) + ", dann mache ich weiter.");
                 LOG.info(() -> String.format("bau | material_fehlt | besitzer=%s material=%s", ownerName,
                         miss.getKey().getKey()));
@@ -1099,7 +1147,7 @@ final class BuildJob {
         }
         if (waitingFor != null) {
             waitingFor = null;
-            npc.status("baut " + done + "/" + actions.size());
+            status("baut " + done + "/" + actions.size());
         }
         return true;
     }
@@ -1387,9 +1435,9 @@ final class BuildJob {
                 w.helper.remove();
             }
         }
-        npc.status("bereit");
-        npc.hold(null);
-        Mannequin m = npc.get();
+        status("bereit");
+        Mannequin m = leadBody();
+        BuilderNpc.hold(m, null);
         if (m != null && placed > 0) {
             // Gemessen 2026-10-28: Ohne das blieb der NPC nach dem letzten Firstblock über dem Dach
             // schweben. Jetzt landet er vor der Front und schaut auf sein Werk. Beim Graben läge „vor der Front“ im
@@ -1402,8 +1450,8 @@ final class BuildJob {
             }
         }
         Player owner = Bukkit.getPlayer(ownerId == null ? new UUID(0, 0) : ownerId);
-        if (owner != null) {
-            npc.lookAt(BuilderNpc.eye(owner.getLocation()));
+        if (owner != null && (lead == null || m != null && owner.getWorld().equals(m.getWorld()))) {
+            BuilderNpc.lookAt(m, BuilderNpc.eye(owner.getLocation()));
         }
         // Ausgelassene Behälter gehören in jede Schlussmeldung (Fertig wie Abbruch): Sonst wundert sich der Spieler über
         // die Lücke im Bau.
@@ -1411,7 +1459,7 @@ final class BuildJob {
                 : "";
         String said = message + spared + skippedText();
         if (!said.isBlank()) {
-            Texts.say(npc.name(), m != null ? m.getLocation() : center, replyTo, said);
+            Texts.say(speaker(), m != null ? m.getLocation() : center, replyTo, said);
         }
         // finish läuft meist mitten in tickGuarded, also vor meter.tick: den laufenden Tick mitzählen, sonst fehlte in
         // der Ende-Zeile gerade der letzte Tick (Prüfbefund 2026-10-29).

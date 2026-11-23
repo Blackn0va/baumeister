@@ -360,6 +360,18 @@ stadtleben:
   weltänderung: false
   # Höchstens so viele Blockänderungen aller Bewohner zusammen je Minute (1–120).
   feld-blöcke-je-minute: 20
+  # Bauen (2026-11-22): Mit an: true bauen Bauer, Holzfäller und Gärtnerin nach und nach kleine Dinge (Zaun, Laterne,
+  # Gartenbeet, Marktstand, Brunnen, Hütte) – NUR mit weltänderung: true und NUR in Feldern, die ein Admin mit
+  # /bm stadtleben feld bauen <name> an freigibt. Gebaut wird wie beim Baumeister Block für Block, jeder Block mit
+  # Rechteprüfung im Namen eines Admins (WorldGuard, PlotSquared können ihn verbieten), nie über Bestehendes, und
+  # jeder Bau landet im eigenen Rückgängig-Stapel der Stadt (/bm stadtleben feld rückgängig <name>, nicht im Stapel
+  # des Admins). Spieleraufträge gehen immer vor.
+  bauen:
+    an: false
+    # Höchstens so viele stehende Bauten je Feld (1–16). Ein zurückgebauter zählt nicht mehr.
+    je-feld: 4
+    # Pause zwischen zwei Bauten im selben Feld in Minuten (0–120).
+    pause-minuten: 3
 # Fernverbindung (2026-11-08): Die Baumeister-App kommt über die Adresse ins Relay auf dem Server (docs/kanal-v1.md),
 # und das Relay nennt an jeder Antwort die App, von der sie stammt (Kopf X-Baumeister-App = Pin-Name der App).
 fernverbindung:
