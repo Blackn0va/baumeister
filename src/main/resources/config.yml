@@ -364,7 +364,8 @@ stadtleben:
   # Gartenbeet, Marktstand, Brunnen, Hütte) – NUR mit weltänderung: true und NUR in Feldern, die ein Admin mit
   # /bm stadtleben feld bauen <name> an freigibt. Gebaut wird wie beim Baumeister Block für Block, jeder Block mit
   # Rechteprüfung im Namen eines Admins (WorldGuard, PlotSquared können ihn verbieten), nie über Bestehendes, und
-  # jeder Bau landet im Rückgängig-Stapel (/bm rückgängig). Spieleraufträge gehen immer vor.
+  # jeder Bau landet im eigenen Rückgängig-Stapel der Stadt (/bm stadtleben feld rückgängig <name>, nicht im Stapel
+  # des Admins). Spieleraufträge gehen immer vor.
   bauen:
     an: false
     # Höchstens so viele stehende Bauten je Feld (1–16). Ein zurückgebauter zählt nicht mehr.

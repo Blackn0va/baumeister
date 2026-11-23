@@ -950,7 +950,7 @@ final class BuildJob {
             if (w.helper == null && lead != null) {
                 LOG.info(() -> "bau | bewohner_weg | besitzer=" + ownerName + " bewohner=" + leadName + " fertig="
                         + done + "/" + actions.size());
-                finish(leadName + " ist nicht mehr da – der Bau bleibt so stehen. Rückgängig mit /bm rückgängig.");
+                finish(leadName + " ist nicht mehr da – der Bau bleibt so stehen. Rückgängig mit /bm stadtleben feld rückgängig.");
             } else if (w.helper == null) {
                 npc.ensureNear(stand);
             } else {
