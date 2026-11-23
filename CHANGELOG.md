@@ -5,6 +5,14 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 ## [Unveröffentlicht]
 
 ### Neu
+- **Bewohner bauen in Baufeldern:** Mit `stadtleben.bauen.an: true` (zusätzlich `stadtleben.weltänderung: true`)
+  bauen Bewohner in Feldern, die ein Admin mit `/bm stadtleben feld bauen <name> an` freigibt, nach und nach Zaun,
+  Laterne, Gartenbeet, Marktstand, Brunnen oder Hütte – sichtbar Block für Block über die Bau-Pipeline des
+  Baumeisters, jeder Block mit Rechteprüfung im Namen eines Admins (immer, auch bei `bau.rechte-prüfen: false`), nie
+  über Bestehendes. Je Feld ein Bau zur Zeit, höchstens `bauen.je-feld` (4) Bauten, `bauen.pause-minuten` (3)
+  dazwischen. Bewohner-Bauten haben einen eigenen Rückgängig-Stapel: `/bm stadtleben feld rückgängig <name>`; der
+  Stapel des Admins bleibt unberührt. Spieleraufträge gehen vor und beenden einen laufenden Bewohner-Bau. Fertige
+  Bauten werden Arbeitsorte. Vorgabe: aus.
 - **Bewohner wie Spieler:** Stadtleben-Bewohner stehen mit Name, Kopf, Ping und Spielmodus in der Tab-Liste
   (PacketEvents 2.14.0 im Plugin, verschoben und gepinnt), reden als „<Lotte> …“, kommen und gehen mit gelber
   Zeile (abschaltbar mit `stadtleben.kommen-gehen-melden`), tragen Ausrüstung je Beruf, schwingen bei der Arbeit
