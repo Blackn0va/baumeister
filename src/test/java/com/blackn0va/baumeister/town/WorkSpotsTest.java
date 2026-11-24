@@ -48,8 +48,9 @@ class WorkSpotsTest {
 
     @Test
     void sameDistanceWarpBeforePlaceBeforeBuild() {
+        // Ein Bau wird vor seinem Rahmen angesteuert (BESIDE davor): bei x 12 steht man wie bei den anderen auf x 10.
         List<WorkSpots.Spot> spots = List.of(
-                WorkSpots.Spot.point(WorkSpots.Source.BUILD, "b", "welt", 10, 64, 0),
+                WorkSpots.Spot.point(WorkSpots.Source.BUILD, "b", "welt", 10 + WorkSpots.BESIDE, 64, 0),
                 WorkSpots.Spot.point(WorkSpots.Source.PLACE, "p", "welt", 10, 64, 0), warp("w", 10, 0));
         assertEquals(List.of(WorkSpots.Source.WARP, WorkSpots.Source.PLACE, WorkSpots.Source.BUILD),
                 WorkSpots.rank(spots, "welt", 0, 0, PLAYER_AT_ORIGIN, ALL, Map.of()).stream()
@@ -71,6 +72,20 @@ class WorkSpotsTest {
         double[] point = WorkSpots.approach(warp("markt", 3, 4), 50, 50);
         assertEquals(3, point[0], 1e-9);
         assertEquals(4, point[1], 1e-9);
+    }
+
+    /**
+     * Ein Bau aus einem Block (Laterne der Bewohner) ist kein Punkt: Stehpunkt davor, nie auf ihm. Live gemessen
+     * (T-038): Vorher lag der Stehpunkt auf der Laterne, zwei Bewohner suchten 10 min lang Wege hinauf.
+     */
+    @Test
+    void oneBlockBuildIsApproachedFromBeside() {
+        WorkSpots.Spot lantern = WorkSpots.Spot.point(WorkSpots.Source.BUILD, "laterne", "welt", 64, 64, 135);
+        double[] at = WorkSpots.approach(lantern, 64, 100);
+        assertEquals(64, at[0], 1e-9);
+        assertEquals(135 - WorkSpots.BESIDE, at[1], 1e-9, "vor der Laterne (Nord, zur Wohnung)");
+        double[] onTop = WorkSpots.approach(lantern, 64.5, 135.5);
+        assertTrue(onTop[0] < 64 || onTop[0] >= 65 || onTop[1] < 135 || onTop[1] >= 136, "Stehpunkt auf der Laterne");
     }
 
     @Test

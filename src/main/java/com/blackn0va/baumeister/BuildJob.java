@@ -2,6 +2,7 @@ package com.blackn0va.baumeister;
 
 import com.blackn0va.baumeister.plan.BlockTiers;
 import com.blackn0va.baumeister.plan.Tier;
+import com.blackn0va.baumeister.town.work.TownBuilds;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -546,7 +547,8 @@ final class BuildJob {
             meter.tick(t0, System.nanoTime());
         } catch (RuntimeException e) {
             LOG.log(Level.SEVERE, "bau | tick_fehler | besitzer=" + ownerName + " fertig=" + done, e);
-            finish("Da ist etwas schiefgegangen – ich höre auf. Rückgängig mit /bm rückgängig.");
+            finish("Da ist etwas schiefgegangen – ich höre auf. Rückgängig mit " + undoCommand(byResident(), ownerName)
+                    + ".");
         } finally {
             tickStart = 0;
         }
@@ -950,7 +952,8 @@ final class BuildJob {
             if (w.helper == null && lead != null) {
                 LOG.info(() -> "bau | bewohner_weg | besitzer=" + ownerName + " bewohner=" + leadName + " fertig="
                         + done + "/" + actions.size());
-                finish(leadName + " ist nicht mehr da – der Bau bleibt so stehen. Rückgängig mit /bm stadtleben feld rückgängig.");
+                finish(leadName + " ist nicht mehr da – der Bau bleibt so stehen. Rückgängig mit "
+                        + undoCommand(true, ownerName) + ".");
             } else if (w.helper == null) {
                 npc.ensureNear(stand);
             } else {
@@ -1158,7 +1161,24 @@ final class BuildJob {
         if (dig != null) {
             return dig.done(placed, secs);
         }
-        return "Fertig! " + placed + " Blöcke in " + secs + " s. Gefällt's dir nicht? /bm rückgängig";
+        return "Fertig! " + placed + " Blöcke in " + secs + " s. Gefällt's dir nicht? " + undoCommand(byResident(),
+                ownerName);
+    }
+
+    /**
+     * Welcher Befehl diesen Bau zurücknimmt. Bewohner-Bauten liegen seit T-037 auf dem eigenen Stapel der Stadt
+     * (BuildService.townUndo, Besitzer TownBuilds.TOWN_OWNER) – „/bm rückgängig“ des Admins erreicht sie nicht und
+     * nähme stattdessen seinen eigenen letzten Bau zurück. Vorher stand beim Fehlerabbruch und beim „Fertig!“ trotzdem
+     * „/bm rückgängig“ (T-038). ownerName eines Bewohner-Baus ist TownBuilds.ownerName(feld), daraus der Feldname.
+     */
+    static String undoCommand(boolean byResident, String ownerName) {
+        if (!byResident) {
+            return "/bm rückgängig";
+        }
+        String prefix = TownBuilds.ownerName("");
+        String field = ownerName != null && ownerName.startsWith(prefix) && ownerName.length() > prefix.length()
+                ? ownerName.substring(prefix.length()) : "<feld>";
+        return "/bm stadtleben feld rückgängig " + field;
     }
 
     /**

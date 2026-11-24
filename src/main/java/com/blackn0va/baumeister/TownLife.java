@@ -3005,7 +3005,8 @@ final class TownLife implements Listener {
                         + "baut niemand." : "";
         Texts.info(s, on ? "Feld „" + name + "“ ist jetzt Baufeld: Bauer, Holzfäller und Gärtnerin bauen dort nach "
                 + "und nach höchstens " + building.perField() + " kleine Dinge (Zaun, Laterne, Beet, Marktstand, "
-                + "Brunnen, Hütte) – im Namen eines Admins, Rückgängig mit /bm rückgängig." + missing
+                + "Brunnen, Hütte) – im Namen eines Admins, Rückgängig mit /bm stadtleben feld rückgängig " + name + "."
+                + missing
                 : "Feld „" + name + "“ ist kein Baufeld mehr – was steht, bleibt stehen.");
     }
 

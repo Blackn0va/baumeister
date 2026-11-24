@@ -156,6 +156,57 @@ class TownBuildsTest {
         assertTrue(sweep(field(8, true), water).isEmpty(), "auf Wasser gebaut");
     }
 
+    /**
+     * Baufeld mit Gärtnerin (Radius 4 wie live): Ihr Wegkreuz durch die Mitte und die Blumen am Rand (Regel aus
+     * Planner.garden). Über plan – so wie TownLife sucht, Raster und Art reihum – entstehen nacheinander auch andere
+     * Bauten als Laternen, und nie steht ein Bau auf dem Weg. Live gemessen (T-038, Paper 26.2): ohne Weg im Rand und
+     * mit dem Raster ab dem Feldrand vier Laternen und sonst nichts.
+     */
+    @Test
+    void gardenerPathsLeaveRoomForBuilds() {
+        FieldWorkTest.Grid g = new FieldWorkTest.Grid();
+        Field f = field(4, true);
+        java.util.Set<Long> paths = new java.util.HashSet<>();
+        for (int dx = -f.radius(); dx <= f.radius(); dx++) {
+            for (int dz = -f.radius(); dz <= f.radius(); dz++) {
+                int ring = Math.max(Math.abs(dx), Math.abs(dz));
+                if ((dx == 0 || dz == 0) && ring <= f.radius() - 1) {
+                    g.set(dx, 63, dz, "dirt_path");
+                    paths.add(((long) dx << 32) | (dz & 0xFFFFFFFFL));
+                } else if (ring == f.radius() - 1 && Math.floorMod(dx + dz, 3) == 0) {
+                    g.set(dx, 64, dz, "poppy");
+                }
+            }
+        }
+        List<TownBuilds.Built> standing = new java.util.ArrayList<>();
+        java.util.Set<TownBuilds.Kind> kinds = EnumSet.noneOf(TownBuilds.Kind.class);
+        int cursor = 0;
+        for (int i = 0; i < 6; i++) {
+            TownBuilds.Found found = BUILDS.plan(f, g, standing, cursor, k -> false);
+            cursor = found.cursor();
+            TownBuilds.Order o = found.order();
+            if (o == null) {
+                continue;
+            }
+            kinds.add(o.kind());
+            for (int[] c : o.cells()) {
+                assertFalse(paths.contains(((long) c[0] << 32) | (c[2] & 0xFFFFFFFFL)),
+                        o.kind() + " steht auf dem Weg bei " + c[0] + "," + c[2]);
+                g.set(c[0], c[1], c[2], c[1] >= 64 ? "oak_planks" : "farmland");
+            }
+            standing.add(new TownBuilds.Built(o.kind(), o.x(), o.y(), o.z(), o.x(), o.z(), o.x(), o.y(), o.z(),
+                    "oak_planks", 0));
+        }
+        assertTrue(kinds.stream().anyMatch(k -> k != TownBuilds.Kind.LATERNE), "nach dem Wegkreuz nur noch: " + kinds);
+    }
+
+    @Test
+    void cornersSitBesideTheCenterLines() {
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {-4, -1, 1, 4}, TownBuilds.offsets(4));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {-10, -7, -4, -1, 1, 4, 7, 10},
+                TownBuilds.offsets(10));
+    }
+
     @Test
     void gateChecksEverySwitchInOrder() {
         BuildSettings on = new BuildSettings(true, 2, 1);

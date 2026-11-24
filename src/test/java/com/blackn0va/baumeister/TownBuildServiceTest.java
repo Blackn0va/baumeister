@@ -102,4 +102,16 @@ class TownBuildServiceTest {
         assertEquals(BuildSettings.MIN_PAUSE, (int) pause.min());
         assertEquals(BuildSettings.MAX_PAUSE, (int) pause.max());
     }
+
+    /**
+     * Abbruch- und Schlusssatz eines Bewohner-Baus zeigen auf den Stapel der Stadt (T-038): „/bm rückgängig“ des Admins
+     * nähme seinen eigenen letzten Bau zurück, nicht den des Bewohners.
+     */
+    @Test
+    void residentBuildsPointToTheFieldUndo() {
+        assertEquals("/bm stadtleben feld rückgängig dorf",
+                BuildJob.undoCommand(true, com.blackn0va.baumeister.town.work.TownBuilds.ownerName("dorf")));
+        assertEquals("/bm stadtleben feld rückgängig <feld>", BuildJob.undoCommand(true, "Karl"));
+        assertEquals("/bm rückgängig", BuildJob.undoCommand(false, "Karl"));
+    }
 }

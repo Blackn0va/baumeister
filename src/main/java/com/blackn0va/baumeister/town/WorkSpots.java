@@ -117,9 +117,14 @@ public final class WorkSpots {
         return out;
     }
 
-    /** Stehpunkt am Ort: bei einem Punkt der Punkt selbst, bei einem Bau vor dem Rahmen, der Wohnung zugewandt. */
+    /**
+     * Stehpunkt am Ort: bei einem Punkt (Warp, Reisepunkt) der Punkt selbst, bei einem Bau vor dem Rahmen, der Wohnung
+     * zugewandt. Ein Bau ist nie ein Punkt, auch wenn er nur einen Block breit ist: Vorher galt jeder Rahmen mit
+     * minX == maxX und minZ == maxZ als Punkt. Live gemessen (T-038, Paper 26.2): Die Laterne eines Bewohners (1×1)
+     * wurde Arbeitsort, der Stehpunkt lag oben auf ihr (y+3), Hanna und Theo suchten 10 min lang je ~650 Wege dorthin.
+     */
     public static double[] approach(Spot s, double fromX, double fromZ) {
-        if (s.minX() == s.maxX() && s.minZ() == s.maxZ()) {
+        if (s.source() != Source.BUILD && s.minX() == s.maxX() && s.minZ() == s.maxZ()) {
             return new double[] {s.minX(), s.minZ()};
         }
         double lowX = s.minX() - BESIDE;
