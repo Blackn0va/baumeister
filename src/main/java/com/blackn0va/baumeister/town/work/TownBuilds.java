@@ -56,7 +56,7 @@ public final class TownBuilds {
     public static final String ORDER_PREFIX = "stadtleben:";
     /** So viele Ecken prüft plan() je Aufruf höchstens – der Rest beim nächsten Mal ab cursor. */
     public static final int CANDIDATES_PER_CALL = 24;
-    /** Raster der Ecken: jede dritte Spalte – ein Bau ist mindestens 1 breit plus 1 Abstand je Seite. */
+    /** Raster der Ecken (offsets): jede dritte Spalte – ein Bau ist mindestens 1 breit plus 1 Abstand je Seite. */
     static final int STRIDE = 3;
     /** Wiesenpflanzen, die ein Bau ersetzen darf wie Luft. */
     static final Set<String> REPLACEABLE = Set.of("air", "cave_air", "short_grass", "tall_grass", "fern", "large_fern",
@@ -279,7 +279,8 @@ public final class TownBuilds {
         if (order.isEmpty()) {
             return new Found(null, cursor);
         }
-        int side = (2 * f.radius()) / STRIDE + 1;
+        int[] offsets = offsets(f.radius());
+        int side = offsets.length;
         int grid = side * side;
         int start = Math.floorMod(cursor, grid);
         int count = Math.min(CANDIDATES_PER_CALL, grid);
@@ -289,8 +290,8 @@ public final class TownBuilds {
         for (Kind k : order) {
             for (int n = 0; n < count; n++) {
                 int c = (start + n) % grid;
-                int bx = f.x() - f.radius() + (c % side) * STRIDE;
-                int bz = f.z() - f.radius() + (c / side) * STRIDE;
+                int bx = f.x() + offsets[c % side];
+                int bz = f.z() + offsets[c / side];
                 Cardinal away = away(f, bx, bz);
                 for (Cardinal forward : new Cardinal[] {away, away.clockwise(), away.opposite(),
                         away.opposite().clockwise()}) {
@@ -302,6 +303,34 @@ public final class TownBuilds {
             }
         }
         return new Found(null, start + count);
+    }
+
+    /**
+     * Abstände der Ecken von der Feldmitte je Achse: ±1, ±(1 + STRIDE), … bis zum Rand, die Mitte selbst nie. Vorher
+     * lag das Raster ab dem Feldrand (Radius 4: −4, −1, +2). Die Gärtnerin legt ihr Wegkreuz genau durch die Mitte
+     * (Planner.garden), und ein Bau steht nie auf dem Weg – ein 3×3-Bau passt in einem Viertel dann nur an Ecke ±1. Von
+     * dort lag nur −1 im Raster. Live gemessen (T-038, Paper 26.2, Feld Radius 4): nach der ersten Laterne dort nur
+     * noch Laternen, 4 Laternen und kein Marktstand. Symmetrisch zur Mitte bekommt jedes Viertel seine Ecke.
+     */
+    static int[] offsets(int radius) {
+        List<Integer> neg = new ArrayList<>();
+        List<Integer> pos = new ArrayList<>();
+        for (int d = 1; d <= radius; d += STRIDE) {
+            neg.add(0, -d);
+            pos.add(d);
+        }
+        if (pos.isEmpty()) {
+            return new int[] {0};
+        }
+        int[] out = new int[neg.size() + pos.size()];
+        int i = 0;
+        for (int d : neg) {
+            out[i++] = d;
+        }
+        for (int d : pos) {
+            out[i++] = d;
+        }
+        return out;
     }
 
     /** Passt die Art mit Ecke (bx, bz) ins Feld? Blickrichtung von der Feldmitte weg (Vorderseite zur Mitte). */
@@ -357,7 +386,14 @@ public final class TownBuilds {
             if (Math.abs(x - f.x()) > f.radius() || Math.abs(z - f.z()) > f.radius()) {
                 return null;
             }
-            if (!Safety.GROUND.contains(p.type(x, ground, z)) || !REPLACEABLE.contains(p.type(x, y0, z))) {
+            // Ein Weg der Gärtnerin (dirt_path) darf im Rand liegen, nie unter dem Bau. Vorher galt im Rand nur
+            // natürlicher Boden: Live gemessen (T-038, Paper 26.2 und Spigot 1.21.11, Feld Radius 4) legte Greta ihr
+            // Wegkreuz durch die Feldmitte, danach passte nur noch eine Laterne – 10 min lang kein zweiter Bau. Der
+            // Rand ist genau der Weg rundum; ein Pfad dort ist gewollt. Wer das zurückdreht, stellt Baufelder mit
+            // Gärtnerin nach dem ersten Pfad still (TownBuildsTest.gardenerPathsLeaveRoomForBuilds).
+            String base = p.type(x, ground, z);
+            boolean pathAround = !columns.contains(col) && base.equals("dirt_path");
+            if (!(Safety.GROUND.contains(base) || pathAround) || !REPLACEABLE.contains(p.type(x, y0, z))) {
                 return null;
             }
             if (!columns.contains(col) && (!REPLACEABLE.contains(p.type(x, y0 + 1, z))
