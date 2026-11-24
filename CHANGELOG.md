@@ -50,6 +50,10 @@ Alle nennenswerten Änderungen. Format nach [Keep a Changelog](https://keepachan
 
 ### Behoben
 - Spielernamen in Chatzeilen gingen unverändert an die KI; sie werden jetzt durch das Pseudonym ersetzt.
+- Baufelder mit Gärtnerin: Nach ihrem Wegkreuz durch die Feldmitte passte nur noch eine Laterne nach der anderen. Wege dürfen jetzt im Rand eines Baus liegen (nie darunter), und die Ecken liegen symmetrisch zur Mitte – auch Marktstand, Beet und Hütte finden wieder Platz.
+- Bewohner liefen auf die Laterne eines Bewohner-Baus hinauf statt davor stehen zu bleiben.
+- Hinweise bei Bewohner-Bauten nannten `/bm rückgängig` (das nähme den letzten Bau des Admins zurück); sie nennen jetzt `/bm stadtleben feld rückgängig <name>`.
+- Abschalten: Warf ein Dienst dabei (etwa nach einem Jar-Tausch unter laufendem Server), fielen alle späteren aus, auch das Speichern von Rucksack und Aufgaben. Jeder Schritt läuft jetzt für sich.
 
 ## [0.2.0] – 2026-11-22
 
