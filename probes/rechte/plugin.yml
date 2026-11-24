@@ -1,0 +1,11 @@
+name: RechteProbe
+version: 1
+main: RechteProbe
+api-version: "1.21"
+commands:
+  rechteprobe:
+    description: Rechte für Testspieler (nur Testserver)
+    permission: rechteprobe.use
+permissions:
+  rechteprobe.use:
+    default: op
