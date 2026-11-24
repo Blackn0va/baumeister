@@ -262,61 +262,30 @@ public final class BaumeisterPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         Texts.spoken = null;
-        if (modules != null) {
-            modules.stop();
-        }
-        if (localVoice != null) {
-            localVoice.stop();
-        }
-        if (veraVoice != null) {
-            veraVoice.stop();
-        }
-        if (modDownloads != null) {
-            modDownloads.stop();
-        }
-        if (bars != null) {
-            bars.stop();
-        }
-        if (screens != null) {
-            screens.stop();
-        }
-        if (minimap != null) {
-            minimap.stop();
-        }
-        if (companion != null) {
-            companion.shutdown();
-        }
-        if (town != null) {
-            town.shutdown();
-        }
-        // Nach town.shutdown (das je Bewohner left meldet), vor packets.disable – danach käme kein Paket mehr an.
-        if (presence != null) {
-            presence.shutdown();
-        }
-        if (packets != null) {
-            packets.disable();
-        }
-        if (rucksack != null) {
-            rucksack.shutdown();
-        }
-        if (quests != null) {
-            quests.shutdown();
-        }
-        if (chunkGuard != null) {
-            chunkGuard.uninstall();
-        }
-        if (weltbau != null) {
-            weltbau.shutdown();
-        }
-        if (city != null) {
-            city.shutdown();
-        }
-        if (service != null) {
-            service.shutdown();
-        }
-        if (earth != null) {
-            earth.shutdown();
-        }
+        // Jeder Schritt mit eigener Fehlergrenze (ShutdownSteps): Ein werfender Dienst darf das Speichern der
+        // späteren nicht mehr verhindern (dev01, NoClassDefFoundError in companion.shutdown, 2026-11-22/23).
+        new ShutdownSteps()
+                .add("module", modules, () -> modules.stop())
+                .add("stimme", localVoice, () -> localVoice.stop())
+                .add("vera_stimme", veraVoice, () -> veraVoice.stop())
+                .add("mod_downloads", modDownloads, () -> modDownloads.stop())
+                .add("balken", bars, () -> bars.stop())
+                .add("bildschirme", screens, () -> screens.stop())
+                .add("minikarte", minimap, () -> minimap.stop())
+                .add("begleiter", companion, () -> companion.shutdown())
+                .add("stadtleben", town, () -> town.shutdown())
+                // Nach town.shutdown (das je Bewohner left meldet), vor packets.disable – danach käme kein Paket
+                // mehr an.
+                .add("auftritt", presence, () -> presence.shutdown())
+                .add("pakete", packets, () -> packets.disable())
+                .add("rucksack", rucksack, () -> rucksack.shutdown())
+                .add("aufgaben", quests, () -> quests.shutdown())
+                .add("chunkwache", chunkGuard, () -> chunkGuard.uninstall())
+                .add("weltbau", weltbau, () -> weltbau.shutdown())
+                .add("stadt", city, () -> city.shutdown())
+                .add("bau", service, () -> service.shutdown())
+                .add("erde", earth, () -> earth.shutdown())
+                .run();
         // Sonst hängt nach /reload ein zweiter Handler am statischen Logger und jede Zeile käme doppelt.
         LOG.removeHandler(forwarder);
     }
